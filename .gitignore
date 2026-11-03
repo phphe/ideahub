@@ -1,0 +1,17 @@
+# 依赖与构建产物
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+
+# 真实环境配置（绝不提交）
+.env
+.env.*
+!.env.example
+
+# 打包与临时文件
+*.tgz
+.tmp-*
+.DS_Store
+Thumbs.db
+*.log
