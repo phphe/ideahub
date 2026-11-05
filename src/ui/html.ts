@@ -87,19 +87,31 @@ const STYLES = `
   .link:hover { text-decoration: underline; }
 `;
 
-interface IssueAction {
-  label: string;
-  type: 'initGit' | 'installHook';
-}
-
-function issueAction(issueId: string): IssueAction | null {
-  if (issueId === 'local-git') {
-    return { label: '初始化 Git 仓库', type: 'initGit' };
+function renderIssueActions(
+  issueId: string,
+  remoteDirExists: boolean
+): string {
+  switch (issueId) {
+    case 'local-git':
+      return `<div class="actions"><button data-action="initGit">初始化 Git 仓库</button></div>`;
+    case 'remote-url':
+      return `<input type="text" id="remote-url" placeholder="https://github.com/owner/repo" />
+        <label class="check"><input type="checkbox" id="immutability-confirm" />
+        <span>我已在 GitHub 仓库设置中启用 <code>Enable release immutability</code>（扩展无法通过 API 检测该设置）。</span></label>
+        <p class="muted">远程创意仓库必须由你手动创建，且为公开仓库。</p>
+        <div class="actions"><button data-action="setRemote">保存并校验</button></div>`;
+    case 'remote-dir':
+      return `<div class="actions">
+        <button data-action="clone">克隆远程仓库</button>
+        ${remoteDirExists ? `<button class="secondary" data-action="reclone">重新克隆（删除现有 remote/）</button>` : ''}
+      </div>`;
+    case 'remote-mismatch':
+      return `<div class="actions"><button data-action="reclone">重新克隆（删除现有 remote/）</button></div>`;
+    case 'hook':
+      return `<div class="actions"><button data-action="installHook">安装 / 修复 hook</button></div>`;
+    default:
+      return '';
   }
-  if (issueId === 'hook') {
-    return { label: '安装 / 修复 hook', type: 'installHook' };
-  }
-  return null;
 }
 
 function renderMain(state: WorkspaceState, nonce: string): string {
@@ -143,15 +155,10 @@ function renderLocal(state: Extract<WorkspaceState, { kind: 'local' }>, nonce: s
   const hasIssues = state.issues.length > 0;
   const issues = state.issues
     .map((issue) => {
-      const action = issueAction(issue.id);
       return `<div class="card warn">
         <div class="title">${escapeHtml(issue.title)}</div>
         <p>${escapeHtml(issue.message)}</p>
-        ${
-          action
-            ? `<div class="actions"><button data-action="${action.type}">${escapeHtml(action.label)}</button></div>`
-            : ''
-        }
+        ${renderIssueActions(issue.id, state.remoteDirExists)}
       </div>`;
     })
     .join('');
@@ -196,11 +203,22 @@ function renderLocal(state: Extract<WorkspaceState, { kind: 'local' }>, nonce: s
       document.addEventListener('click', (event) => {
         const target = event.target.closest('[data-action]');
         if (!target || !target.dataset.action) { return; }
-        if (target.dataset.action === 'open') {
+        const action = target.dataset.action;
+        if (action === 'open') {
           vscode.postMessage({ type: 'open', project: target.dataset.project });
           return;
         }
-        vscode.postMessage({ type: target.dataset.action });
+        if (action === 'setRemote') {
+          const urlInput = document.getElementById('remote-url');
+          const confirmInput = document.getElementById('immutability-confirm');
+          vscode.postMessage({
+            type: 'setRemote',
+            url: urlInput ? urlInput.value : '',
+            immutabilityConfirmed: !!(confirmInput && confirmInput.checked)
+          });
+          return;
+        }
+        vscode.postMessage({ type: action });
       });
     </script>`;
 }

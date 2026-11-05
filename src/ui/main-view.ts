@@ -5,6 +5,8 @@ import { renderMainHtml } from './html';
 interface WebviewMessage {
   type?: string;
   project?: string;
+  url?: string;
+  immutabilityConfirmed?: boolean;
 }
 
 export class MainViewProvider implements vscode.WebviewViewProvider {
@@ -52,6 +54,17 @@ export class MainViewProvider implements vscode.WebviewViewProvider {
         return;
       case 'installHook':
         await this.runOperation(() => this.controller.installHook());
+        return;
+      case 'setRemote':
+        await this.runOperation(() =>
+          this.controller.setRemote(message.url ?? '', message.immutabilityConfirmed === true)
+        );
+        return;
+      case 'clone':
+        await this.runOperation(() => this.controller.cloneRemote(false));
+        return;
+      case 'reclone':
+        await this.runOperation(() => this.controller.cloneRemote(true));
         return;
       case 'open':
         if (message.project) {

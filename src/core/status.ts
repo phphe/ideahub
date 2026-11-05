@@ -34,6 +34,7 @@ export type WorkspaceState =
       root: string;
       remote: RemoteConfig | null;
       configError: string | null;
+      remoteDirExists: boolean;
       issues: LocalIssue[];
       projects: ProjectSummary[];
     };
@@ -103,14 +104,17 @@ export async function detectWorkspace(folder: string | null): Promise<WorkspaceS
   }
 
   let remoteDirOk = false;
+  let remoteDirExists = false;
   if (remote) {
     const remotePath = remoteRepoPath(folder);
     try {
       const stat = await fs.stat(remotePath);
-      if (stat.isDirectory() && (await isGitRepository(remotePath))) {
+      remoteDirExists = stat.isDirectory();
+      if (remoteDirExists && (await isGitRepository(remotePath))) {
         remoteDirOk = true;
       }
     } catch {
+      remoteDirExists = false;
       remoteDirOk = false;
     }
     if (!remoteDirOk) {
@@ -181,6 +185,7 @@ export async function detectWorkspace(folder: string | null): Promise<WorkspaceS
     root: folder,
     remote,
     configError,
+    remoteDirExists,
     issues,
     projects
   };
