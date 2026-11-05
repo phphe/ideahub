@@ -1,0 +1,15 @@
+.vscode/**
+.vscode-test/**
+src/**
+test/**
+node_modules/**
+out/**
+*.ts
+*.map
+tsconfig.json
+eslint.config.mjs
+esbuild.mjs
+vitest.config.ts
+requirement.md
+.screenshots/**
+*.vsix

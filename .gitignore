@@ -2,7 +2,9 @@
 node_modules/
 dist/
 coverage/
+out/
 *.tsbuildinfo
+*.vsix
 
 # 真实环境配置（绝不提交）
 .env
