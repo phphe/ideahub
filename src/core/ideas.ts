@@ -1,10 +1,14 @@
 import { createHash } from 'node:crypto';
 
-export const MARKER_PATTERN = /^\s*<!--ideahub id:([0-9a-f]{64})-->\s*$/;
+/** Section 7.1: `<!-- ideahub:<sha256> date=YYYY-MM-DD -->`. */
+export const MARKER_PATTERN =
+  /^\s*<!--\s*ideahub:([0-9a-f]{64})(?:\s+date=(\d{4}-\d{2}-\d{2}))?\s*-->\s*$/;
 
 export interface ParsedMarker {
   id: string;
   line: number;
+  /** Local generation date from `date=`, or null when the field is absent. */
+  date: string | null;
   contentHash: string;
   valid: boolean;
 }
@@ -51,6 +55,7 @@ export function parseIdeas(text: string, projectName: string): ParsedIdeas {
       markers.push({
         id: match[1],
         line: index,
+        date: match[2] ?? null,
         contentHash,
         valid: contentHash === match[1]
       });
@@ -71,10 +76,11 @@ export function parseIdeas(text: string, projectName: string): ParsedIdeas {
 
 /**
  * Appends the marker after the existing content without rewriting the body.
+ * `date` is the local generation date (`YYYY-MM-DD`) and is display-only.
  */
-export function appendMarker(text: string, hash: string): string {
+export function appendMarker(text: string, hash: string, date: string): string {
   const eol = text.includes('\r\n') ? '\r\n' : '\n';
-  const marker = `<!--ideahub id:${hash}-->`;
+  const marker = `<!-- ideahub:${hash} date=${date} -->`;
   if (text.length === 0) {
     return `${marker}${eol}`;
   }

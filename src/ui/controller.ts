@@ -23,6 +23,12 @@ import {
   type RemoteSetupStep
 } from '../core/remote-setup-flow';
 import { appendMarker, computeProofHash, parseIdeas } from '../core/ideas';
+import {
+  commitMarkerLine,
+  DEFAULT_MARKER_COMMIT_MESSAGE,
+  resolveCommitMessage
+} from '../core/marker-commit';
+import { formatLocalDate } from '../core/proof-time';
 import { createProject as createProjectOnDisk, validateProjectName } from '../core/projects';
 import {
   commitAndPushInnerRepository,
@@ -548,7 +554,8 @@ export class IdeahubController {
       };
     }
 
-    const updated = appendMarker(text, hash);
+    const date = formatLocalDate(new Date());
+    const updated = appendMarker(text, hash, date);
     const edit = new vscode.WorkspaceEdit();
     edit.replace(uri, new vscode.Range(new vscode.Position(0, 0), document.positionAt(text.length)), updated);
     const applied = await vscode.workspace.applyEdit(edit);
@@ -560,12 +567,51 @@ export class IdeahubController {
       return { ok: false, message: '标记已写入编辑器，但文件保存失败。' };
     }
 
+    const commitNote = await this.autoCommitMarker(state.root, project, hash, date);
+
     const time = release.release?.publishedAt ? `，发布时间 ${release.release.publishedAt}` : '';
     const immutability = describeReleaseImmutability(release.release?.immutable);
     return {
       ok: true,
-      message: `${release.created ? '证明已生成' : '证明已存在，已补写本地标记'}：\n${tag}${time}\n${immutability}`
+      message: `${release.created ? '证明已生成' : '证明已存在，已补写本地标记'}：\n${tag}${time}\n${immutability}${commitNote}`
     };
+  }
+
+  /**
+   * Section 8.9 step 7: optional local-only commit of the marker line.
+   * Result is appended to the UI message; failures never affect the marker.
+   */
+  private async autoCommitMarker(
+    root: string,
+    project: string,
+    hash: string,
+    date: string
+  ): Promise<string> {
+    const config = vscode.workspace.getConfiguration('ideahub.mark');
+    const enabled = config.get<boolean>('autoCommit', true);
+    const template = config.get<string>('commitMessage', DEFAULT_MARKER_COMMIT_MESSAGE);
+    const message = resolveCommitMessage(template, { project, hash, date });
+
+    const result = await commitMarkerLine({
+      root,
+      project,
+      hash,
+      date,
+      message,
+      enabled
+    });
+
+    if (result.status === 'committed') {
+      this.log(`mark: auto commit succeeded: ${result.commit ?? '(unknown)'} message=${message}`);
+      const short = result.commit ? result.commit.slice(0, 7) : '(unknown)';
+      return `\n已自动提交标记行（仅本地，未推送）：${short}`;
+    }
+    if (result.status === 'skipped') {
+      this.log(`mark: auto commit skipped: ${result.reason}`);
+      return result.silent ? '' : `\n自动提交已跳过：${result.reason}`;
+    }
+    this.log(`mark: auto commit failed: ${result.reason}`);
+    return `\n标记已写入，但自动提交失败：${result.reason}`;
   }
 
   public async publishProject(project: string): Promise<OpResult> {

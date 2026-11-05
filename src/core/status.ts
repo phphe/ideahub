@@ -26,6 +26,8 @@ export interface ProjectSummary {
   name: string;
   markerCount: number;
   markerIds: string[];
+  /** Newest `date=YYYY-MM-DD` across markers, or null when none is present. */
+  latestMarkerDate: string | null;
   integrityOk: boolean;
   hasNewContent: boolean;
 }
@@ -199,10 +201,14 @@ export async function detectWorkspace(folder: string | null): Promise<WorkspaceS
         try {
           const text = await fs.readFile(path.join(folder, name, IDEAS_FILE), 'utf8');
           const parsed = parseIdeas(text, name);
+          const dates = parsed.markers
+            .map((marker) => marker.date)
+            .filter((date): date is string => date !== null);
           return {
             name,
             markerCount: parsed.markers.length,
             markerIds: parsed.markers.map((marker) => marker.id),
+            latestMarkerDate: dates.length > 0 ? dates.reduce((a, b) => (a > b ? a : b)) : null,
             integrityOk: parsed.integrityOk,
             hasNewContent: parsed.hasUnsealedContent
           };
@@ -211,6 +217,7 @@ export async function detectWorkspace(folder: string | null): Promise<WorkspaceS
             name,
             markerCount: 0,
             markerIds: [],
+            latestMarkerDate: null,
             integrityOk: false,
             hasNewContent: false
           };

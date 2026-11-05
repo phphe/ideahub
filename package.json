@@ -44,7 +44,22 @@
         "command": "ideahub.openMain",
         "title": "创意仓库: 打开主界面"
       }
-    ]
+    ],
+    "configuration": {
+      "title": "创意仓库",
+      "properties": {
+        "ideahub.mark.autoCommit": {
+          "type": "boolean",
+          "default": true,
+          "description": "插入标记后自动提交该行到本地 git（不会推送）。"
+        },
+        "ideahub.mark.commitMessage": {
+          "type": "string",
+          "default": "feat(ideas): record proof for {project}",
+          "description": "标记自动提交信息模板，支持 {project}、{hash}、{date} 占位符；未知占位符原样保留，空值回落默认值。"
+        }
+      }
+    }
   },
   "scripts": {
     "vscode:prepublish": "pnpm run build",

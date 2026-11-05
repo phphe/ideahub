@@ -1,5 +1,13 @@
 import * as crypto from 'node:crypto';
+import { formatProofTime } from '../core/proof-time';
 import type { RemoteStatus, WorkspaceState } from '../core/status';
+
+export interface RenderOptions {
+  now: Date;
+  locale: string;
+}
+
+const DEFAULT_RENDER_OPTIONS: RenderOptions = { now: new Date(), locale: 'zh-CN' };
 
 function escapeHtml(value: string): string {
   return value
@@ -198,7 +206,7 @@ function renderIssueActions(
   }
 }
 
-function renderMain(state: WorkspaceState): string {
+function renderMain(state: WorkspaceState, options: RenderOptions): string {
   switch (state.kind) {
     case 'no-folder':
       return `
@@ -231,38 +239,60 @@ function renderMain(state: WorkspaceState): string {
         <div class="card error"><div class="title">检测失败</div><p>${escapeHtml(state.message)}</p>
         <div class="actions"><button class="secondary" data-action="refresh">重新检测</button></div></div>`;
     case 'local':
-      return renderLocal(state);
+      return renderLocal(state, options);
   }
+}
+
+interface Badge {
+  text: string;
+  title?: string;
 }
 
 function renderBadges(
   project: Extract<WorkspaceState, { kind: 'local' }>['projects'][number],
-  remote: RemoteStatus | undefined
+  remote: RemoteStatus | undefined,
+  options: RenderOptions
 ): string {
-  const badges: string[] = [
-    project.markerCount > 0 ? `证明 ${project.markerCount}` : '暂无证明'
+  const badges: Badge[] = [
+    { text: project.markerCount > 0 ? `证明 ${project.markerCount}` : '暂无证明' }
   ];
   if (project.markerCount > 0 && !project.integrityOk) {
-    badges.push('已封存内容已修改');
+    badges.push({ text: '已封存内容已修改' });
   }
   if (project.hasNewContent) {
-    badges.push('有新内容');
+    badges.push({ text: '有新内容' });
   }
+  const status = remote?.available ? remote.projects[project.name] : undefined;
   if (!remote || !remote.available) {
     if (project.markerCount > 0) {
-      badges.push('远程状态不可用');
+      badges.push({ text: '远程状态不可用' });
     }
   } else {
-    const status = remote.projects[project.name];
-    badges.push(status?.published ? '已发布' : '未发布');
-    if (status?.latestProofAt) {
-      badges.push(`最近证明 ${status.latestProofAt.slice(0, 10)}`);
-    }
+    badges.push({ text: status?.published ? '已发布' : '未发布' });
   }
-  return badges.map((badge) => `<span class="badge">${escapeHtml(badge)}</span>`).join('');
+  if (project.markerCount > 0) {
+    const display = formatProofTime(
+      {
+        markerDate: project.latestMarkerDate,
+        publishedAt: status?.latestProofAt ?? null
+      },
+      { now: options.now, locale: options.locale }
+    );
+    badges.push({ text: `最近证明 ${display.text}`, title: display.tooltip });
+  }
+  return badges
+    .map((badge) =>
+      `<span class="badge"${
+        badge.title ? ` title="${escapeHtml(badge.title)}"` : ''
+      }>${escapeHtml(badge.text)}</span>`
+    )
+    .join('');
 }
 
-function renderLocal(state: Extract<WorkspaceState, { kind: 'local' }>): string {
+function renderLocal(
+  state: Extract<WorkspaceState, { kind: 'local' }>,
+  options: RenderOptions
+): string {
   const hasIssues = state.issues.length > 0;
   const issues = state.issues
     .map((issue) => {
@@ -299,7 +329,7 @@ function renderLocal(state: Extract<WorkspaceState, { kind: 'local' }>): string 
                 <div class="project-name" data-action="open" data-project="${escapeHtml(project.name)}">${escapeHtml(
                   project.name
                 )}</div>
-                <div class="badges">${renderBadges(project, state.remoteStatus)}</div>
+                <div class="badges">${renderBadges(project, state.remoteStatus, options)}</div>
                 ${
                   project.markerCount > 0
                     ? '<p class="muted">已有证明，不建议重命名项目文件夹（会导致已有证明失效）。</p>'
@@ -329,7 +359,12 @@ function renderLocal(state: Extract<WorkspaceState, { kind: 'local' }>): string 
       ${projects}`}`;
 }
 
-export function renderMainHtml(state: WorkspaceState, notice?: ViewNotice | null): string {
+export function renderMainHtml(
+  state: WorkspaceState,
+  notice?: ViewNotice | null,
+  options: Partial<RenderOptions> = {}
+): string {
+  const resolved: RenderOptions = { ...DEFAULT_RENDER_OPTIONS, ...options };
   const nonce = crypto.randomBytes(16).toString('base64');
   return `<!DOCTYPE html>
 <html lang="zh-CN">
@@ -343,7 +378,7 @@ export function renderMainHtml(state: WorkspaceState, notice?: ViewNotice | null
 <body>
 ${renderNotice(notice)}
 <div id="status" class="status" role="status" aria-live="polite" hidden></div>
-${renderMain(state)}
+${renderMain(state, resolved)}
 ${renderScript(nonce)}
 </body>
 </html>`;

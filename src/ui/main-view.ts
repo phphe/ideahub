@@ -60,7 +60,10 @@ export class MainViewProvider implements vscode.WebviewViewProvider {
       state = { kind: 'error' as const, message: `状态检测失败：${reason}` };
     }
     this.log(`state detected: ${state.kind}${'root' in state ? ` (${state.root})` : ''}`);
-    this.view.webview.html = renderMainHtml(state, this.notice);
+    this.view.webview.html = renderMainHtml(state, this.notice, {
+      now: new Date(),
+      locale: vscode.env.language
+    });
   }
 
   private async handleMessage(message: WebviewMessage): Promise<void> {
