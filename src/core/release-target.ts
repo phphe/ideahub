@@ -84,7 +84,7 @@ function tagMessage(problem: RefProblem): string {
 function branchMessage(problem: RefProblem): string {
   switch (problem) {
     case 'empty':
-      return 'release 分支名为空，请检查 ideahub.config.json 或使用默认值 main。';
+      return 'release 分支名为空，请检查扩展的开发者配置或使用默认值 main。';
     case 'too-long':
       return `release 分支名超过 ${MAX_REF_LENGTH} 个字符。`;
     case 'invalid-char':

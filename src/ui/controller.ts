@@ -6,7 +6,7 @@ import { initializeLocalRepository, ensureLocalGitRepository } from '../core/ini
 import { installPrePushHook } from '../core/hook';
 import { remoteRepoPath, writeConfig } from '../core/config';
 import { GitHubApiError, GitHubClient } from '../core/github';
-import { loadReleaseBranch } from '../core/release-config';
+import { RELEASE_BRANCH } from '../core/release-config';
 import {
   buildReleaseTag,
   lookupRemoteBranch,
@@ -444,13 +444,7 @@ export class IdeahubController {
       return { ok: true, message: '当前新增内容与已有证明相同，未重复创建 Release。' };
     }
 
-    const releaseConfig = await loadReleaseBranch(state.root);
-    for (const warning of releaseConfig.warnings) {
-      this.log(`mark: release config warning: ${warning}`);
-    }
-    this.log(
-      `mark: release branch config: release_branch=${releaseConfig.branch} source=${releaseConfig.source}`
-    );
+    this.log(`mark: release branch config: release_branch=${RELEASE_BRANCH} source=build`);
 
     const tagResult = buildReleaseTag(hash);
     const tagError = validateTagName(tagResult.tag);
@@ -459,12 +453,12 @@ export class IdeahubController {
         [
           'mark: release preflight failed (no request sent)',
           `tag_name=${tagResult.tag}`,
-          `target_commitish=${releaseConfig.branch}`
+          `target_commitish=${RELEASE_BRANCH}`
         ].join('\n')
       );
       return {
         ok: false,
-        message: `无法创建 Release（tag_name=${tagResult.tag}，target_commitish=${releaseConfig.branch}）：${tagError}`
+        message: `无法创建 Release（tag_name=${tagResult.tag}，target_commitish=${RELEASE_BRANCH}）：${tagError}`
       };
     }
     const tag = tagResult.tag;
@@ -488,7 +482,7 @@ export class IdeahubController {
           },
           remote.owner,
           remote.repo,
-          releaseConfig.branch
+          RELEASE_BRANCH
         )
     );
     if (!targetResult.ok) {
@@ -497,13 +491,13 @@ export class IdeahubController {
           'mark: release preflight failed (no request sent)',
           `POST https://api.github.com/repos/${remote.owner}/${remote.repo}/releases`,
           `tag_name=${tag}`,
-          `target_commitish=${releaseConfig.branch}`,
+          `target_commitish=${RELEASE_BRANCH}`,
           `error=${targetResult.error}`
         ].join('\n')
       );
       return {
         ok: false,
-        message: `无法创建 Release（tag_name=${tag}，target_commitish=${releaseConfig.branch}）：${targetResult.error}`
+        message: `无法创建 Release（tag_name=${tag}，target_commitish=${RELEASE_BRANCH}）：${targetResult.error}`
       };
     }
     const target = targetResult.target;

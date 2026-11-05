@@ -14,10 +14,11 @@ requirement.md
 .screenshots/**
 *.vsix
 
-# Never package local secrets or package-manager metadata
+# Never package local secrets or developer-only config files
 .env
 .env.*
-!.env.example
+ideahub.config.json
+scripts/**
 .gitignore
 pnpm-lock.yaml
 pnpm-workspace.yaml
