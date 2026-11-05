@@ -22,13 +22,15 @@ import {
   type RemoteSetupFlowResult,
   type RemoteSetupStep
 } from '../core/remote-setup-flow';
-import { appendMarker, computeProofHash, parseIdeas } from '../core/ideas';
+import { appendMarkerLine, formatMarkerLine, parseIdeas } from '../core/ideas';
 import {
   commitMarkerLine,
-  DEFAULT_MARKER_COMMIT_MESSAGE,
-  resolveCommitMessage
+  DEFAULT_PROOF_COMMIT_MESSAGE,
+  DEFAULT_PUBLISH_COMMIT_MESSAGE,
+  resolveCommitMessage,
+  type MarkerCommitResult
 } from '../core/marker-commit';
-import { formatLocalDate } from '../core/proof-time';
+import { formatMarkerTime } from '../core/proof-time';
 import { createProject as createProjectOnDisk, validateProjectName } from '../core/projects';
 import {
   commitAndPushInnerRepository,
@@ -128,8 +130,8 @@ export class IdeahubController {
       await Promise.all(
         state.projects.map(async (project) => {
           let latestProofAt: string | null = null;
-          for (const markerId of project.markerIds) {
-            const release = byTag.get(`ideahub-${markerId}`);
+          for (const tagName of project.proofTags) {
+            const release = byTag.get(tagName);
             if (release?.publishedAt && (!latestProofAt || release.publishedAt > latestProofAt)) {
               latestProofAt = release.publishedAt;
             }
@@ -428,48 +430,31 @@ export class IdeahubController {
     }
 
     const text = document.getText();
-    const parsed = parseIdeas(text, project);
+    const parsed = parseIdeas(text);
     if (!parsed.hasUnsealedContent) {
       return { ok: true, message: '没有需要生成证明的新内容。' };
     }
 
-    if (!parsed.integrityOk) {
-      const choice = await vscode.window.showWarningMessage(
-        '检测到已封存内容已被修改，原证明将失效。仍要为当前新增内容生成新证明吗？旧标记不会被自动删除或重写。',
-        { modal: true },
-        '仍然生成',
-        '取消'
-      );
-      if (choice !== '仍然生成') {
-        return { ok: false, message: '已取消生成证明。' };
-      }
-    }
-
-    const hash = computeProofHash(project, parsed.unsealedText);
-    if (parsed.markers.some((marker) => marker.id === hash)) {
-      return { ok: true, message: '当前新增内容与已有证明相同，未重复创建 Release。' };
-    }
-
     this.log(`mark: release branch config: release_branch=${RELEASE_BRANCH} source=build`);
 
-    const tagResult = buildReleaseTag(hash);
-    const tagError = validateTagName(tagResult.tag);
+    // A fresh timestamp per proof; seconds-level granularity makes the tag unique.
+    const proofTime = new Date();
+    const proofTimeText = formatMarkerTime(proofTime);
+    const markerLine = formatMarkerLine('proof', proofTimeText);
+    const tag = buildReleaseTag(proofTime).tag;
+    const tagError = validateTagName(tag);
     if (tagError) {
       this.log(
         [
           'mark: release preflight failed (no request sent)',
-          `tag_name=${tagResult.tag}`,
+          `tag_name=${tag}`,
           `target_commitish=${RELEASE_BRANCH}`
         ].join('\n')
       );
       return {
         ok: false,
-        message: `无法创建 Release（tag_name=${tagResult.tag}，target_commitish=${RELEASE_BRANCH}）：${tagError}`
+        message: `无法创建 Release（tag_name=${tag}，target_commitish=${RELEASE_BRANCH}）：${tagError}`
       };
-    }
-    const tag = tagResult.tag;
-    if (tagResult.sanitized) {
-      this.log(`mark: tag hash sanitized: hash=${hash} tag_name=${tag}`);
     }
 
     const token = await getGitHubToken(true);
@@ -536,7 +521,14 @@ export class IdeahubController {
     try {
       release = await vscode.window.withProgress(
         { location: vscode.ProgressLocation.Notification, title: '正在创建证明 Release…' },
-        () => client.createRelease(remote.owner, remote.repo, tag, hash, target.sha)
+        async () => {
+          // Section 7.4: idempotency is decided by querying the tag first.
+          const existing = await client.getReleaseByTag(remote.owner, remote.repo, tag);
+          if (existing) {
+            return { created: false, release: existing };
+          }
+          return client.createRelease(remote.owner, remote.repo, tag, markerLine, target.sha);
+        }
       );
     } catch (error) {
       this.logReleaseFailure(error, {
@@ -554,8 +546,7 @@ export class IdeahubController {
       };
     }
 
-    const date = formatLocalDate(new Date());
-    const updated = appendMarker(text, hash, date);
+    const updated = appendMarkerLine(text, markerLine);
     const edit = new vscode.WorkspaceEdit();
     edit.replace(uri, new vscode.Range(new vscode.Position(0, 0), document.positionAt(text.length)), updated);
     const applied = await vscode.workspace.applyEdit(edit);
@@ -567,7 +558,13 @@ export class IdeahubController {
       return { ok: false, message: '标记已写入编辑器，但文件保存失败。' };
     }
 
-    const commitNote = await this.autoCommitMarker(state.root, project, hash, date);
+    const commitNote = await this.autoCommitMarker(
+      state.root,
+      project,
+      markerLine,
+      proofTimeText,
+      'proof'
+    );
 
     const time = release.release?.publishedAt ? `，发布时间 ${release.release.publishedAt}` : '';
     const immutability = describeReleaseImmutability(release.release?.immutable);
@@ -578,40 +575,60 @@ export class IdeahubController {
   }
 
   /**
-   * Section 8.9 step 7: optional local-only commit of the marker line.
+   * Sections 8.9 / 8.10: optional local-only commit of the marker line.
    * Result is appended to the UI message; failures never affect the marker.
    */
   private async autoCommitMarker(
     root: string,
     project: string,
-    hash: string,
-    date: string
+    markerLine: string,
+    timeText: string,
+    kind: 'proof' | 'publish'
   ): Promise<string> {
-    const config = vscode.workspace.getConfiguration('ideahub.mark');
-    const enabled = config.get<boolean>('autoCommit', true);
-    const template = config.get<string>('commitMessage', DEFAULT_MARKER_COMMIT_MESSAGE);
-    const message = resolveCommitMessage(template, { project, hash, date });
+    const proofConfig = vscode.workspace.getConfiguration('ideahub.proof');
+    const enabled = proofConfig.get<boolean>('autoCommit', true);
+    const template =
+      kind === 'proof'
+        ? proofConfig.get<string>('commitMessage', DEFAULT_PROOF_COMMIT_MESSAGE)
+        : vscode.workspace
+            .getConfiguration('ideahub.publish')
+            .get<string>('commitMessage', DEFAULT_PUBLISH_COMMIT_MESSAGE);
+    const message = resolveCommitMessage(
+      template,
+      { project, time: timeText },
+      kind === 'proof' ? DEFAULT_PROOF_COMMIT_MESSAGE : DEFAULT_PUBLISH_COMMIT_MESSAGE
+    );
 
     const result = await commitMarkerLine({
       root,
       project,
-      hash,
-      date,
+      markerLine,
       message,
       enabled
     });
 
+    const label = kind === 'proof' ? '标记' : '发布标记';
+    return this.describeCommitResult(result, label, message);
+  }
+
+  private describeCommitResult(
+    result: MarkerCommitResult,
+    label: string,
+    message: string
+  ): string {
     if (result.status === 'committed') {
-      this.log(`mark: auto commit succeeded: ${result.commit ?? '(unknown)'} message=${message}`);
+      this.log(
+        `mark: auto commit succeeded: ${result.commit ?? '(unknown)'} message=${message}`
+      );
       const short = result.commit ? result.commit.slice(0, 7) : '(unknown)';
-      return `\n已自动提交标记行（仅本地，未推送）：${short}`;
+      return `\n已自动提交${label}行（仅本地，未推送）：${short}`;
     }
     if (result.status === 'skipped') {
       this.log(`mark: auto commit skipped: ${result.reason}`);
       return result.silent ? '' : `\n自动提交已跳过：${result.reason}`;
     }
     this.log(`mark: auto commit failed: ${result.reason}`);
-    return `\n标记已写入，但自动提交失败：${result.reason}`;
+    return `\n${label}已写入，但自动提交失败：${result.reason}`;
   }
 
   public async publishProject(project: string): Promise<OpResult> {
@@ -680,10 +697,30 @@ export class IdeahubController {
           return { ok: false, message: sync.error };
         }
 
+        progress.report({ message: '写入发布标记…' });
+        const publishedTime = formatMarkerTime(new Date());
+        const publishedMarker = formatMarkerLine('published', publishedTime);
+        const markerWrite = await this.appendLocalMarker(
+          state.root,
+          project,
+          publishedMarker
+        );
+        if (!markerWrite.ok) {
+          return { ok: false, message: markerWrite.message };
+        }
+        const commitNote = await this.autoCommitMarker(
+          state.root,
+          project,
+          publishedMarker,
+          publishedTime,
+          'publish'
+        );
+        const localMarkerNote = `\n本地 Published 标记已写入。${commitNote}`;
+
         progress.report({ message: '复制项目文件…' });
         const copy = await copyProjectIntoInnerRepository(innerPath, project, projectDir);
         if (!copy.ok) {
-          return { ok: false, message: copy.error };
+          return { ok: false, message: `${copy.error}${localMarkerNote}` };
         }
 
         progress.report({ message: '提交并推送内层仓库…' });
@@ -694,15 +731,52 @@ export class IdeahubController {
           token
         });
         if (!push.ok) {
-          return { ok: false, message: push.error };
+          return { ok: false, message: `${push.error}${localMarkerNote}` };
         }
 
         const url = remoteProjectUrl(remote.owner, remote.repo, remote.branch, project);
         return {
           ok: true,
-          message: `${push.pushed ? '发布成功' : '项目已是最新状态，无需推送'}。\n远程项目地址：${url}`
+          message: `${push.pushed ? '发布成功' : '项目已是最新状态，无需推送'}。\n远程项目地址：${url}${localMarkerNote}`
         };
       }
     );
+  }
+
+  private async appendLocalMarker(
+    root: string,
+    project: string,
+    markerLine: string
+  ): Promise<OpResult> {
+    const uri = vscode.Uri.file(path.join(root, project, 'ideas.md'));
+    let document;
+    try {
+      document = await vscode.workspace.openTextDocument(uri);
+    } catch (error) {
+      return {
+        ok: false,
+        message: `发布已停止：无法读取项目 ideas.md（${
+          error instanceof Error ? error.message : String(error)
+        }）。`
+      };
+    }
+
+    const text = document.getText();
+    const updated = appendMarkerLine(text, markerLine);
+    const edit = new vscode.WorkspaceEdit();
+    edit.replace(
+      uri,
+      new vscode.Range(new vscode.Position(0, 0), document.positionAt(text.length)),
+      updated
+    );
+    const applied = await vscode.workspace.applyEdit(edit);
+    if (!applied) {
+      return { ok: false, message: '发布已停止：写入 Published 标记失败。' };
+    }
+    const saved = await document.save();
+    if (!saved) {
+      return { ok: false, message: '发布已停止：Published 标记已写入编辑器，但文件保存失败。' };
+    }
+    return { ok: true, message: '' };
   }
 }

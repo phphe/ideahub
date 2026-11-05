@@ -1,28 +1,29 @@
 import { promises as fs } from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { appendMarker } from './ideas';
+import { appendMarkerLine } from './ideas';
 import { isGitRepository, runGit, type GitResult } from './git';
 
-export const DEFAULT_MARKER_COMMIT_MESSAGE = 'feat(ideas): record proof for {project}';
+export const DEFAULT_PROOF_COMMIT_MESSAGE = 'feat(ideas): record proof for {project}';
+export const DEFAULT_PUBLISH_COMMIT_MESSAGE = 'feat(ideas): mark {project} as published';
 
 export interface CommitMessageValues {
   project: string;
-  hash: string;
-  date: string;
+  time: string;
 }
 
 /**
- * Section 6.8: replace `{project}`, `{hash}` and `{date}`; unknown
- * placeholders are kept verbatim, empty templates fall back to the default.
+ * Section 6.8: replace `{project}` and `{time}`; unknown placeholders are
+ * kept verbatim, empty templates fall back to the given default.
  */
 export function resolveCommitMessage(
   template: string | null | undefined,
-  values: CommitMessageValues
+  values: CommitMessageValues,
+  fallback: string = DEFAULT_PROOF_COMMIT_MESSAGE
 ): string {
   const trimmed = typeof template === 'string' ? template.trim() : '';
-  const chosen = trimmed.length > 0 ? trimmed : DEFAULT_MARKER_COMMIT_MESSAGE;
-  return chosen.replace(/\{(project|hash|date)\}/g, (_match, key: string) => {
+  const chosen = trimmed.length > 0 ? trimmed : fallback;
+  return chosen.replace(/\{(project|time)\}/g, (_match, key: string) => {
     return values[key as keyof CommitMessageValues];
   });
 }
@@ -31,10 +32,10 @@ export interface MarkerCommitOptions {
   /** Workspace root (the local idea repository). */
   root: string;
   project: string;
-  hash: string;
-  date: string;
+  /** The exact marker line that was written, e.g. `Proof: ... [ideahub]`. */
+  markerLine: string;
   message: string;
-  /** Mirrors `ideahub.mark.autoCommit`. */
+  /** Mirrors `ideahub.proof.autoCommit`. */
   enabled: boolean;
 }
 
@@ -63,7 +64,7 @@ function tempName(prefix: string): string {
 }
 
 /**
- * Section 8.9: commit only the marker line of `ideas.md`.
+ * Sections 8.9 / 8.10: commit only the marker line of `ideas.md`.
  *
  * The commit is built from the HEAD blob plus the new marker line, using a
  * temporary index seeded with `HEAD`; the user's real index and working tree
@@ -73,7 +74,7 @@ export async function commitMarkerLine(
   options: MarkerCommitOptions
 ): Promise<MarkerCommitResult> {
   if (!options.enabled) {
-    return skipped('自动提交已关闭（ideahub.mark.autoCommit=false）', true);
+    return skipped('自动提交已关闭（ideahub.proof.autoCommit=false）', true);
   }
   if (!(await isGitRepository(options.root))) {
     return skipped('本地不是 Git 仓库', true);
@@ -109,7 +110,7 @@ export async function commitMarkerLine(
   if (headContent.code !== 0) {
     return skipped('无法读取 HEAD 中的 ideas.md', false);
   }
-  const updated = appendMarker(headContent.stdout, options.hash, options.date);
+  const updated = appendMarkerLine(headContent.stdout, options.markerLine);
 
   const tempFile = tempName('ideahub-marker');
   const tempIndex = tempName('ideahub-index');

@@ -239,7 +239,7 @@ export class GitHubClient {
     owner: string,
     repo: string,
     tag: string,
-    hash: string,
+    description: string,
     targetCommitish: string
   ): Promise<{ created: boolean; release: GitHubReleaseInfo | null }> {
     try {
@@ -249,8 +249,8 @@ export class GitHubClient {
         {
           tag_name: tag,
           target_commitish: targetCommitish,
-          name: hash,
-          body: hash,
+          name: tag,
+          body: description,
           draft: false,
           prerelease: false
         }

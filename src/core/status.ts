@@ -12,6 +12,8 @@ import { isGitRepository, getRemoteOriginUrl } from './git';
 import { hasHookBlock, isHookTargetCurrent, readPrePushHook } from './hook';
 import { listProjects, IDEAS_FILE } from './projects';
 import { parseIdeas } from './ideas';
+import { parseMarkerTime } from './proof-time';
+import { buildReleaseTag } from './release-target';
 import { parseRemoteUrl } from './remote-url';
 
 export type LocalIssueId = 'local-git' | 'remote-url' | 'remote-dir' | 'hook' | 'remote-mismatch';
@@ -24,12 +26,39 @@ export interface LocalIssue {
 
 export interface ProjectSummary {
   name: string;
-  markerCount: number;
-  markerIds: string[];
-  /** Newest `date=YYYY-MM-DD` across markers, or null when none is present. */
-  latestMarkerDate: string | null;
-  integrityOk: boolean;
+  proofCount: number;
+  /** Release tags derived from `Proof:` marker times. */
+  proofTags: string[];
+  /** Newest `Proof:` time text, or null when none is parseable. */
+  latestProofTime: string | null;
   hasNewContent: boolean;
+}
+
+function summarizeProject(name: string, text: string): ProjectSummary {
+  const parsed = parseIdeas(text);
+  const proofTags: string[] = [];
+  let latestProofTime: string | null = null;
+  let latestMs = Number.NEGATIVE_INFINITY;
+
+  for (const marker of parsed.proofMarkers) {
+    const time = parseMarkerTime(marker.time);
+    if (!time) {
+      continue;
+    }
+    proofTags.push(buildReleaseTag(time.instant).tag);
+    if (time.instant.getTime() > latestMs) {
+      latestMs = time.instant.getTime();
+      latestProofTime = marker.time;
+    }
+  }
+
+  return {
+    name,
+    proofCount: parsed.proofMarkers.length,
+    proofTags,
+    latestProofTime,
+    hasNewContent: parsed.hasUnsealedContent
+  };
 }
 
 export interface ProjectRemoteStatus {
@@ -200,25 +229,13 @@ export async function detectWorkspace(folder: string | null): Promise<WorkspaceS
       names.map(async (name) => {
         try {
           const text = await fs.readFile(path.join(folder, name, IDEAS_FILE), 'utf8');
-          const parsed = parseIdeas(text, name);
-          const dates = parsed.markers
-            .map((marker) => marker.date)
-            .filter((date): date is string => date !== null);
-          return {
-            name,
-            markerCount: parsed.markers.length,
-            markerIds: parsed.markers.map((marker) => marker.id),
-            latestMarkerDate: dates.length > 0 ? dates.reduce((a, b) => (a > b ? a : b)) : null,
-            integrityOk: parsed.integrityOk,
-            hasNewContent: parsed.hasUnsealedContent
-          };
+          return summarizeProject(name, text);
         } catch {
           return {
             name,
-            markerCount: 0,
-            markerIds: [],
-            latestMarkerDate: null,
-            integrityOk: false,
+            proofCount: 0,
+            proofTags: [],
+            latestProofTime: null,
             hasNewContent: false
           };
         }

@@ -1,89 +1,98 @@
-import { createHash } from 'node:crypto';
+export type MarkerKind = 'proof' | 'published';
 
-/** Section 7.1: `<!-- ideahub:<sha256> date=YYYY-MM-DD -->`. */
-export const MARKER_PATTERN =
-  /^\s*<!--\s*ideahub:([0-9a-f]{64})(?:\s+date=(\d{4}-\d{2}-\d{2}))?\s*-->\s*$/;
+/**
+ * Section 7.1: a marker line needs a `Proof:` / `Published:` label and ends
+ * with `[ideahub]`. Matching is intentionally not anchored to the line start
+ * and allows surrounding whitespace.
+ */
+export const MARKER_PATTERN = /(Proof|Published):\s*(.+?)\s*\[ideahub\]\s*$/;
 
 export interface ParsedMarker {
-  id: string;
+  kind: MarkerKind;
   line: number;
-  /** Local generation date from `date=`, or null when the field is absent. */
-  date: string | null;
-  contentHash: string;
-  valid: boolean;
+  /** Time text as written, e.g. `2026-11-06 18:33:28 (UTC+08:00)`. */
+  time: string | null;
 }
 
 export interface ParsedIdeas {
   markers: ParsedMarker[];
-  /** Raw text after the last marker (or the whole file when there is none). */
+  proofMarkers: ParsedMarker[];
+  publishedMarkers: ParsedMarker[];
+  /** Non-blank content after the last `Proof:` marker, excluding markers. */
   unsealedText: string;
   hasUnsealedContent: boolean;
-  /** False when any existing marker no longer matches the content it seals. */
-  integrityOk: boolean;
 }
 
-/**
- * Implements section 7.2: drop blank/whitespace-only lines, unify newlines,
- * then trim the whole text.
- */
-export function normalizeContent(raw: string): string {
-  const unified = raw.replace(/\r\n?/g, '\n');
-  const lines = unified.split('\n').filter((line) => line.trim().length > 0);
-  return lines.join('\n').trim();
+export function formatMarkerLine(kind: MarkerKind, timeText: string): string {
+  return `${kind === 'proof' ? 'Proof' : 'Published'}: ${timeText} [ideahub]`;
 }
 
-/**
- * Section 7.3 requires the project folder name and normalized new content.
- * The exact joining format is not specified; a newline separator is used.
- */
-export function computeProofHash(projectName: string, content: string): string {
-  const normalized = normalizeContent(content);
-  return createHash('sha256').update(`${projectName}\n${normalized}`, 'utf8').digest('hex');
+export function markerLabel(kind: MarkerKind): string {
+  return kind === 'proof' ? 'Proof' : 'Published';
 }
 
-export function parseIdeas(text: string, projectName: string): ParsedIdeas {
-  const unified = text.replace(/\r\n?/g, '\n');
-  const lines = unified.split('\n');
-  const markers: ParsedMarker[] = [];
-  let buffer: string[] = [];
-
-  lines.forEach((line, index) => {
-    const match = MARKER_PATTERN.exec(line);
-    if (match) {
-      const content = buffer.join('\n');
-      const contentHash = computeProofHash(projectName, content);
-      markers.push({
-        id: match[1],
-        line: index,
-        date: match[2] ?? null,
-        contentHash,
-        valid: contentHash === match[1]
-      });
-      buffer = [];
-    } else {
-      buffer.push(line);
-    }
-  });
-
-  const unsealedText = buffer.join('\n');
+export function parseMarkerLine(line: string): ParsedMarker | null {
+  const match = MARKER_PATTERN.exec(line);
+  if (!match) {
+    return null;
+  }
   return {
-    markers,
-    unsealedText,
-    hasUnsealedContent: normalizeContent(unsealedText).length > 0,
-    integrityOk: markers.every((marker) => marker.valid)
+    kind: match[1] === 'Proof' ? 'proof' : 'published',
+    line: 0,
+    time: match[2].trim() || null
   };
 }
 
 /**
- * Appends the marker after the existing content without rewriting the body.
- * `date` is the local generation date (`YYYY-MM-DD`) and is display-only.
+ * Parses a Markdown file into markers and the content after the latest
+ * `Proof:` marker. `Published:` markers never reset the boundary.
  */
-export function appendMarker(text: string, hash: string, date: string): string {
+export function parseIdeas(text: string): ParsedIdeas {
+  const lines = text.split(/\r?\n/);
+  const markers: ParsedMarker[] = [];
+  let buffer: string[] = [];
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const marker = parseMarkerLine(lines[index]);
+    if (marker) {
+      markers.push({ ...marker, line: index });
+      if (marker.kind === 'proof') {
+        buffer = [];
+      }
+      continue;
+    }
+    buffer.push(lines[index]);
+  }
+
+  const unsealedText = buffer.join('\n');
+  return {
+    markers,
+    proofMarkers: markers.filter((marker) => marker.kind === 'proof'),
+    publishedMarkers: markers.filter((marker) => marker.kind === 'published'),
+    unsealedText,
+    hasUnsealedContent: normalizeContent(unsealedText).length > 0
+  };
+}
+
+/**
+ * Appends the marker on its own line, adding a leading newline when the
+ * existing content does not already end with one.
+ */
+export function appendMarkerLine(text: string, markerLine: string): string {
   const eol = text.includes('\r\n') ? '\r\n' : '\n';
-  const marker = `<!-- ideahub:${hash} date=${date} -->`;
   if (text.length === 0) {
-    return `${marker}${eol}`;
+    return `${markerLine}${eol}`;
   }
   const needsNewline = !text.endsWith('\n') && !text.endsWith('\r');
-  return `${text}${needsNewline ? eol : ''}${marker}${eol}`;
+  return `${text}${needsNewline ? eol : ''}${markerLine}${eol}`;
+}
+
+/** Section 7.2: blank-line removal used only to detect meaningful content. */
+export function normalizeContent(text: string): string {
+  return text
+    .replace(/\r\n/g, '\n')
+    .split('\n')
+    .filter((line) => line.trim().length > 0)
+    .join('\n')
+    .trim();
 }

@@ -7,6 +7,7 @@ import {
   remoteProjectUrl,
   scanProjectDirectory
 } from '../src/core/publish';
+import { appendMarkerLine } from '../src/core/ideas';
 
 const roots: string[] = [];
 
@@ -59,6 +60,21 @@ describe('copyProjectIntoInnerRepository', () => {
     await expect(fs.access(path.join(target, 'old.txt'))).rejects.toThrow();
     expect(await fs.readFile(path.join(target, 'ideas.md'), 'utf8')).toBe('new');
     expect(await fs.readFile(path.join(target, 'assets', 'a.txt'), 'utf8')).toBe('a');
+  });
+
+  it('carries the Published marker written before the copy into the snapshot', async () => {
+    const project = await tempDir('ideahub-copy-published-');
+    const localIdeas = path.join(project, 'ideas.md');
+    const marker = 'Published: 2026-11-06 18:33:28 (UTC+08:00) [ideahub]';
+    await fs.writeFile(localIdeas, appendMarkerLine('创意原文\n', marker), 'utf8');
+
+    const inner = await tempDir('ideahub-copy-published-dst-');
+    const result = await copyProjectIntoInnerRepository(inner, 'MyGame', project);
+    expect(result.ok).toBe(true);
+
+    const published = await fs.readFile(path.join(inner, 'MyGame', 'ideas.md'), 'utf8');
+    expect(published).toContain('创意原文');
+    expect(published).toContain(marker);
   });
 });
 

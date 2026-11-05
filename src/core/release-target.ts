@@ -127,15 +127,18 @@ export function validateBranchName(branch: string): string | null {
 
 export interface ReleaseTagResult {
   tag: string;
-  sanitized: boolean;
 }
 
-export function buildReleaseTag(hash: string): ReleaseTagResult {
-  const cleaned = hash.replace(/[^0-9A-Za-z-]/g, '');
-  return {
-    tag: `ideahub-${cleaned}`,
-    sanitized: cleaned !== hash
-  };
+/**
+ * Section 7.4: `ideahub-YYYYMMDDTHHmmssZ` from the proof time in UTC.
+ * The result only contains letters and digits, so it is always a valid tag.
+ */
+export function buildReleaseTag(time: Date): ReleaseTagResult {
+  const compact = time
+    .toISOString()
+    .replace(/[-:]/g, '')
+    .replace(/\.\d{3}Z$/, 'Z');
+  return { tag: `ideahub-${compact}` };
 }
 
 export type BranchLookup =

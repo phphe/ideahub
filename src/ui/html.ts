@@ -155,14 +155,14 @@ const STYLES = `
   ul.projects { list-style: none; padding: 0; margin: 0; }
   li.project {
     display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 8px;
-    border: 1px solid var(--vscode-panel-border);
-    border-radius: 6px;
-    padding: 8px 10px;
+    flex-direction: column;
+    gap: 4px;
+    padding: 8px 0;
     margin-bottom: 6px;
+    border: none;
   }
+  .project-line { display: flex; }
+  .project-actions { display: flex; gap: 6px; flex-wrap: wrap; }
   .project-name { font-weight: 600; word-break: break-all; cursor: pointer; }
   .project-name:hover { text-decoration: underline; }
   .badges { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
@@ -254,26 +254,23 @@ function renderBadges(
   options: RenderOptions
 ): string {
   const badges: Badge[] = [
-    { text: project.markerCount > 0 ? `证明 ${project.markerCount}` : '暂无证明' }
+    { text: project.proofCount > 0 ? `证明 ${project.proofCount}` : '暂无证明' }
   ];
-  if (project.markerCount > 0 && !project.integrityOk) {
-    badges.push({ text: '已封存内容已修改' });
-  }
   if (project.hasNewContent) {
     badges.push({ text: '有新内容' });
   }
   const status = remote?.available ? remote.projects[project.name] : undefined;
   if (!remote || !remote.available) {
-    if (project.markerCount > 0) {
+    if (project.proofCount > 0) {
       badges.push({ text: '远程状态不可用' });
     }
   } else {
     badges.push({ text: status?.published ? '已发布' : '未发布' });
   }
-  if (project.markerCount > 0) {
+  if (project.proofCount > 0) {
     const display = formatProofTime(
       {
-        markerDate: project.latestMarkerDate,
+        markerTime: project.latestProofTime,
         publishedAt: status?.latestProofAt ?? null
       },
       { now: options.now, locale: options.locale }
@@ -325,22 +322,19 @@ function renderLocal(
       : `<ul class="projects">${state.projects
           .map(
             (project) => `<li class="project">
-              <div>
+              <div class="project-line">
                 <div class="project-name" data-action="open" data-project="${escapeHtml(project.name)}">${escapeHtml(
                   project.name
                 )}</div>
-                <div class="badges">${renderBadges(project, state.remoteStatus, options)}</div>
-                ${
-                  project.markerCount > 0
-                    ? '<p class="muted">已有证明，不建议重命名项目文件夹（会导致已有证明失效）。</p>'
-                    : ''
-                }
               </div>
-              <div class="actions">
-                <button data-action="mark" data-project="${escapeHtml(project.name)}">标记</button>
+              <div class="project-line badges">${renderBadges(project, state.remoteStatus, options)}</div>
+              <div class="project-line project-actions">
+                <button data-action="mark" data-project="${escapeHtml(
+                  project.name
+                )}" title="发布新增内容的时间证明">证明</button>
                 <button class="secondary" data-action="publish" data-project="${escapeHtml(
                   project.name
-                )}">发布</button>
+                )}" title="发布创意原文">发布</button>
               </div>
             </li>`
           )

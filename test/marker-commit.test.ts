@@ -5,13 +5,15 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { runGit } from '../src/core/git';
 import {
   commitMarkerLine,
-  DEFAULT_MARKER_COMMIT_MESSAGE,
+  DEFAULT_PROOF_COMMIT_MESSAGE,
+  DEFAULT_PUBLISH_COMMIT_MESSAGE,
   resolveCommitMessage
 } from '../src/core/marker-commit';
-import { appendMarker } from '../src/core/ideas';
+import { appendMarkerLine } from '../src/core/ideas';
 
-const HASH = 'a'.repeat(64);
-const DATE = '2026-11-05';
+const TIME = '2026-11-06 18:33:28 (UTC+08:00)';
+const PROOF_LINE = `Proof: ${TIME} [ideahub]`;
+const PUBLISHED_LINE = `Published: ${TIME} [ideahub]`;
 const BASE = '第一行\n\n第二行\n';
 const roots: string[] = [];
 
@@ -32,13 +34,16 @@ async function headSha(root: string): Promise<string> {
   return (await runGit(root, ['rev-parse', 'HEAD'])).stdout.trim();
 }
 
-function options(root: string, enabled = true) {
+async function headSubject(root: string): Promise<string> {
+  return (await runGit(root, ['log', '-1', '--format=%s'])).stdout.trim();
+}
+
+function options(root: string, markerLine = PROOF_LINE, enabled = true, message = 'proof commit') {
   return {
     root,
     project: 'MyGame',
-    hash: HASH,
-    date: DATE,
-    message: 'feat(ideas): record proof for MyGame',
+    markerLine,
+    message,
     enabled
   };
 }
@@ -50,38 +55,30 @@ afterEach(async () => {
 });
 
 describe('resolveCommitMessage', () => {
-  it('replaces known placeholders', () => {
+  it('replaces the project and time placeholders', () => {
     expect(
-      resolveCommitMessage('{project} {hash} {date}', {
-        project: 'MyGame',
-        hash: HASH,
-        date: DATE
-      })
-    ).toBe(`MyGame ${HASH} ${DATE}`);
+      resolveCommitMessage('{project} at {time}', { project: 'MyGame', time: TIME })
+    ).toBe(`MyGame at ${TIME}`);
   });
 
   it('keeps unknown placeholders verbatim', () => {
     expect(
-      resolveCommitMessage('proof {project} {unknown}', {
-        project: 'MyGame',
-        hash: HASH,
-        date: DATE
-      })
+      resolveCommitMessage('proof {project} {unknown}', { project: 'MyGame', time: TIME })
     ).toBe('proof MyGame {unknown}');
   });
 
-  it('falls back to the default for empty or whitespace templates', () => {
-    expect(resolveCommitMessage('', { project: 'MyGame', hash: HASH, date: DATE })).toBe(
-      DEFAULT_MARKER_COMMIT_MESSAGE.replace('{project}', 'MyGame')
-    );
-    expect(resolveCommitMessage('   ', { project: 'MyGame', hash: HASH, date: DATE })).toBe(
+  it('falls back to the proof or publish default for empty templates', () => {
+    expect(resolveCommitMessage('', { project: 'MyGame', time: TIME })).toBe(
       'feat(ideas): record proof for MyGame'
     );
+    expect(
+      resolveCommitMessage('   ', { project: 'MyGame', time: TIME }, DEFAULT_PUBLISH_COMMIT_MESSAGE)
+    ).toBe('feat(ideas): mark MyGame as published');
   });
 });
 
 describe('commitMarkerLine', () => {
-  it('commits only the marker line even when ideas.md has uncommitted content', async () => {
+  it('commits only the proof marker line even when ideas.md has uncommitted content', async () => {
     const root = await createRepo();
     const ideasPath = path.join(root, 'MyGame', 'ideas.md');
     const working = `${BASE}新增内容\n`;
@@ -101,7 +98,7 @@ describe('commitMarkerLine', () => {
     expect(stat).toContain('1 file changed, 1 insertion(+)');
 
     const committed = (await runGit(root, ['show', 'HEAD:MyGame/ideas.md'])).stdout;
-    expect(committed).toBe(appendMarker(BASE, HASH, DATE));
+    expect(committed).toBe(appendMarkerLine(BASE, PROOF_LINE));
     expect(committed).not.toContain('新增内容');
 
     // The user's working copy and staged files are untouched.
@@ -110,18 +107,65 @@ describe('commitMarkerLine', () => {
     expect(staged.trim()).toBe('other.txt');
   });
 
-  it('does not commit when auto commit is disabled', async () => {
+  it('adds a leading newline when the committed content has none', async () => {
+    const root = await createRepo();
+    const ideasPath = path.join(root, 'MyGame', 'ideas.md');
+    await fs.writeFile(ideasPath, '第一行\n\n第二行');
+    await runGit(root, ['add', 'MyGame/ideas.md']);
+    await runGit(root, ['commit', '-m', 'no trailing newline']);
+    await fs.writeFile(ideasPath, '第一行\n\n第二行');
+
+    const result = await commitMarkerLine(options(root));
+
+    expect(result.status).toBe('committed');
+    const committed = (await runGit(root, ['show', 'HEAD:MyGame/ideas.md'])).stdout;
+    expect(committed).toBe(`第一行\n\n第二行\n${PROOF_LINE}\n`);
+  });
+
+  it('commits only the published marker line', async () => {
+    const root = await createRepo();
+
+    const result = await commitMarkerLine(options(root, PUBLISHED_LINE, true, 'publish commit'));
+
+    expect(result.status).toBe('committed');
+    const stat = (await runGit(root, ['show', '--stat', '--format=', 'HEAD'])).stdout;
+    expect(stat).toContain('1 file changed, 1 insertion(+)');
+    const committed = (await runGit(root, ['show', 'HEAD:MyGame/ideas.md'])).stdout;
+    expect(committed).toBe(appendMarkerLine(BASE, PUBLISHED_LINE));
+    expect(await headSubject(root)).toBe('publish commit');
+  });
+
+  it('does not commit either marker kind when ideahub.proof.autoCommit is disabled', async () => {
     const root = await createRepo();
     const before = await headSha(root);
 
-    const result = await commitMarkerLine(options(root, false));
+    for (const markerLine of [PROOF_LINE, PUBLISHED_LINE]) {
+      const result = await commitMarkerLine(options(root, markerLine, false));
+      expect(result).toEqual({
+        status: 'skipped',
+        reason: '自动提交已关闭（ideahub.proof.autoCommit=false）',
+        silent: true
+      });
+      expect(await headSha(root)).toBe(before);
+    }
+  });
 
-    expect(result).toEqual({
-      status: 'skipped',
-      reason: '自动提交已关闭（ideahub.mark.autoCommit=false）',
-      silent: true
-    });
-    expect(await headSha(root)).toBe(before);
+  it('uses the proof and publish commit messages independently', async () => {
+    const root = await createRepo();
+    const proof = resolveCommitMessage(
+      DEFAULT_PROOF_COMMIT_MESSAGE,
+      { project: 'MyGame', time: TIME }
+    );
+    const publish = resolveCommitMessage(
+      DEFAULT_PUBLISH_COMMIT_MESSAGE,
+      { project: 'MyGame', time: TIME }
+    );
+
+    await commitMarkerLine(options(root, PROOF_LINE, true, proof));
+    expect(await headSubject(root)).toBe('feat(ideas): record proof for MyGame');
+
+    await commitMarkerLine(options(root, PUBLISHED_LINE, true, publish));
+    expect(await headSubject(root)).toBe('feat(ideas): mark MyGame as published');
   });
 
   it('skips when ideas.md already has staged changes', async () => {

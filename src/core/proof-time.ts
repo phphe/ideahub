@@ -4,8 +4,8 @@ const HOUR_MS = 60 * MINUTE_MS;
 const RELATIVE_LIMIT_MS = 7 * DAY_MS;
 
 export interface ProofTimeSource {
-  /** `date=YYYY-MM-DD` from the marker. */
-  markerDate?: string | null;
+  /** Time text from a `Proof:` / `Published:` marker. */
+  markerTime?: string | null;
   /** Release `published_at` in ISO 8601 UTC. */
   publishedAt?: string | null;
 }
@@ -21,7 +21,16 @@ export interface ProofTimeDisplay {
   tooltip: string;
 }
 
-const MARKER_DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
+export interface ParsedMarkerTime {
+  instant: Date;
+  /** Local wall-clock time, e.g. `2026-11-06 18:33:28`. */
+  localText: string;
+  /** Numeric UTC offset, e.g. `UTC+08:00`. */
+  offset: string;
+}
+
+const MARKER_TIME_PATTERN =
+  /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2}) \((UTC)([+-])(\d{2}):(\d{2})\)$/;
 
 export function normalizeLocale(language: string | null | undefined): string {
   if (typeof language !== 'string' || language.trim().length === 0) {
@@ -42,30 +51,62 @@ export function formatLocalDate(date: Date): string {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 }
 
+function utcOffset(date: Date): string {
+  const minutes = -date.getTimezoneOffset();
+  const sign = minutes >= 0 ? '+' : '-';
+  const abs = Math.abs(minutes);
+  return `UTC${sign}${pad(Math.floor(abs / 60))}:${pad(abs % 60)}`;
+}
+
 /**
- * Parses `YYYY-MM-DD` as local midnight. Malformed or impossible calendar
- * dates (e.g. `2026-02-30`) return null.
+ * Section 7.1: `YYYY-MM-DD HH:mm:ss (UTC+08:00)` in system local time.
  */
-export function parseMarkerDate(value: string | null | undefined): Date | null {
+export function formatMarkerTime(date: Date): string {
+  const time = `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(
+    date.getSeconds()
+  )}`;
+  return `${formatLocalDate(date)} ${time} (${utcOffset(date)})`;
+}
+
+/** Parses the marker time text into an absolute instant plus its offset. */
+export function parseMarkerTime(
+  value: string | null | undefined
+): ParsedMarkerTime | null {
   if (typeof value !== 'string') {
     return null;
   }
-  const match = MARKER_DATE_PATTERN.exec(value.trim());
+  const match = MARKER_TIME_PATTERN.exec(value.trim());
   if (!match) {
     return null;
   }
   const year = Number(match[1]);
   const month = Number(match[2]);
   const day = Number(match[3]);
-  const date = new Date(year, month - 1, day, 0, 0, 0, 0);
+  const hour = Number(match[4]);
+  const minute = Number(match[5]);
+  const second = Number(match[6]);
+  const offsetMinutes =
+    (match[8] === '-' ? -1 : 1) * (Number(match[9]) * 60 + Number(match[10]));
+
+  const wallClockAsUtc = Date.UTC(year, month - 1, day, hour, minute, second);
+  const instant = new Date(wallClockAsUtc - offsetMinutes * MINUTE_MS);
+  const reconstructed = new Date(instant.getTime() + offsetMinutes * MINUTE_MS);
   if (
-    date.getFullYear() !== year ||
-    date.getMonth() !== month - 1 ||
-    date.getDate() !== day
+    reconstructed.getUTCFullYear() !== year ||
+    reconstructed.getUTCMonth() !== month - 1 ||
+    reconstructed.getUTCDate() !== day ||
+    reconstructed.getUTCHours() !== hour ||
+    reconstructed.getUTCMinutes() !== minute ||
+    reconstructed.getUTCSeconds() !== second
   ) {
     return null;
   }
-  return date;
+
+  return {
+    instant,
+    localText: `${match[1]}-${match[2]}-${match[3]} ${match[4]}:${match[5]}:${match[6]}`,
+    offset: `UTC${match[8]}${match[9]}:${match[10]}`
+  };
 }
 
 /** Parses an ISO 8601 datetime; returns null for missing or invalid values. */
@@ -77,22 +118,11 @@ export function parsePublishedAt(value: string | null | undefined): Date | null 
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
-function utcOffset(date: Date): string {
-  const minutes = -date.getTimezoneOffset();
-  const sign = minutes >= 0 ? '+' : '-';
-  const abs = Math.abs(minutes);
-  return `UTC${sign}${pad(Math.floor(abs / 60))}:${pad(abs % 60)}`;
-}
-
-function formatTooltip(date: Date, withTime: boolean): string {
-  const datePart = formatLocalDate(date);
-  if (!withTime) {
-    return `${datePart}（${utcOffset(date)}）`;
-  }
-  const timePart = `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(
+function formatTooltip(date: Date): string {
+  const time = `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(
     date.getSeconds()
   )}`;
-  return `${datePart} ${timePart}（${utcOffset(date)}）`;
+  return `${formatLocalDate(date)} ${time}（${utcOffset(date)}）`;
 }
 
 function formatAbsoluteDate(date: Date, now: Date, locale: string): string {
@@ -126,7 +156,7 @@ function formatRelative(diffMs: number): string | null {
 }
 
 /**
- * Section 8.11: marker `date=` wins, otherwise the Release `published_at`.
+ * Section 8.11: marker time wins, otherwise Release `published_at`.
  * Within 7 days a relative label is shown; older values use a localized
  * absolute date. Missing or unparsable input never renders `Invalid Date`.
  */
@@ -134,22 +164,20 @@ export function formatProofTime(
   source: ProofTimeSource,
   options: ProofTimeOptions
 ): ProofTimeDisplay {
-  const markerDate = parseMarkerDate(source.markerDate);
-  const publishedAt = markerDate ? null : parsePublishedAt(source.publishedAt);
-  if (!markerDate && !publishedAt) {
+  const marker = parseMarkerTime(source.markerTime);
+  const publishedAt = marker ? null : parsePublishedAt(source.publishedAt);
+  if (!marker && !publishedAt) {
     return { text: '未知', tooltip: '未知' };
   }
 
-  const hasTime = markerDate === null;
-  const target = markerDate ?? publishedAt!;
+  const target = marker ? marker.instant : publishedAt!;
   const now = options.now;
   const diffMs = now.getTime() - target.getTime();
   const relative = formatRelative(diffMs);
 
   return {
     text:
-      relative ??
-      formatAbsoluteDate(target, now, normalizeLocale(options.locale)),
-    tooltip: formatTooltip(target, hasTime)
+      relative ?? formatAbsoluteDate(target, now, normalizeLocale(options.locale)),
+    tooltip: marker ? `${marker.localText}（${marker.offset}）` : formatTooltip(target)
   };
 }

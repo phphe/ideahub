@@ -9,18 +9,17 @@ import {
 } from '../src/core/release-target';
 
 describe('buildReleaseTag / validateTagName', () => {
-  it('keeps a hex hash unchanged and accepts it', () => {
-    const result = buildReleaseTag('a'.repeat(64));
-    expect(result.sanitized).toBe(false);
-    expect(result.tag).toBe(`ideahub-${'a'.repeat(64)}`);
+  it('derives a compact UTC tag from the proof time', () => {
+    const result = buildReleaseTag(new Date('2026-11-06T10:33:28.000Z'));
+    expect(result.tag).toBe('ideahub-20261106T103328Z');
+    expect(result.tag).toMatch(/^[A-Za-z0-9-]+$/);
     expect(validateTagName(result.tag)).toBeNull();
   });
 
-  it('removes characters that Git refs do not allow', () => {
-    const result = buildReleaseTag('sha256:abc/def ghi');
-    expect(result.tag).toBe('ideahub-sha256abcdefghi');
-    expect(result.sanitized).toBe(true);
-    expect(validateTagName(result.tag)).toBeNull();
+  it('produces different tags for different seconds', () => {
+    const first = buildReleaseTag(new Date('2026-11-06T10:33:28.000Z'));
+    const second = buildReleaseTag(new Date('2026-11-06T10:33:29.000Z'));
+    expect(first.tag).not.toBe(second.tag);
   });
 
   it('rejects tags with spaces, "..", trailing dots and .lock segments', () => {
