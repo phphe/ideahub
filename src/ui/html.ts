@@ -10,6 +10,66 @@ function escapeHtml(value: string): string {
     .replace(/'/g, '&#39;');
 }
 
+export interface ViewNotice {
+  kind: 'info' | 'error';
+  text: string;
+}
+
+function renderNotice(notice: ViewNotice | null | undefined): string {
+  if (!notice) {
+    return '';
+  }
+  const kind = notice.kind === 'error' ? 'error' : 'info';
+  return `<div id="notice" class="notice ${kind}" role="alert">${escapeHtml(notice.text)}</div>`;
+}
+
+function renderScript(nonce: string): string {
+  return `<script nonce="${nonce}">
+    const vscode = acquireVsCodeApi();
+    const statusEl = document.getElementById('status');
+    const noticeEl = document.getElementById('notice');
+
+    function setBusy(text) {
+      if (statusEl) {
+        statusEl.textContent = text;
+        statusEl.hidden = false;
+      }
+      if (noticeEl) {
+        noticeEl.hidden = true;
+      }
+      document.querySelectorAll('button').forEach(function (button) {
+        button.disabled = true;
+      });
+    }
+
+    window.addEventListener('error', function (event) {
+      vscode.postMessage({
+        type: 'uiError',
+        message: String((event && event.message) || '未知的前端错误')
+      });
+    });
+
+    document.addEventListener('click', function (event) {
+      const target = event.target.closest('[data-action]');
+      if (!target || !target.dataset.action) { return; }
+      const action = target.dataset.action;
+      if (action === 'setRemote') {
+        const urlInput = document.getElementById('remote-url');
+        const confirmInput = document.getElementById('immutability-confirm');
+        setBusy('正在校验远程创意仓库…');
+        vscode.postMessage({
+          type: 'setRemote',
+          url: urlInput ? urlInput.value : '',
+          immutabilityConfirmed: !!(confirmInput && confirmInput.checked)
+        });
+        return;
+      }
+      setBusy('正在处理…');
+      vscode.postMessage({ type: action, project: target.dataset.project });
+    });
+  </script>`;
+}
+
 const STYLES = `
   * { box-sizing: border-box; }
   body {
@@ -33,6 +93,21 @@ const STYLES = `
   .card.warn { border-left: 3px solid var(--vscode-editorWarning-foreground); }
   .card.error { border-left: 3px solid var(--vscode-errorForeground); }
   .card .title { font-weight: 600; margin-bottom: 4px; }
+  .notice {
+    border: 1px solid var(--vscode-panel-border);
+    border-left: 3px solid var(--vscode-textLink-foreground);
+    border-radius: 6px;
+    padding: 8px 10px;
+    margin: 0 0 10px;
+    white-space: pre-wrap;
+    word-break: break-word;
+    background: var(--vscode-editorWidget-background);
+  }
+  .notice.error {
+    border-left-color: var(--vscode-errorForeground);
+    color: var(--vscode-errorForeground);
+  }
+  .status { margin: 0 0 8px; opacity: 0.85; font-style: italic; }
   .actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
   button {
     border: none;
@@ -45,6 +120,7 @@ const STYLES = `
     font-size: inherit;
   }
   button:hover { background: var(--vscode-button-hoverBackground); }
+  button:disabled { opacity: 0.6; cursor: default; }
   button.secondary {
     color: var(--vscode-button-secondaryForeground);
     background: var(--vscode-button-secondaryBackground);
@@ -114,7 +190,7 @@ function renderIssueActions(
   }
 }
 
-function renderMain(state: WorkspaceState, nonce: string): string {
+function renderMain(state: WorkspaceState): string {
   switch (state.kind) {
     case 'no-folder':
       return `
@@ -147,7 +223,7 @@ function renderMain(state: WorkspaceState, nonce: string): string {
         <div class="card error"><div class="title">检测失败</div><p>${escapeHtml(state.message)}</p>
         <div class="actions"><button class="secondary" data-action="refresh">重新检测</button></div></div>`;
     case 'local':
-      return renderLocal(state, nonce);
+      return renderLocal(state);
   }
 }
 
@@ -178,7 +254,7 @@ function renderBadges(
   return badges.map((badge) => `<span class="badge">${escapeHtml(badge)}</span>`).join('');
 }
 
-function renderLocal(state: Extract<WorkspaceState, { kind: 'local' }>, nonce: string): string {
+function renderLocal(state: Extract<WorkspaceState, { kind: 'local' }>): string {
   const hasIssues = state.issues.length > 0;
   const issues = state.issues
     .map((issue) => {
@@ -240,33 +316,10 @@ function renderLocal(state: Extract<WorkspaceState, { kind: 'local' }>, nonce: s
     <div class="actions">
       <button class="secondary" data-action="refresh">刷新状态</button>
     </div>
-    ${hasIssues ? `<h2>需要完成的配置</h2>${issues}` : `<h2>项目</h2>${projects}`}
-    <script nonce="${nonce}">
-      const vscode = acquireVsCodeApi();
-      document.addEventListener('click', (event) => {
-        const target = event.target.closest('[data-action]');
-        if (!target || !target.dataset.action) { return; }
-        const action = target.dataset.action;
-        if (action === 'open') {
-          vscode.postMessage({ type: 'open', project: target.dataset.project });
-          return;
-        }
-        if (action === 'setRemote') {
-          const urlInput = document.getElementById('remote-url');
-          const confirmInput = document.getElementById('immutability-confirm');
-          vscode.postMessage({
-            type: 'setRemote',
-            url: urlInput ? urlInput.value : '',
-            immutabilityConfirmed: !!(confirmInput && confirmInput.checked)
-          });
-          return;
-        }
-        vscode.postMessage({ type: action, project: target.dataset.project });
-      });
-    </script>`;
+    ${hasIssues ? `<h2>需要完成的配置</h2>${issues}` : `<h2>项目</h2>${projects}`}`;
 }
 
-export function renderMainHtml(state: WorkspaceState): string {
+export function renderMainHtml(state: WorkspaceState, notice?: ViewNotice | null): string {
   const nonce = crypto.randomBytes(16).toString('base64');
   return `<!DOCTYPE html>
 <html lang="zh-CN">
@@ -277,6 +330,11 @@ export function renderMainHtml(state: WorkspaceState): string {
 <title>创意仓库</title>
 <style>${STYLES}</style>
 </head>
-<body>${renderMain(state, nonce)}</body>
+<body>
+${renderNotice(notice)}
+<div id="status" class="status" role="status" aria-live="polite" hidden></div>
+${renderMain(state)}
+${renderScript(nonce)}
+</body>
 </html>`;
 }

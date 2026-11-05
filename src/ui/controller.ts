@@ -247,19 +247,21 @@ export class IdeahubController {
     return { ok: true, message: `远程创意仓库已克隆（分支 ${result.branch}）。` };
   }
 
-  public async openProject(project: string): Promise<void> {
+  public async openProject(project: string): Promise<OpResult> {
     const root = this.requireLocalRoot();
     if (!root) {
-      return;
+      return { ok: false, message: '当前状态不允许执行该操作。' };
     }
     const uri = vscode.Uri.file(path.join(root, project, 'ideas.md'));
     try {
       const document = await vscode.workspace.openTextDocument(uri);
       await vscode.window.showTextDocument(document);
+      return { ok: true, message: `已打开 ${project}/ideas.md。` };
     } catch (error) {
-      void vscode.window.showErrorMessage(
-        `无法打开项目 ideas.md：${error instanceof Error ? error.message : String(error)}`
-      );
+      return {
+        ok: false,
+        message: `无法打开项目 ideas.md：${error instanceof Error ? error.message : String(error)}`
+      };
     }
   }
 

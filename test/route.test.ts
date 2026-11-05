@@ -1,0 +1,65 @@
+import { describe, expect, it, vi } from 'vitest';
+import type { OpResult } from '../src/ui/controller';
+import { routeMessage, type RouteHandlers } from '../src/ui/route';
+
+const ok = async (): Promise<OpResult> => ({ ok: true, message: 'ok' });
+
+function createHandlers(): RouteHandlers {
+  return {
+    refresh: vi.fn(async (): Promise<void> => {}),
+    initialize: vi.fn(ok),
+    initGit: vi.fn(ok),
+    installHook: vi.fn(ok),
+    setRemote: vi.fn(ok),
+    cloneRemote: vi.fn(ok),
+    openProject: vi.fn(ok),
+    markProject: vi.fn(ok),
+    publishProject: vi.fn(ok)
+  };
+}
+
+describe('routeMessage', () => {
+  it('routes the init message to the initialize handler', async () => {
+    const handlers = createHandlers();
+    const route = routeMessage({ type: 'init' }, handlers);
+
+    expect(route.kind).toBe('operation');
+    if (route.kind !== 'operation') {
+      throw new Error('expected init to be routed as an operation');
+    }
+    expect(route.name).toBe('init');
+
+    const result = await route.run();
+    expect(result.ok).toBe(true);
+    expect(handlers.initialize).toHaveBeenCalledTimes(1);
+    expect(handlers.initGit).not.toHaveBeenCalled();
+    expect(handlers.installHook).not.toHaveBeenCalled();
+  });
+
+  it('passes the remote url and immutability confirmation to setRemote', async () => {
+    const handlers = createHandlers();
+    const route = routeMessage(
+      {
+        type: 'setRemote',
+        url: 'https://github.com/owner/repo',
+        immutabilityConfirmed: true
+      },
+      handlers
+    );
+
+    expect(route.kind).toBe('operation');
+    if (route.kind !== 'operation') {
+      throw new Error('expected setRemote to be routed as an operation');
+    }
+    await route.run();
+    expect(handlers.setRemote).toHaveBeenCalledWith('https://github.com/owner/repo', true);
+  });
+
+  it('ignores unknown message types and project actions without a project name', () => {
+    const handlers = createHandlers();
+    expect(routeMessage({}, handlers).kind).toBe('unknown');
+    expect(routeMessage({ type: 'unknown' }, handlers).kind).toBe('unknown');
+    expect(routeMessage({ type: 'mark' }, handlers).kind).toBe('unknown');
+    expect(routeMessage({ type: 'publish' }, handlers).kind).toBe('unknown');
+  });
+});
