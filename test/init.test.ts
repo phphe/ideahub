@@ -26,6 +26,11 @@ describe('initializeLocalRepository', () => {
     await fs.access(path.join(root, 'README.md'));
     await fs.access(prePushPath(root));
 
+    const releaseConfig = JSON.parse(
+      await fs.readFile(path.join(root, 'ideahub.config.json'), 'utf8')
+    ) as { releaseBranch: string };
+    expect(releaseConfig.releaseBranch).toBe('main');
+
     const state = await detectWorkspace(root);
     expect(state.kind).toBe('local');
     if (state.kind === 'local') {

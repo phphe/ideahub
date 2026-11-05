@@ -1,18 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   buildReleaseTag,
+  parseLsRemoteRef,
   resolveReleaseTarget,
-  validateTagName
+  validateBranchName,
+  validateTagName,
+  type BranchLookup
 } from '../src/core/release-target';
-
-function repository(defaultBranch: string) {
-  return {
-    fullName: 'owner/repo',
-    isPrivate: false,
-    defaultBranch,
-    canPush: true
-  };
-}
 
 describe('buildReleaseTag / validateTagName', () => {
   it('keeps a hex hash unchanged and accepts it', () => {
@@ -43,100 +37,121 @@ describe('buildReleaseTag / validateTagName', () => {
   });
 });
 
-describe('resolveReleaseTarget', () => {
-  it('uses the remote default branch and its commit SHA', async () => {
-    const client = {
-      getRepository: vi.fn(async () => repository('main')),
-      getBranchHead: vi.fn(async (_owner: string, _repo: string, branch: string) =>
-        branch === 'main' ? { sha: 'abc123' } : null
-      )
-    };
-
-    const result = await resolveReleaseTarget(client, 'owner', 'repo', 'main');
-
-    expect(result).toEqual({ ok: true, target: { branch: 'main', sha: 'abc123' } });
-    expect(client.getBranchHead).toHaveBeenCalledWith('owner', 'repo', 'main');
+describe('validateBranchName', () => {
+  it('accepts normal branch names and rejects illegal ones', () => {
+    expect(validateBranchName('main')).toBeNull();
+    expect(validateBranchName('release/empty')).toBeNull();
+    expect(validateBranchName('')).toContain('为空');
+    expect(validateBranchName('main branch')).toContain('不允许的字符');
+    expect(validateBranchName('feature..x')).toContain('..');
+    expect(validateBranchName('-main')).toContain('-');
+    expect(validateBranchName('HEAD')).toContain('HEAD');
+    expect(validateBranchName('main/')).toContain('结尾');
   });
+});
 
-  it('prefers the remote default branch when the local branch differs', async () => {
-    const client = {
-      getRepository: vi.fn(async () => repository('trunk')),
-      getBranchHead: vi.fn(async (_owner: string, _repo: string, branch: string) =>
-        branch === 'trunk' ? { sha: 'trunk-sha' } : null
-      )
-    };
+describe('parseLsRemoteRef', () => {
+  it('returns the SHA only for the exact ref', () => {
+    const stdout = [
+      'abc123abc123abc123abc123abc123abc123abcd\trefs/heads/main',
+      'def456def456def456def456def456def456def4\trefs/heads/release'
+    ].join('\n');
+    expect(parseLsRemoteRef(stdout, 'refs/heads/main')).toBe(
+      'abc123abc123abc123abc123abc123abc123abcd'
+    );
+    expect(parseLsRemoteRef(stdout, 'refs/heads/missing')).toBeNull();
+    expect(parseLsRemoteRef('', 'refs/heads/main')).toBeNull();
+  });
+});
 
-    const result = await resolveReleaseTarget(client, 'owner', 'repo', 'main');
+describe('resolveReleaseTarget', () => {
+  function deps(options: { defaultBranch?: string | null; lookup: BranchLookup }) {
+    const getRepository = vi.fn(async () =>
+      options.defaultBranch === null
+        ? null
+        : { defaultBranch: options.defaultBranch ?? 'main' }
+    );
+    const lookupBranch = vi.fn(async () => options.lookup);
+    return { getRepository, lookupBranch };
+  }
+
+  it('uses the release branch SHA from ls-remote', async () => {
+    const target = deps({ lookup: { ok: true, sha: 'abc123' } });
+    const result = await resolveReleaseTarget(target, 'owner', 'repo', 'release');
 
     expect(result).toEqual({
       ok: true,
-      target: { branch: 'trunk', sha: 'trunk-sha' }
+      target: { branch: 'release', sha: 'abc123', defaultBranch: 'main' }
     });
-    expect(client.getBranchHead).toHaveBeenCalledWith('owner', 'repo', 'trunk');
-    expect(client.getBranchHead).not.toHaveBeenCalledWith('owner', 'repo', 'main');
+    expect(target.lookupBranch).toHaveBeenCalledWith('release');
   });
 
-  it('falls back to the configured branch only when the default is absent', async () => {
-    const client = {
-      getRepository: vi.fn(async () => repository('trunk')),
-      getBranchHead: vi.fn(async (_owner: string, _repo: string, branch: string) =>
-        branch === 'main' ? { sha: 'main-sha' } : null
-      )
-    };
-
-    const result = await resolveReleaseTarget(client, 'owner', 'repo', 'main');
+  it('reports both branches when releaseBranch differs from the default branch', async () => {
+    const target = deps({ defaultBranch: 'main', lookup: { ok: true, sha: 'release-sha' } });
+    const result = await resolveReleaseTarget(target, 'owner', 'repo', 'release');
 
     expect(result.ok).toBe(true);
     if (result.ok) {
-      expect(result.target).toEqual({ branch: 'main', sha: 'main-sha' });
+      expect(result.target.branch).toBe('release');
+      expect(result.target.defaultBranch).toBe('main');
     }
   });
 
-  it('rejects an empty target when neither branch exists', async () => {
-    const client = {
-      getRepository: vi.fn(async () => repository('main')),
-      getBranchHead: vi.fn(async () => null)
-    };
-
-    const result = await resolveReleaseTarget(client, 'owner', 'repo', '');
+  it('rejects an empty release branch before any remote lookup', async () => {
+    const target = deps({ lookup: { ok: true, sha: 'abc123' } });
+    const result = await resolveReleaseTarget(target, 'owner', 'repo', '');
 
     expect(result.ok).toBe(false);
     if (!result.ok) {
-      expect(result.error).toContain('远端分支不存在');
-      expect(result.error).toContain('main');
-      expect(result.error).toContain('扩展不会自动推送');
+      expect(result.error).toContain('release 分支名为空');
+    }
+    expect(target.getRepository).not.toHaveBeenCalled();
+    expect(target.lookupBranch).not.toHaveBeenCalled();
+  });
+
+  it('rejects a release branch that does not exist on the remote', async () => {
+    const target = deps({
+      lookup: {
+        ok: false,
+        missing: true,
+        error: 'release 分支不存在，请先推送：release。扩展不会自动推送。'
+      }
+    });
+    const result = await resolveReleaseTarget(target, 'owner', 'repo', 'release');
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error).toContain('release 分支不存在，请先推送');
     }
   });
 
-  it('rejects when the repository has no usable branch names at all', async () => {
-    const client = {
-      getRepository: vi.fn(async () => repository('')),
-      getBranchHead: vi.fn(async () => null)
-    };
-
-    const result = await resolveReleaseTarget(client, 'owner', 'repo', '');
+  it('rejects when git ls-remote fails', async () => {
+    const target = deps({
+      lookup: {
+        ok: false,
+        missing: false,
+        error: '无法读取远程 release 分支（git ls-remote 失败）：connection reset'
+      }
+    });
+    const result = await resolveReleaseTarget(target, 'owner', 'repo', 'main');
 
     expect(result.ok).toBe(false);
     if (!result.ok) {
-      expect(result.error).toContain('没有可用的分支名');
+      expect(result.error).toContain('ls-remote 失败');
+      expect(result.error).toContain('connection reset');
     }
   });
 
-  it('reports repository lookup failures without attempting a release', async () => {
-    const client = {
-      getRepository: vi.fn(async () => {
-        throw new Error('network down');
-      }),
-      getBranchHead: vi.fn(async () => null)
-    };
+  it('still resolves via ls-remote when the repository API lookup fails', async () => {
+    const target = deps({ lookup: { ok: true, sha: 'abc123' } });
+    target.getRepository.mockRejectedValueOnce(new Error('network down'));
 
-    const result = await resolveReleaseTarget(client, 'owner', 'repo', 'main');
+    const result = await resolveReleaseTarget(target, 'owner', 'repo', 'main');
 
-    expect(result.ok).toBe(false);
-    if (!result.ok) {
-      expect(result.error).toContain('无法读取远程仓库信息');
-      expect(result.error).toContain('network down');
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.target.sha).toBe('abc123');
+      expect(result.target.defaultBranch).toBeNull();
     }
-    expect(client.getBranchHead).not.toHaveBeenCalled();
   });
 });

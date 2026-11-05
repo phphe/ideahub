@@ -3,6 +3,7 @@ import * as path from 'node:path';
 import { configGitignorePath, describeError, ideahubDir, writeConfig } from './config';
 import { initGitRepository } from './git';
 import { installPrePushHook } from './hook';
+import { defaultReleaseConfigContent, releaseConfigPath } from './release-config';
 
 const README_CONTENT = `# 创意仓库
 
@@ -11,6 +12,7 @@ const README_CONTENT = `# 创意仓库
 ## 目录结构
 
 - \`.ideahub/config.json\`：创意仓库配置（不含任何 Token）。
+- \`ideahub.config.json\`：开发者配置（如 \`releaseBranch\`），只放非敏感项，提交进 git。
 - \`.ideahub/remote/\`：远程创意仓库的克隆，本地仓库不跟踪该目录。
 - 每个项目文件夹必须包含 \`ideas.md\`。
 
@@ -67,6 +69,12 @@ export async function initializeLocalRepository(root: string): Promise<InitResul
 
     await writeConfig(root, { version: 1 });
     completed.push('创建 .ideahub/config.json');
+
+    await fs.writeFile(releaseConfigPath(root), defaultReleaseConfigContent(), {
+      encoding: 'utf8',
+      flag: 'wx'
+    });
+    completed.push('创建 ideahub.config.json');
 
     const hookResult = await installPrePushHook(root, null);
     if (!hookResult.ok) {

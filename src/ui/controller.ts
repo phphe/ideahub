@@ -6,7 +6,13 @@ import { initializeLocalRepository, ensureLocalGitRepository } from '../core/ini
 import { installPrePushHook } from '../core/hook';
 import { remoteRepoPath, writeConfig } from '../core/config';
 import { GitHubApiError, GitHubClient } from '../core/github';
-import { buildReleaseTag, resolveReleaseTarget, validateTagName } from '../core/release-target';
+import { loadReleaseBranch } from '../core/release-config';
+import {
+  buildReleaseTag,
+  lookupRemoteBranch,
+  resolveReleaseTarget,
+  validateTagName
+} from '../core/release-target';
 import { validateRemoteRepository } from '../core/remote-setup';
 import { parseRemoteUrl } from '../core/remote-url';
 import { decideRemoteSetup, describeReleaseImmutability } from '../core/immutability';
@@ -438,6 +444,14 @@ export class IdeahubController {
       return { ok: true, message: '当前新增内容与已有证明相同，未重复创建 Release。' };
     }
 
+    const releaseConfig = await loadReleaseBranch(state.root);
+    for (const warning of releaseConfig.warnings) {
+      this.log(`mark: release config warning: ${warning}`);
+    }
+    this.log(
+      `mark: release branch config: release_branch=${releaseConfig.branch} source=${releaseConfig.source}`
+    );
+
     const tagResult = buildReleaseTag(hash);
     const tagError = validateTagName(tagResult.tag);
     if (tagError) {
@@ -445,13 +459,12 @@ export class IdeahubController {
         [
           'mark: release preflight failed (no request sent)',
           `tag_name=${tagResult.tag}`,
-          `target_commitish=${remote.branch || '(empty)'}`,
-          `error=${tagError}`
+          `target_commitish=${releaseConfig.branch}`
         ].join('\n')
       );
       return {
         ok: false,
-        message: `无法创建 Release（tag_name=${tagResult.tag}，target_commitish=${remote.branch || '(空)'}）：${tagError}`
+        message: `无法创建 Release（tag_name=${tagResult.tag}，target_commitish=${releaseConfig.branch}）：${tagError}`
       };
     }
     const tag = tagResult.tag;
@@ -466,8 +479,17 @@ export class IdeahubController {
 
     const client = new GitHubClient(async () => token);
     const targetResult = await vscode.window.withProgress(
-      { location: vscode.ProgressLocation.Notification, title: '正在确认远端分支…' },
-      () => resolveReleaseTarget(client, remote.owner, remote.repo, remote.branch)
+      { location: vscode.ProgressLocation.Notification, title: '正在读取远程 release 分支…' },
+      () =>
+        resolveReleaseTarget(
+          {
+            getRepository: (owner, repo) => client.getRepository(owner, repo),
+            lookupBranch: (branch) => lookupRemoteBranch(state.root, remote.url, branch)
+          },
+          remote.owner,
+          remote.repo,
+          releaseConfig.branch
+        )
     );
     if (!targetResult.ok) {
       this.log(
@@ -475,23 +497,38 @@ export class IdeahubController {
           'mark: release preflight failed (no request sent)',
           `POST https://api.github.com/repos/${remote.owner}/${remote.repo}/releases`,
           `tag_name=${tag}`,
-          `target_commitish=${remote.branch || '(empty)'}`,
+          `target_commitish=${releaseConfig.branch}`,
           `error=${targetResult.error}`
         ].join('\n')
       );
       return {
         ok: false,
-        message: `无法创建 Release（tag_name=${tag}，target_commitish=${remote.branch || '(空)'}）：${targetResult.error}`
+        message: `无法创建 Release（tag_name=${tag}，target_commitish=${releaseConfig.branch}）：${targetResult.error}`
       };
     }
     const target = targetResult.target;
+    const defaultBranch = target.defaultBranch ?? '(unknown)';
+    this.log(
+      [
+        'mark: release target resolved',
+        `release_branch=${target.branch}`,
+        `default_branch=${defaultBranch}`,
+        `target_commitish=${target.sha}`
+      ].join('\n')
+    );
+    if (target.defaultBranch !== null && target.defaultBranch !== target.branch) {
+      this.log(
+        `mark: release branch differs from remote default branch: release_branch=${target.branch} default_branch=${target.defaultBranch}`
+      );
+    }
     this.log(
       [
         'mark: createRelease request',
         `POST https://api.github.com/repos/${remote.owner}/${remote.repo}/releases`,
         `tag_name=${tag}`,
         `target_commitish=${target.sha}`,
-        `target_branch=${target.branch}`
+        `release_branch=${target.branch}`,
+        `default_branch=${defaultBranch}`
       ].join('\n')
     );
 
