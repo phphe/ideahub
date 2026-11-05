@@ -83,7 +83,7 @@
 | 项目 | 本地创意仓库根目录下**包含 `ideas.md`** 的文件夹。 |
 | 标记（证明） | 对某段新增创意内容计算 Hash，把 Hash 发布为远程创意仓库的不可变 Release，并在 `ideas.md` 中插入标记注释。 |
 | 发布 | 把某个项目文件夹**复制**到内层仓库并推送到远程创意仓库，使其公开。 |
-| release 分支 | 远程创意仓库中用于确定 Release 源码快照的分支，只包含一个空文件；名称由 `ideahub.config.json` 的 `releaseBranch` 指定，默认 `main`（见 5.5、6.7）。 |
+| release 分支 | 远程创意仓库中用于确定 Release 源码快照的分支，只包含一个空文件；名称来自扩展工程的开发者配置 `releaseBranch`，在构建期注入，默认 `main`（见 5.5、6.7）。 |
 
 ---
 
@@ -102,8 +102,6 @@ my-ideahub/
 │   ├── .gitignore              # 忽略 remote/
 │   └── remote/
 │       └── .git/               # 内层仓库：远程创意仓库的克隆
-│
-├── ideahub.config.json         # 开发者配置（releaseBranch；非敏感，提交进 git）
 │
 ├── aaa/                        # 项目示例（合格）
 │   ├── ideas.md
@@ -205,7 +203,7 @@ GitHub 会为每个 Release 自动生成 tag 指向提交的源码 zip / tar.gz 
 
 - release 分支只用于确定 Release 的目标提交，不存放公开项目内容。
 - 创建证明 Release 前，扩展通过 `git ls-remote <url> refs/heads/<releaseBranch>` 读取该分支最新 commit，并把该 commit SHA 作为 `target_commitish`，使 tag 指向近乎空的快照。
-- `releaseBranch` 在本地根目录的 `ideahub.config.json` 中配置（见 6.7），默认 `main`。
+- `releaseBranch` 来自扩展工程的开发者配置，在构建期注入（见 6.7），默认 `main`；最终用户不可见、不可改。
 - 若 `releaseBranch` 与远程仓库的 `default_branch` 不同，日志必须同时记录两者，避免再次出现“分支传错”的 422。
 - 若 release 分支与承载公开项目内容的分支相同，源码快照不会变小；需要小快照时应使用独立分支。
 
@@ -308,9 +306,11 @@ remote/
 9. hook 内部**不得**输出、记录或写入任何凭据信息。
 10. 内层仓库 `.ideahub/remote/.git/hooks/` **不**安装该拦截逻辑（否则“发布”无法执行）。
 
-### 6.7 `ideahub.config.json`
+### 6.7 `ideahub.config.json`（扩展级开发者配置）
 
-位于本地创意仓库根目录，**纳入本地仓库跟踪**（提交进 git），只放非敏感配置，**不得**包含 Token、Private Key、Client Secret 或任何凭据。
+该文件位于**扩展工程源码根目录**，纳入扩展源码仓库的版本控制，只放非敏感配置，**不得**包含 Token、Private Key、Client Secret 或任何凭据。
+
+它是**开发者配置，不开放给最终用户**：不会生成到用户的创意仓库，不随扩展分发，用户既看不到也改不了。
 
 暂定结构：
 
@@ -323,9 +323,10 @@ remote/
 说明：
 
 - `releaseBranch`：创建证明 Release 时用作 `target_commitish` 的 release 分支名（见 5.5、8.9），默认 `main`。
-- 读取优先级：`.env`（`IDEAHUB_RELEASE_BRANCH`，敏感项与本地临时覆盖用；已在 `.gitignore`，不提交、不打包进 vsix）> `ideahub.config.json` > 内置默认 `main`。
-- 文件缺失、字段缺失、分支名为空或格式非法、JSON 解析失败时，给出可读告警并回落到默认值，不中断标记流程，也不能导致扩展崩溃。
-- 初始化本地创意仓库时应创建该文件（见 8.3）。
+- 读取优先级：`.env`（`IDEAHUB_RELEASE_BRANCH`，敏感项与本地临时覆盖用；已在 `.gitignore` / `.vscodeignore`，不提交、不打包进 vsix）> `ideahub.config.json` > 内置默认 `main`。
+- 该文件在**构建期**由构建脚本解析，再通过 esbuild `define` 把结果注入为常量。构建产物中只有最终值，不包含配置文件；运行时**不会**从用户机器读取 `.env` 或任何外部配置文件。
+- 文件缺失、字段缺失、分支名为空或格式非法、JSON 解析失败时，构建期给出可读告警并回落到默认值，构建继续，扩展也不能崩溃。
+- `.env`、`.env.*`、`ideahub.config.json` 均不得打包进 vsix。
 
 ---
 
@@ -438,9 +439,8 @@ SHA1("blob " + byteLength + "\0" + fileBytes)
 2. 创建 `.ideahub/` 目录与 `.ideahub/.gitignore`（忽略 `remote/`）。
 3. 创建 `.ideahub/config.json`（此时可暂无远程地址，或引导用户当场填写）。
 4. 安装 `pre-push` hook（含特殊标记块，非 Windows 赋予执行权限）。
-5. 创建根目录 `ideahub.config.json`（默认 `{"releaseBranch":"main"}`，见 6.7）。
-6. 创建 README，说明仓库用途与安全注意事项（特别是“本地仓库只能连接自己的私有仓库”）。
-7. 完成后重新检测并进入对应状态。
+5. 创建 README，说明仓库用途与安全注意事项（特别是“本地仓库只能连接自己的私有仓库”）。
+6. 完成后重新检测并进入对应状态。
 
 约束：
 
@@ -536,7 +536,7 @@ SHA1("blob " + byteLength + "\0" + fileBytes)
 1. 解析文件，区分**已封存内容**（被已有标记覆盖的内容）与**未封存的新增内容**（未被任何标记覆盖的非空内容）。
 2. 若无新增内容，提示“没有需要生成证明的新内容”，流程结束。
 3. 对本次新增内容按第七章规则规范化，并结合项目文件夹名称计算 SHA-256。
-4. 读取 `releaseBranch`（见 6.7），并用 `git ls-remote <远程地址> refs/heads/<releaseBranch>` 读取该分支最新 commit：
+4. 使用构建期注入的 `releaseBranch`（见 6.7），并用 `git ls-remote <远程地址> refs/heads/<releaseBranch>` 读取该分支最新 commit：
    - 分支名为空或格式非法、分支不存在、`git ls-remote` 失败时，明确提示“release 分支不存在，请先推送”（或对应失败原因），**不发送**创建 Release 的请求。
    - 取到 commit SHA 后，日志同时记录 `release_branch` 与远端 `default_branch`；两者不同时必须都打印，避免分支传错。
 5. 在远程创意仓库创建 Release：
