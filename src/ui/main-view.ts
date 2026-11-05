@@ -83,6 +83,11 @@ export class MainViewProvider implements vscode.WebviewViewProvider {
           await this.runOperation(() => this.controller.publishProject(project));
         }
         return;
+      case 'status':
+        if (message.project) {
+          await this.controller.showProjectStatus(message.project);
+        }
+        return;
       default:
         return;
     }

@@ -1,4 +1,5 @@
 import { promises as fs } from 'node:fs';
+import * as path from 'node:path';
 import {
   describeError,
   ideahubDir,
@@ -9,7 +10,8 @@ import {
 } from './config';
 import { isGitRepository, getRemoteOriginUrl } from './git';
 import { hasHookBlock, isHookTargetCurrent, readPrePushHook } from './hook';
-import { listProjects } from './projects';
+import { listProjects, IDEAS_FILE } from './projects';
+import { parseIdeas } from './ideas';
 import { parseRemoteUrl } from './remote-url';
 
 export type LocalIssueId = 'local-git' | 'remote-url' | 'remote-dir' | 'hook' | 'remote-mismatch';
@@ -22,6 +24,21 @@ export interface LocalIssue {
 
 export interface ProjectSummary {
   name: string;
+  markerCount: number;
+  markerIds: string[];
+  integrityOk: boolean;
+  hasNewContent: boolean;
+}
+
+export interface ProjectRemoteStatus {
+  published: boolean;
+  latestProofAt: string | null;
+}
+
+export interface RemoteStatus {
+  available: boolean;
+  error?: string;
+  projects: Record<string, ProjectRemoteStatus>;
 }
 
 export type WorkspaceState =
@@ -37,6 +54,7 @@ export type WorkspaceState =
       remoteDirExists: boolean;
       issues: LocalIssue[];
       projects: ProjectSummary[];
+      remoteStatus?: RemoteStatus;
     };
 
 export async function detectWorkspace(folder: string | null): Promise<WorkspaceState> {
@@ -175,7 +193,30 @@ export async function detectWorkspace(folder: string | null): Promise<WorkspaceS
 
   let projects: ProjectSummary[] = [];
   try {
-    projects = (await listProjects(folder)).map((name) => ({ name }));
+    const names = await listProjects(folder);
+    projects = await Promise.all(
+      names.map(async (name) => {
+        try {
+          const text = await fs.readFile(path.join(folder, name, IDEAS_FILE), 'utf8');
+          const parsed = parseIdeas(text, name);
+          return {
+            name,
+            markerCount: parsed.markers.length,
+            markerIds: parsed.markers.map((marker) => marker.id),
+            integrityOk: parsed.integrityOk,
+            hasNewContent: parsed.hasUnsealedContent
+          };
+        } catch {
+          return {
+            name,
+            markerCount: 0,
+            markerIds: [],
+            integrityOk: false,
+            hasNewContent: false
+          };
+        }
+      })
+    );
   } catch {
     projects = [];
   }

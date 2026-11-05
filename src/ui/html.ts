@@ -1,5 +1,5 @@
 import * as crypto from 'node:crypto';
-import type { WorkspaceState } from '../core/status';
+import type { RemoteStatus, WorkspaceState } from '../core/status';
 
 function escapeHtml(value: string): string {
   return value
@@ -151,6 +151,33 @@ function renderMain(state: WorkspaceState, nonce: string): string {
   }
 }
 
+function renderBadges(
+  project: Extract<WorkspaceState, { kind: 'local' }>['projects'][number],
+  remote: RemoteStatus | undefined
+): string {
+  const badges: string[] = [
+    project.markerCount > 0 ? `证明 ${project.markerCount}` : '暂无证明'
+  ];
+  if (project.markerCount > 0 && !project.integrityOk) {
+    badges.push('已封存内容已修改');
+  }
+  if (project.hasNewContent) {
+    badges.push('有新内容');
+  }
+  if (!remote || !remote.available) {
+    if (project.markerCount > 0) {
+      badges.push('远程状态不可用');
+    }
+  } else {
+    const status = remote.projects[project.name];
+    badges.push(status?.published ? '已发布' : '未发布');
+    if (status?.latestProofAt) {
+      badges.push(`最近证明 ${status.latestProofAt.slice(0, 10)}`);
+    }
+  }
+  return badges.map((badge) => `<span class="badge">${escapeHtml(badge)}</span>`).join('');
+}
+
 function renderLocal(state: Extract<WorkspaceState, { kind: 'local' }>, nonce: string): string {
   const hasIssues = state.issues.length > 0;
   const issues = state.issues
@@ -168,6 +195,10 @@ function renderLocal(state: Extract<WorkspaceState, { kind: 'local' }>, nonce: s
         state.remote.repo
       )}</code>（分支 <code>${escapeHtml(state.remote.branch)}</code>）</p>`
     : '';
+  const remoteNote =
+    state.remoteStatus && !state.remoteStatus.available && state.remoteStatus.error
+      ? `<p class="muted">远程状态暂不可用：${escapeHtml(state.remoteStatus.error)}</p>`
+      : '';
 
   const projects = hasIssues
     ? ''
@@ -184,13 +215,21 @@ function renderLocal(state: Extract<WorkspaceState, { kind: 'local' }>, nonce: s
                 <div class="project-name" data-action="open" data-project="${escapeHtml(project.name)}">${escapeHtml(
                   project.name
                 )}</div>
-                <div class="badges"></div>
+                <div class="badges">${renderBadges(project, state.remoteStatus)}</div>
+                ${
+                  project.markerCount > 0
+                    ? '<p class="muted">已有证明，不建议重命名项目文件夹（会导致已有证明失效）。</p>'
+                    : ''
+                }
               </div>
               <div class="actions">
                 <button data-action="mark" data-project="${escapeHtml(project.name)}">标记</button>
                 <button class="secondary" data-action="publish" data-project="${escapeHtml(
                   project.name
                 )}">发布</button>
+                <button class="secondary" data-action="status" data-project="${escapeHtml(
+                  project.name
+                )}">状态</button>
               </div>
             </li>`
           )
@@ -200,6 +239,7 @@ function renderLocal(state: Extract<WorkspaceState, { kind: 'local' }>, nonce: s
     <h1>创意仓库</h1>
     <p class="muted">${escapeHtml(state.root)}</p>
     ${remoteInfo}
+    ${remoteNote}
     <div class="actions">
       <button class="secondary" data-action="refresh">刷新状态</button>
     </div>
@@ -224,7 +264,7 @@ function renderLocal(state: Extract<WorkspaceState, { kind: 'local' }>, nonce: s
           });
           return;
         }
-        vscode.postMessage({ type: action });
+        vscode.postMessage({ type: action, project: target.dataset.project });
       });
     </script>`;
 }

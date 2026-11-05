@@ -1,7 +1,7 @@
 import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
-import { detectWorkspace, type WorkspaceState } from '../core/status';
+import { detectWorkspace, type ProjectRemoteStatus, type RemoteStatus, type WorkspaceState } from '../core/status';
 import { initializeLocalRepository, ensureLocalGitRepository } from '../core/init';
 import { installPrePushHook } from '../core/hook';
 import { remoteRepoPath, writeConfig } from '../core/config';
@@ -41,8 +41,58 @@ export class IdeahubController {
   }
 
   public async refresh(): Promise<WorkspaceState> {
-    this.currentState = await detectWorkspace(this.workspaceRoot());
-    return this.currentState;
+    const state = await detectWorkspace(this.workspaceRoot());
+    if (state.kind === 'local' && state.remote) {
+      state.remoteStatus = await this.loadRemoteStatus(state);
+    }
+    this.currentState = state;
+    return state;
+  }
+
+  private async loadRemoteStatus(
+    state: Extract<WorkspaceState, { kind: 'local' }>
+  ): Promise<RemoteStatus> {
+    if (!state.remote) {
+      return { available: false, projects: {} };
+    }
+    const remote = state.remote;
+    const token = await getGitHubToken(false);
+    const client = new GitHubClient(async () => token);
+
+    try {
+      const releases = await client.listReleases(remote.owner, remote.repo);
+      const byTag = new Map(
+        releases.filter((release) => release.tagName).map((release) => [release.tagName, release])
+      );
+      const projects: Record<string, ProjectRemoteStatus> = {};
+
+      await Promise.all(
+        state.projects.map(async (project) => {
+          let latestProofAt: string | null = null;
+          for (const markerId of project.markerIds) {
+            const release = byTag.get(`ideahub-${markerId}`);
+            if (release?.publishedAt && (!latestProofAt || release.publishedAt > latestProofAt)) {
+              latestProofAt = release.publishedAt;
+            }
+          }
+          let published = false;
+          try {
+            published = await client.hasContent(remote.owner, remote.repo, project.name);
+          } catch {
+            published = false;
+          }
+          projects[project.name] = { published, latestProofAt };
+        })
+      );
+
+      return { available: true, projects };
+    } catch (error) {
+      return {
+        available: false,
+        error: error instanceof Error ? error.message : String(error),
+        projects: {}
+      };
+    }
   }
 
   private requireLocalRoot(): string | null {
@@ -195,6 +245,43 @@ export class IdeahubController {
       return { ok: false, message: result.error };
     }
     return { ok: true, message: `远程创意仓库已克隆（分支 ${result.branch}）。` };
+  }
+
+  public async showProjectStatus(project: string): Promise<void> {
+    const state = this.currentState;
+    if (state.kind !== 'local') {
+      return;
+    }
+    const summary = state.projects.find((entry) => entry.name === project);
+    if (!summary) {
+      void vscode.window.showErrorMessage('未找到该项目，请刷新后重试。');
+      return;
+    }
+    const remote = state.remoteStatus?.projects[project];
+    const latest = remote?.latestProofAt ?? null;
+    const lines = [
+      `项目文件夹：${summary.name}`,
+      `证明标记数量：${summary.markerCount}`,
+      `已封存内容完整性：${
+        summary.markerCount === 0 ? '暂无标记' : summary.integrityOk ? '一致' : '检测到已修改（原证明将失效）'
+      }`,
+      `是否有未封存的新内容：${summary.hasNewContent ? '是' : '否'}`,
+      `最近证明时间：${latest ? latest.slice(0, 10) : '暂无或无法获取'}`,
+      `公开状态：${
+        !state.remoteStatus?.available
+          ? '远程状态暂不可用'
+          : remote?.published
+            ? '已发布'
+            : '未发布'
+      }`
+    ];
+    if (state.remoteStatus && !state.remoteStatus.available && state.remoteStatus.error) {
+      lines.push(`远程状态错误：${state.remoteStatus.error}`);
+    }
+    await vscode.window.showInformationMessage(`项目状态：${project}`, {
+      modal: true,
+      detail: lines.join('\n')
+    });
   }
 
   public async openProject(project: string): Promise<void> {
