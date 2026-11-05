@@ -1,9 +1,18 @@
 import * as vscode from 'vscode';
+import { IdeahubController, type OpResult } from './controller';
+import { renderMainHtml } from './html';
+
+interface WebviewMessage {
+  type?: string;
+  project?: string;
+}
 
 export class MainViewProvider implements vscode.WebviewViewProvider {
   public static readonly viewType = 'ideahub.main';
 
   private view?: vscode.WebviewView;
+
+  constructor(private readonly controller: IdeahubController) {}
 
   resolveWebviewView(webviewView: vscode.WebviewView): void {
     this.view = webviewView;
@@ -11,36 +20,56 @@ export class MainViewProvider implements vscode.WebviewViewProvider {
       enableScripts: true,
       localResourceRoots: []
     };
-    webviewView.webview.html = this.renderPlaceholder();
-    webviewView.webview.onDidReceiveMessage(() => {
-      void this.refresh();
+    webviewView.webview.onDidReceiveMessage((message: WebviewMessage) => {
+      void this.handleMessage(message);
     });
     webviewView.onDidChangeVisibility(() => {
       if (webviewView.visible) {
         void this.refresh();
       }
     });
+    void this.refresh();
   }
 
   public async refresh(): Promise<void> {
     if (!this.view) {
       return;
     }
-    this.view.webview.html = this.renderPlaceholder();
+    const state = await this.controller.refresh();
+    this.view.webview.html = renderMainHtml(state);
   }
 
-  private renderPlaceholder(): string {
-    return `<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-<meta charset="UTF-8" />
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline';" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>创意仓库</title>
-</head>
-<body>
-  <p>创意仓库正在加载…</p>
-</body>
-</html>`;
+  private async handleMessage(message: WebviewMessage): Promise<void> {
+    switch (message.type) {
+      case 'refresh':
+        await this.refresh();
+        return;
+      case 'init':
+        await this.runOperation(() => this.controller.initialize());
+        return;
+      case 'initGit':
+        await this.runOperation(() => this.controller.initGit());
+        return;
+      case 'installHook':
+        await this.runOperation(() => this.controller.installHook());
+        return;
+      case 'open':
+        if (message.project) {
+          await this.controller.openProject(message.project);
+        }
+        return;
+      default:
+        return;
+    }
+  }
+
+  private async runOperation(operation: () => Promise<OpResult>): Promise<void> {
+    const result = await operation();
+    if (result.ok) {
+      void vscode.window.showInformationMessage(result.message);
+    } else {
+      void vscode.window.showErrorMessage(result.message);
+    }
+    await this.refresh();
   }
 }

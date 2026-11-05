@@ -1,8 +1,10 @@
 import * as vscode from 'vscode';
+import { IdeahubController } from './ui/controller';
 import { MainViewProvider } from './ui/main-view';
 
 export function activate(context: vscode.ExtensionContext): void {
-  const provider = new MainViewProvider();
+  const controller = new IdeahubController();
+  const provider = new MainViewProvider(controller);
 
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider(MainViewProvider.viewType, provider, {
@@ -12,6 +14,9 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand('ideahub.openMain', async () => {
       await vscode.commands.executeCommand('ideahub.main.focus');
       await provider.refresh();
+    }),
+    vscode.workspace.onDidChangeWorkspaceFolders(() => {
+      void provider.refresh();
     })
   );
 }
