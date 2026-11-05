@@ -56,6 +56,37 @@ describe('GitHubClient.createRelease', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
+  it('sends the validated tag and remote commit SHA on the happy path', async () => {
+    let sentBody: Record<string, unknown> | null = null;
+    const fetchMock = vi.fn(async (_input: string, init?: RequestInit) => {
+      sentBody = JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>;
+      return jsonResponse(201, {
+        tag_name: 'ideahub-abc123',
+        published_at: '2026-11-05T00:00:00Z',
+        immutable: false
+      });
+    });
+    const client = new GitHubClient(
+      async () => 'token',
+      fetchMock as unknown as typeof fetch
+    );
+
+    const result = await client.createRelease(
+      'owner',
+      'repo',
+      'ideahub-abc123',
+      'hash',
+      'abc123def456'
+    );
+
+    expect(result.created).toBe(true);
+    expect(sentBody).toMatchObject({
+      tag_name: 'ideahub-abc123',
+      target_commitish: 'abc123def456'
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it('does not treat 422 as an existing release when the tag has no release', async () => {
     const fetchMock = vi.fn(async (_input: string, init?: RequestInit) => {
       if ((init?.method ?? 'GET') === 'POST') {

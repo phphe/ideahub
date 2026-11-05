@@ -6,6 +6,7 @@ import { initializeLocalRepository, ensureLocalGitRepository } from '../core/ini
 import { installPrePushHook } from '../core/hook';
 import { remoteRepoPath, writeConfig } from '../core/config';
 import { GitHubApiError, GitHubClient } from '../core/github';
+import { buildReleaseTag, resolveReleaseTarget, validateTagName } from '../core/release-target';
 import { validateRemoteRepository } from '../core/remote-setup';
 import { parseRemoteUrl } from '../core/remote-url';
 import { decideRemoteSetup, describeReleaseImmutability } from '../core/immutability';
@@ -355,7 +356,13 @@ export class IdeahubController {
 
   private logReleaseFailure(
     error: unknown,
-    context: { owner: string; repo: string; tag: string; branch: string }
+    context: {
+      owner: string;
+      repo: string;
+      tag: string;
+      targetCommitish: string;
+      branch: string;
+    }
   ): void {
     const fallbackUrl = `https://api.github.com/repos/${context.owner}/${context.repo}/releases`;
     if (!(error instanceof GitHubApiError)) {
@@ -364,7 +371,8 @@ export class IdeahubController {
           'mark: createRelease failed (no local marker was written)',
           `POST ${fallbackUrl}`,
           `tag_name=${context.tag}`,
-          `target_commitish=${context.branch}`,
+          `target_commitish=${context.targetCommitish}`,
+          `target_branch=${context.branch}`,
           `error=${error instanceof Error ? error.message : String(error)}`
         ].join('\n')
       );
@@ -376,7 +384,8 @@ export class IdeahubController {
         'mark: createRelease failed (no local marker was written)',
         `POST ${error.url ?? fallbackUrl}`,
         `tag_name=${context.tag}`,
-        `target_commitish=${context.branch}`,
+        `target_commitish=${context.targetCommitish}`,
+        `target_branch=${context.branch}`,
         `status=${error.status}`,
         `response.message=${error.payload?.message ?? '(none)'}`,
         `errors=${errors ? JSON.stringify(errors) : '(none)'}`,
@@ -393,6 +402,7 @@ export class IdeahubController {
     if (state.issues.length > 0) {
       return { ok: false, message: '请先完成界面列出的配置，再生成证明。' };
     }
+    const remote = state.remote;
 
     const uri = vscode.Uri.file(path.join(state.root, project, 'ideas.md'));
     let document;
@@ -428,29 +438,80 @@ export class IdeahubController {
       return { ok: true, message: '当前新增内容与已有证明相同，未重复创建 Release。' };
     }
 
+    const tagResult = buildReleaseTag(hash);
+    const tagError = validateTagName(tagResult.tag);
+    if (tagError) {
+      this.log(
+        [
+          'mark: release preflight failed (no request sent)',
+          `tag_name=${tagResult.tag}`,
+          `target_commitish=${remote.branch || '(empty)'}`,
+          `error=${tagError}`
+        ].join('\n')
+      );
+      return {
+        ok: false,
+        message: `无法创建 Release（tag_name=${tagResult.tag}，target_commitish=${remote.branch || '(空)'}）：${tagError}`
+      };
+    }
+    const tag = tagResult.tag;
+    if (tagResult.sanitized) {
+      this.log(`mark: tag hash sanitized: hash=${hash} tag_name=${tag}`);
+    }
+
     const token = await getGitHubToken(true);
     if (!token) {
       return { ok: false, message: '需要登录 GitHub 才能创建证明 Release。' };
     }
 
     const client = new GitHubClient(async () => token);
-    const tag = `ideahub-${hash}`;
+    const targetResult = await vscode.window.withProgress(
+      { location: vscode.ProgressLocation.Notification, title: '正在确认远端分支…' },
+      () => resolveReleaseTarget(client, remote.owner, remote.repo, remote.branch)
+    );
+    if (!targetResult.ok) {
+      this.log(
+        [
+          'mark: release preflight failed (no request sent)',
+          `POST https://api.github.com/repos/${remote.owner}/${remote.repo}/releases`,
+          `tag_name=${tag}`,
+          `target_commitish=${remote.branch || '(empty)'}`,
+          `error=${targetResult.error}`
+        ].join('\n')
+      );
+      return {
+        ok: false,
+        message: `无法创建 Release（tag_name=${tag}，target_commitish=${remote.branch || '(空)'}）：${targetResult.error}`
+      };
+    }
+    const target = targetResult.target;
+    this.log(
+      [
+        'mark: createRelease request',
+        `POST https://api.github.com/repos/${remote.owner}/${remote.repo}/releases`,
+        `tag_name=${tag}`,
+        `target_commitish=${target.sha}`,
+        `target_branch=${target.branch}`
+      ].join('\n')
+    );
+
     let release;
     try {
       release = await vscode.window.withProgress(
         { location: vscode.ProgressLocation.Notification, title: '正在创建证明 Release…' },
-        () => client.createRelease(state.remote!.owner, state.remote!.repo, tag, hash, state.remote!.branch)
+        () => client.createRelease(remote.owner, remote.repo, tag, hash, target.sha)
       );
     } catch (error) {
       this.logReleaseFailure(error, {
-        owner: state.remote.owner,
-        repo: state.remote.repo,
+        owner: remote.owner,
+        repo: remote.repo,
         tag,
-        branch: state.remote.branch
+        targetCommitish: target.sha,
+        branch: target.branch
       });
       return {
         ok: false,
-        message: `创建 Release 失败，未写入任何标记：${
+        message: `创建 Release 失败（tag_name=${tag}，target_commitish=${target.sha}（分支 ${target.branch}）），未写入任何标记：${
           error instanceof Error ? error.message : String(error)
         }`
       };

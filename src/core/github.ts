@@ -144,6 +144,30 @@ export class GitHubClient {
     };
   }
 
+  async getBranchHead(
+    owner: string,
+    repo: string,
+    branch: string
+  ): Promise<{ sha: string } | null> {
+    const ref = branch.split('/').map(encodeURIComponent).join('/');
+    try {
+      const raw = await this.request<{ object?: { sha?: string } }>(
+        'GET',
+        `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/git/ref/heads/${ref}`
+      );
+      const sha = raw?.object?.sha;
+      return typeof sha === 'string' && sha.length > 0 ? { sha } : null;
+    } catch (error) {
+      if (
+        error instanceof GitHubApiError &&
+        (error.status === 404 || error.status === 409 || error.status === 422)
+      ) {
+        return null;
+      }
+      throw error;
+    }
+  }
+
   async getImmutableReleasesStatus(
     owner: string,
     repo: string,
@@ -216,7 +240,7 @@ export class GitHubClient {
     repo: string,
     tag: string,
     hash: string,
-    branch: string
+    targetCommitish: string
   ): Promise<{ created: boolean; release: GitHubReleaseInfo | null }> {
     try {
       const raw = await this.request<RawRelease>(
@@ -224,7 +248,7 @@ export class GitHubClient {
         `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/releases`,
         {
           tag_name: tag,
-          target_commitish: branch,
+          target_commitish: targetCommitish,
           name: hash,
           body: hash,
           draft: false,
