@@ -5,7 +5,7 @@ import { detectWorkspace, type ProjectRemoteStatus, type RemoteStatus, type Work
 import { initializeLocalRepository, ensureLocalGitRepository } from '../core/init';
 import { installPrePushHook } from '../core/hook';
 import { remoteRepoPath, writeConfig } from '../core/config';
-import { GitHubClient } from '../core/github';
+import { GitHubApiError, GitHubClient } from '../core/github';
 import { validateRemoteRepository } from '../core/remote-setup';
 import { parseRemoteUrl } from '../core/remote-url';
 import { decideRemoteSetup, describeReleaseImmutability } from '../core/immutability';
@@ -75,6 +75,12 @@ function formatRemoteSetupResult(result: RemoteSetupFlowResult): OpResult {
 
 export class IdeahubController {
   public currentState: WorkspaceState = { kind: 'no-folder' };
+
+  constructor(private readonly output: vscode.OutputChannel) {}
+
+  private log(message: string): void {
+    this.output.appendLine(`[${new Date().toISOString()}] ${message}`);
+  }
 
   public workspaceRoot(): string | null {
     return vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? null;
@@ -347,6 +353,38 @@ export class IdeahubController {
     }
   }
 
+  private logReleaseFailure(
+    error: unknown,
+    context: { owner: string; repo: string; tag: string; branch: string }
+  ): void {
+    const fallbackUrl = `https://api.github.com/repos/${context.owner}/${context.repo}/releases`;
+    if (!(error instanceof GitHubApiError)) {
+      this.log(
+        [
+          'mark: createRelease failed (no local marker was written)',
+          `POST ${fallbackUrl}`,
+          `tag_name=${context.tag}`,
+          `target_commitish=${context.branch}`,
+          `error=${error instanceof Error ? error.message : String(error)}`
+        ].join('\n')
+      );
+      return;
+    }
+    const errors = error.payload?.errors;
+    this.log(
+      [
+        'mark: createRelease failed (no local marker was written)',
+        `POST ${error.url ?? fallbackUrl}`,
+        `tag_name=${context.tag}`,
+        `target_commitish=${context.branch}`,
+        `status=${error.status}`,
+        `response.message=${error.payload?.message ?? '(none)'}`,
+        `errors=${errors ? JSON.stringify(errors) : '(none)'}`,
+        `response.body=${error.rawBody ?? '(empty)'}`
+      ].join('\n')
+    );
+  }
+
   public async markProject(project: string): Promise<OpResult> {
     const state = this.currentState;
     if (state.kind !== 'local' || !state.remote) {
@@ -404,6 +442,12 @@ export class IdeahubController {
         () => client.createRelease(state.remote!.owner, state.remote!.repo, tag, hash, state.remote!.branch)
       );
     } catch (error) {
+      this.logReleaseFailure(error, {
+        owner: state.remote.owner,
+        repo: state.remote.repo,
+        tag,
+        branch: state.remote.branch
+      });
       return {
         ok: false,
         message: `创建 Release 失败，未写入任何标记：${

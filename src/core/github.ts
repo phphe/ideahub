@@ -17,10 +17,27 @@ export interface GitHubReleaseInfo {
   immutable?: boolean;
 }
 
+export interface GitHubValidationError {
+  resource?: string;
+  field?: string;
+  code?: string;
+  message?: string;
+  [key: string]: unknown;
+}
+
+export interface GitHubErrorPayload {
+  message?: string;
+  errors?: GitHubValidationError[];
+  documentation_url?: string;
+}
+
 export class GitHubApiError extends Error {
   constructor(
     message: string,
-    readonly status: number
+    readonly status: number,
+    readonly url?: string,
+    readonly payload?: GitHubErrorPayload,
+    readonly rawBody?: string
   ) {
     super(message);
     this.name = 'GitHubApiError';
@@ -71,8 +88,9 @@ export class GitHubClient {
     }
 
     let response: Response;
+    const url = `https://api.github.com${apiPath}`;
     try {
-      response = await fetch(`https://api.github.com${apiPath}`, {
+      response = await this.fetchImpl(url, {
         method,
         headers,
         body: body === undefined ? undefined : JSON.stringify(body)
@@ -80,7 +98,8 @@ export class GitHubClient {
     } catch (error) {
       throw new GitHubApiError(
         `无法连接 GitHub API：${error instanceof Error ? error.message : String(error)}`,
-        0
+        0,
+        url
       );
     }
 
@@ -90,16 +109,14 @@ export class GitHubClient {
 
     if (!response.ok) {
       const text = await response.text();
-      let detail = '';
-      try {
-        const parsed = JSON.parse(text) as { message?: string };
-        detail = parsed.message ?? '';
-      } catch {
-        detail = text;
-      }
+      const payload = parseErrorPayload(text);
+      const detail = payload?.message ?? text;
       throw new GitHubApiError(
-        describeStatus(response.status, detail),
-        response.status
+        describeStatus(response.status, detail, payload?.errors),
+        response.status,
+        url,
+        payload,
+        text
       );
     }
 
@@ -247,15 +264,66 @@ export class GitHubClient {
   }
 }
 
-function describeStatus(status: number, detail: string): string {
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function parseErrorPayload(text: string): GitHubErrorPayload | undefined {
+  try {
+    const parsed = JSON.parse(text) as unknown;
+    if (!isRecord(parsed)) {
+      return undefined;
+    }
+    return {
+      message: typeof parsed.message === 'string' ? parsed.message : undefined,
+      errors: Array.isArray(parsed.errors)
+        ? (parsed.errors as GitHubValidationError[])
+        : undefined,
+      documentation_url:
+        typeof parsed.documentation_url === 'string'
+          ? parsed.documentation_url
+          : undefined
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+function describe422Hint(errors?: GitHubValidationError[]): string {
+  if (!errors || errors.length === 0) {
+    return '';
+  }
+  const fields = new Set(errors.map((entry) => entry.field).filter(Boolean));
+  const codes = new Set(errors.map((entry) => entry.code).filter(Boolean));
+  if (fields.has('target_commitish')) {
+    return '\n提示：target_commitish 指向的分支或提交在远程仓库中不存在。请确认远程仓库至少有一个提交，且该分支已推送到远端。';
+  }
+  if (fields.has('tag_name') || codes.has('already_exists')) {
+    return '\n提示：tag_name 已存在（可能已有同名 Git tag 或 Release）。为避免覆盖，扩展不会修改或删除已有内容。';
+  }
+  return '\n提示：请根据 errors 中的 resource / field / code 修正请求参数后重试。';
+}
+
+function describeStatus(
+  status: number,
+  detail: string,
+  errors?: GitHubValidationError[]
+): string {
+  const errorsLine =
+    errors && errors.length > 0
+      ? `\nerrors（原始响应）：${JSON.stringify(errors)}`
+      : '';
   if (status === 401) {
     return 'GitHub 认证已失效，请重新登录后重试。';
   }
   if (status === 403) {
-    return `GitHub 拒绝访问（权限不足或触发速率限制）。${detail ? `详细信息：${detail}` : ''}`;
+    return `GitHub 拒绝访问（权限不足或触发速率限制）。${detail ? `详细信息：${detail}` : ''}${errorsLine}`;
   }
   if (status === 404) {
     return '仓库不存在，或当前账号没有访问权限。';
   }
-  return `GitHub API 请求失败（HTTP ${status}）。${detail ? `详细信息：${detail}` : ''}`;
+  if (status === 422) {
+    return `GitHub API 请求失败（HTTP 422）。${detail ? `详细信息：${detail}` : ''}${errorsLine}${describe422Hint(errors)}`;
+  }
+  return `GitHub API 请求失败（HTTP ${status}）。${detail ? `详细信息：${detail}` : ''}${errorsLine}`;
 }

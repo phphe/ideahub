@@ -4,7 +4,7 @@ import { MainViewProvider } from './ui/main-view';
 
 export function activate(context: vscode.ExtensionContext): void {
   const output = vscode.window.createOutputChannel('IdeaHub');
-  const controller = new IdeahubController();
+  const controller = new IdeahubController(output);
   const provider = new MainViewProvider(controller, output);
 
   const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '(none)';
