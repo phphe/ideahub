@@ -44,7 +44,7 @@ export async function validateRemoteRepository(
       provider: 'github',
       owner: parsed.value.owner,
       repo: parsed.value.repo,
-      url: parsed.value.canonicalUrl,
+      url: url.trim(),
       branch: repo.defaultBranch
     }
   };

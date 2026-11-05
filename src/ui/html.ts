@@ -227,9 +227,6 @@ function renderLocal(state: Extract<WorkspaceState, { kind: 'local' }>, nonce: s
                 <button class="secondary" data-action="publish" data-project="${escapeHtml(
                   project.name
                 )}">发布</button>
-                <button class="secondary" data-action="status" data-project="${escapeHtml(
-                  project.name
-                )}">状态</button>
               </div>
             </li>`
           )

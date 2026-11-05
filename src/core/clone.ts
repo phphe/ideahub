@@ -41,7 +41,7 @@ export async function cloneRemoteRepository(
     };
   }
 
-  const result = await runGit(root, ['clone', parsed.value.cloneUrl, target], {
+  const result = await runGit(root, ['clone', remote.url, target], {
     timeoutMs: 300_000
   });
 

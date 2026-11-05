@@ -247,43 +247,6 @@ export class IdeahubController {
     return { ok: true, message: `远程创意仓库已克隆（分支 ${result.branch}）。` };
   }
 
-  public async showProjectStatus(project: string): Promise<void> {
-    const state = this.currentState;
-    if (state.kind !== 'local') {
-      return;
-    }
-    const summary = state.projects.find((entry) => entry.name === project);
-    if (!summary) {
-      void vscode.window.showErrorMessage('未找到该项目，请刷新后重试。');
-      return;
-    }
-    const remote = state.remoteStatus?.projects[project];
-    const latest = remote?.latestProofAt ?? null;
-    const lines = [
-      `项目文件夹：${summary.name}`,
-      `证明标记数量：${summary.markerCount}`,
-      `已封存内容完整性：${
-        summary.markerCount === 0 ? '暂无标记' : summary.integrityOk ? '一致' : '检测到已修改（原证明将失效）'
-      }`,
-      `是否有未封存的新内容：${summary.hasNewContent ? '是' : '否'}`,
-      `最近证明时间：${latest ? latest.slice(0, 10) : '暂无或无法获取'}`,
-      `公开状态：${
-        !state.remoteStatus?.available
-          ? '远程状态暂不可用'
-          : remote?.published
-            ? '已发布'
-            : '未发布'
-      }`
-    ];
-    if (state.remoteStatus && !state.remoteStatus.available && state.remoteStatus.error) {
-      lines.push(`远程状态错误：${state.remoteStatus.error}`);
-    }
-    await vscode.window.showInformationMessage(`项目状态：${project}`, {
-      modal: true,
-      detail: lines.join('\n')
-    });
-  }
-
   public async openProject(project: string): Promise<void> {
     const root = this.requireLocalRoot();
     if (!root) {
@@ -408,8 +371,7 @@ export class IdeahubController {
     const fileList =
       scan.files.length === 0
         ? '（项目目录中没有文件）'
-        : scan.files.slice(0, 30).join('\n') +
-          (scan.files.length > 30 ? `\n… 共 ${scan.files.length} 个文件` : '');
+        : scan.files.join('\n');
     const detail = `将公开的文件夹：${project}\n文件清单：\n${fileList}${
       targetExists ? '\n\n远程创意仓库已存在同名目录，本次发布将覆盖该目录。' : ''
     }`;
