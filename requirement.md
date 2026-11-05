@@ -70,7 +70,7 @@
 
 - 任何可能覆盖、删除、上传或公开用户数据的操作，都必须先检查并明确提示，且需用户确认。
 - 不自动提交、不自动推送、不自动公开任何本地文件。
-- 唯一例外：用户在 6.8 开启 `ideahub.mark.autoCommit` 后，标记成功时只把 `ideas.md` 的标记行提交到**本地**仓库（见 8.9、9.2）；绝不 push、绝不 amend、绝不动其他文件。
+- 唯一例外：用户在 6.8 开启 `ideahub.mark.autoCommit` 后，标记成功时只把 `ideas.md` 的标记行提交到**本地**仓库（见 8.9、第九章第 2 条）；绝不 push、绝不 amend、绝不动其他文件。
 
 ---
 
@@ -339,7 +339,7 @@ remote/
 | `ideahub.mark.commitMessage` | string | `feat(ideas): record proof for {project}` | 自动提交信息模板，支持 `{project}`、`{hash}`、`{date}`；未知占位符原样保留；空值回落默认值。 |
 
 - 自动提交只在用户启用 git、开启 `ideahub.mark.autoCommit` 且本地存在 Git 仓库时执行。
-- 自动提交只包含 `ideas.md` 的标记行；不推送、不 amend、不动其他文件（见 8.9、9.2）。
+- 自动提交只包含 `ideas.md` 的标记行；不推送、不 amend、不动其他文件（见 8.9、第九章第 2 条）。
 
 ---
 
