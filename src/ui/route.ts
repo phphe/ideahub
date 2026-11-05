@@ -13,6 +13,7 @@ export interface RouteHandlers {
   initialize(): Promise<OpResult>;
   initGit(): Promise<OpResult>;
   installHook(): Promise<OpResult>;
+  createProject(): Promise<OpResult>;
   setRemote(url: string, immutabilityConfirmed: boolean): Promise<OpResult>;
   cloneRemote(reclone: boolean): Promise<OpResult>;
   openProject(project: string): Promise<OpResult>;
@@ -25,6 +26,10 @@ export type MessageRoute =
   | { kind: 'operation'; name: string; run: () => Promise<OpResult> }
   | { kind: 'unknown' };
 
+export function isSilentSuccess(operationName: string): boolean {
+  return operationName === 'open';
+}
+
 export function routeMessage(message: WebviewMessage, handlers: RouteHandlers): MessageRoute {
   switch (message.type) {
     case 'refresh':
@@ -35,6 +40,8 @@ export function routeMessage(message: WebviewMessage, handlers: RouteHandlers): 
       return { kind: 'operation', name: 'initGit', run: () => handlers.initGit() };
     case 'installHook':
       return { kind: 'operation', name: 'installHook', run: () => handlers.installHook() };
+    case 'createProject':
+      return { kind: 'operation', name: 'createProject', run: () => handlers.createProject() };
     case 'setRemote':
       return {
         kind: 'operation',

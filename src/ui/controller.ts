@@ -16,6 +16,7 @@ import {
   type RemoteSetupStep
 } from '../core/remote-setup-flow';
 import { appendMarker, computeProofHash, parseIdeas } from '../core/ideas';
+import { createProject as createProjectOnDisk, validateProjectName } from '../core/projects';
 import {
   commitAndPushInnerRepository,
   copyProjectIntoInnerRepository,
@@ -281,6 +282,51 @@ export class IdeahubController {
       return { ok: false, message: result.error };
     }
     return { ok: true, message: `远程创意仓库已克隆（分支 ${result.branch}）。` };
+  }
+
+  public async createProject(): Promise<OpResult> {
+    const root = this.requireLocalRoot();
+    if (!root) {
+      return { ok: false, message: '当前状态不允许执行该操作。' };
+    }
+
+    const state = this.currentState;
+    const existingProjects = state.kind === 'local' ? state.projects.map((project) => project.name) : [];
+    const remoteProjects =
+      state.kind === 'local' && state.remoteStatus?.available
+        ? Object.keys(state.remoteStatus.projects)
+        : [];
+
+    const name = await vscode.window.showInputBox({
+      title: '新建项目',
+      prompt: '输入项目名称，将创建 <项目名>/ideas.md',
+      placeHolder: '例如 MyGame',
+      validateInput: (value) => validateProjectName(value, existingProjects, remoteProjects) ?? ''
+    });
+    if (name === undefined) {
+      return { ok: false, message: '已取消新建项目。' };
+    }
+
+    const result = await createProjectOnDisk(root, name, remoteProjects);
+    if (!result.ok) {
+      return { ok: false, message: result.error };
+    }
+
+    let openNote: string;
+    try {
+      const document = await vscode.workspace.openTextDocument(vscode.Uri.file(result.ideasPath));
+      await vscode.window.showTextDocument(document);
+      openNote = '\n已打开 ideas.md。';
+    } catch (error) {
+      openNote = `\n项目已创建，但自动打开 ideas.md 失败：${
+        error instanceof Error ? error.message : String(error)
+      }`;
+    }
+
+    return {
+      ok: true,
+      message: `已创建项目“${name}”（${name}/ideas.md）。\n使用最小模板（文档未定义 ideas.md 模板）：${result.content.trim()}${openNote}`
+    };
   }
 
   public async openProject(project: string): Promise<OpResult> {

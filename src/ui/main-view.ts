@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import type { WorkspaceState } from '../core/status';
 import { IdeahubController, type OpResult } from './controller';
 import { renderMainHtml, type ViewNotice } from './html';
-import { routeMessage, type RouteHandlers, type WebviewMessage } from './route';
+import { isSilentSuccess, routeMessage, type RouteHandlers, type WebviewMessage } from './route';
 
 function describeError(error: unknown): string {
   if (error instanceof Error) {
@@ -95,6 +95,7 @@ export class MainViewProvider implements vscode.WebviewViewProvider {
       initialize: () => this.controller.initialize(),
       initGit: () => this.controller.initGit(),
       installHook: () => this.controller.installHook(),
+      createProject: () => this.controller.createProject(),
       setRemote: (url, immutabilityConfirmed) =>
         this.controller.setRemote(url, immutabilityConfirmed),
       cloneRemote: (reclone) => this.controller.cloneRemote(reclone),
@@ -126,12 +127,17 @@ export class MainViewProvider implements vscode.WebviewViewProvider {
       result = { ok: false, message: `操作失败：${reason}` };
     }
     this.log(`action finished: ${name} -> ${result.ok ? 'ok' : 'error'}: ${result.message}`);
-    this.notice = { kind: result.ok ? 'info' : 'error', text: result.message };
     if (!result.ok) {
+      this.notice = { kind: 'error', text: result.message };
       void vscode.window.showErrorMessage(result.message);
-    } else if (name !== 'open') {
-      void vscode.window.showInformationMessage(result.message);
+      await this.refresh();
+      return;
     }
+    if (isSilentSuccess(name)) {
+      return;
+    }
+    this.notice = { kind: 'info', text: result.message };
+    void vscode.window.showInformationMessage(result.message);
     await this.refresh();
   }
 }

@@ -64,6 +64,14 @@ function renderScript(nonce: string): string {
         });
         return;
       }
+      if (action === 'open') {
+        vscode.postMessage({ type: 'open', project: target.dataset.project });
+        return;
+      }
+      if (action === 'createProject') {
+        vscode.postMessage({ type: 'createProject' });
+        return;
+      }
       setBusy('正在处理…');
       vscode.postMessage({ type: action, project: target.dataset.project });
     });
@@ -281,8 +289,8 @@ function renderLocal(state: Extract<WorkspaceState, { kind: 'local' }>): string 
     : state.projects.length === 0
       ? `<div class="card">
           <div class="title">还没有项目</div>
-          <p>在仓库根目录新建一个文件夹（例如 <code>MyGame</code>），并在其中创建 <code>ideas.md</code>。</p>
-          <p class="muted">只有包含 ideas.md 的根目录一级文件夹会被识别为项目。</p>
+          <p>点击上方「新建项目」按钮，在仓库根目录创建 <code>&lt;项目名&gt;/ideas.md</code>。</p>
+          <p class="muted">也可以手动新建文件夹并放入 ideas.md；只有包含 ideas.md 的根目录一级文件夹会被识别为项目。</p>
         </div>`
       : `<ul class="projects">${state.projects
           .map(
@@ -316,7 +324,9 @@ function renderLocal(state: Extract<WorkspaceState, { kind: 'local' }>): string 
     <div class="actions">
       <button class="secondary" data-action="refresh">刷新状态</button>
     </div>
-    ${hasIssues ? `<h2>需要完成的配置</h2>${issues}` : `<h2>项目</h2>${projects}`}`;
+    ${hasIssues ? `<h2>需要完成的配置</h2>${issues}` : `<h2>项目</h2>
+      <div class="actions"><button data-action="createProject">新建项目</button></div>
+      ${projects}`}`;
 }
 
 export function renderMainHtml(state: WorkspaceState, notice?: ViewNotice | null): string {

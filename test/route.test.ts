@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { OpResult } from '../src/ui/controller';
-import { routeMessage, type RouteHandlers } from '../src/ui/route';
+import { isSilentSuccess, routeMessage, type RouteHandlers } from '../src/ui/route';
 
 const ok = async (): Promise<OpResult> => ({ ok: true, message: 'ok' });
 
@@ -10,6 +10,7 @@ function createHandlers(): RouteHandlers {
     initialize: vi.fn(ok),
     initGit: vi.fn(ok),
     installHook: vi.fn(ok),
+    createProject: vi.fn(ok),
     setRemote: vi.fn(ok),
     cloneRemote: vi.fn(ok),
     openProject: vi.fn(ok),
@@ -53,6 +54,22 @@ describe('routeMessage', () => {
     }
     await route.run();
     expect(handlers.setRemote).toHaveBeenCalledWith('https://github.com/owner/repo', true);
+  });
+
+  it('routes createProject and treats opening a file as a silent success', async () => {
+    const handlers = createHandlers();
+    const route = routeMessage({ type: 'createProject' }, handlers);
+
+    expect(route.kind).toBe('operation');
+    if (route.kind !== 'operation') {
+      throw new Error('expected createProject to be routed as an operation');
+    }
+    await route.run();
+    expect(handlers.createProject).toHaveBeenCalledTimes(1);
+
+    expect(isSilentSuccess('open')).toBe(true);
+    expect(isSilentSuccess('mark')).toBe(false);
+    expect(isSilentSuccess('createProject')).toBe(false);
   });
 
   it('ignores unknown message types and project actions without a project name', () => {
