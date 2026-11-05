@@ -8,6 +8,7 @@ import { remoteRepoPath, writeConfig } from '../core/config';
 import { GitHubClient } from '../core/github';
 import { validateRemoteRepository } from '../core/remote-setup';
 import { parseRemoteUrl } from '../core/remote-url';
+import { decideRemoteSetup, describeReleaseImmutability } from '../core/immutability';
 import { cloneRemoteRepository, removeLocalClone } from '../core/clone';
 import { appendMarker, computeProofHash, parseIdeas } from '../core/ideas';
 import {
@@ -153,12 +154,6 @@ export class IdeahubController {
     if (!parsed.ok) {
       return { ok: false, message: parsed.error };
     }
-    if (!immutabilityConfirmed) {
-      return {
-        ok: false,
-        message: `请先在 https://github.com/${parsed.value.owner}/${parsed.value.repo}/settings 启用 “Enable release immutability”，并勾选已启用确认。`
-      };
-    }
 
     const token = await getGitHubToken(true);
     if (!token) {
@@ -172,6 +167,16 @@ export class IdeahubController {
     );
     if (!validation.ok) {
       return { ok: false, message: validation.error };
+    }
+
+    const settingsUrl = `https://${parsed.value.host}/${parsed.value.owner}/${parsed.value.repo}/settings`;
+    const immutability = decideRemoteSetup(
+      validation.immutability,
+      immutabilityConfirmed,
+      settingsUrl
+    );
+    if (!immutability.ok) {
+      return { ok: false, message: immutability.message };
     }
 
     const state = this.currentState;
@@ -206,7 +211,7 @@ export class IdeahubController {
         : '';
     return {
       ok: true,
-      message: `远程地址已保存（分支 ${validation.remote.branch}）。GitHub API 无法检测 Release 不可变性，请自行确认已启用。${extra}`
+      message: `远程地址已保存（分支 ${validation.remote.branch}）。${immutability.message}${extra}`
     };
   }
 
@@ -343,9 +348,10 @@ export class IdeahubController {
     }
 
     const time = release.release?.publishedAt ? `，发布时间 ${release.release.publishedAt}` : '';
+    const immutability = describeReleaseImmutability(release.release?.immutable);
     return {
       ok: true,
-      message: `${release.created ? '证明已生成' : '证明已存在，已补写本地标记'}：\n${tag}${time}`
+      message: `${release.created ? '证明已生成' : '证明已存在，已补写本地标记'}：\n${tag}${time}\n${immutability}`
     };
   }
 

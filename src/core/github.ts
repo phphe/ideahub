@@ -1,3 +1,9 @@
+import {
+  classifyImmutabilityProbe,
+  GITHUB_COM_HOST,
+  type ImmutabilityCheck
+} from './immutability';
+
 export interface GitHubRepositoryInfo {
   fullName: string;
   isPrivate: boolean;
@@ -8,6 +14,7 @@ export interface GitHubRepositoryInfo {
 export interface GitHubReleaseInfo {
   tagName: string;
   publishedAt: string | null;
+  immutable?: boolean;
 }
 
 export class GitHubApiError extends Error {
@@ -30,17 +37,22 @@ interface RawRepository {
 interface RawRelease {
   tag_name?: string;
   published_at?: string | null;
+  immutable?: boolean;
 }
 
 function releaseFromRaw(raw: RawRelease): GitHubReleaseInfo {
   return {
     tagName: raw.tag_name ?? '',
-    publishedAt: raw.published_at ?? null
+    publishedAt: raw.published_at ?? null,
+    immutable: typeof raw.immutable === 'boolean' ? raw.immutable : undefined
   };
 }
 
 export class GitHubClient {
-  constructor(private readonly tokenProvider: () => Promise<string | null>) {}
+  constructor(
+    private readonly tokenProvider: () => Promise<string | null>,
+    private readonly fetchImpl: typeof fetch = fetch
+  ) {}
 
   private async request<T>(
     method: string,
@@ -113,6 +125,57 @@ export class GitHubClient {
       defaultBranch: raw.default_branch ?? 'main',
       canPush: raw.permissions?.push === true
     };
+  }
+
+  async getImmutableReleasesStatus(
+    owner: string,
+    repo: string,
+    host: string = GITHUB_COM_HOST
+  ): Promise<ImmutabilityCheck> {
+    if (host.toLowerCase() !== GITHUB_COM_HOST) {
+      return { kind: 'unknown', reason: 'non-github-host' };
+    }
+
+    const token = await this.tokenProvider();
+    const headers: Record<string, string> = {
+      Accept: 'application/vnd.github+json',
+      'X-GitHub-Api-Version': '2022-11-28',
+      'User-Agent': 'ideahub-vscode'
+    };
+    if (token) {
+      headers.Authorization = `Bearer ${token}`;
+    }
+
+    let response: Response;
+    try {
+      response = await this.fetchImpl(
+        `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(
+          repo
+        )}/immutable-releases`,
+        { method: 'GET', headers }
+      );
+    } catch (error) {
+      return classifyImmutabilityProbe({
+        type: 'network-error',
+        message: error instanceof Error ? error.message : String(error)
+      });
+    }
+
+    let body: unknown;
+    if (response.status === 200) {
+      try {
+        body = await response.json();
+      } catch {
+        body = undefined;
+      }
+    }
+
+    return classifyImmutabilityProbe({
+      type: 'response',
+      host,
+      status: response.status,
+      body
+    });
   }
 
   async getReleaseByTag(

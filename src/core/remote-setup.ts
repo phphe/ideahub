@@ -1,9 +1,10 @@
 import type { GitHubClient } from './github';
+import type { ImmutabilityCheck } from './immutability';
 import { parseRemoteUrl } from './remote-url';
 import type { RemoteConfig } from './config';
 
 export type ValidateRemoteResult =
-  | { ok: true; remote: RemoteConfig }
+  | { ok: true; remote: RemoteConfig; immutability: ImmutabilityCheck }
   | { ok: false; error: string };
 
 export async function validateRemoteRepository(
@@ -38,6 +39,12 @@ export async function validateRemoteRepository(
     };
   }
 
+  const immutability = await client.getImmutableReleasesStatus(
+    parsed.value.owner,
+    parsed.value.repo,
+    parsed.value.host
+  );
+
   return {
     ok: true,
     remote: {
@@ -46,6 +53,7 @@ export async function validateRemoteRepository(
       repo: parsed.value.repo,
       url: url.trim(),
       branch: repo.defaultBranch
-    }
+    },
+    immutability
   };
 }

@@ -1,6 +1,8 @@
 export interface ParsedRemoteUrl {
   owner: string;
   repo: string;
+  /** Host parsed from the remote URL. */
+  host: string;
   /** Canonical browser URL: https://github.com/owner/repo */
   canonicalUrl: string;
   /** HTTPS clone URL, usable for public repositories without SSH keys. */
@@ -58,6 +60,7 @@ export function parseRemoteUrl(input: string): ParseRemoteUrlResult {
     value: {
       owner,
       repo,
+      host: 'github.com',
       canonicalUrl: `https://github.com/${owner}/${repo}`,
       cloneUrl: `https://github.com/${owner}/${repo}.git`
     }

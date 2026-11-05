@@ -173,7 +173,7 @@ function renderIssueActions(
     case 'remote-url':
       return `<input type="text" id="remote-url" placeholder="https://github.com/owner/repo" />
         <label class="check"><input type="checkbox" id="immutability-confirm" />
-        <span>我已在 GitHub 仓库设置中启用 <code>Enable release immutability</code>（扩展无法通过 API 检测该设置）。</span></label>
+        <span>我已确认仓库启用了 <code>Enable release immutability</code>。扩展会先通过 GitHub API 检测；只有无法读取（需要仓库 admin 读权限）时才以此手动确认为准。</span></label>
         <p class="muted">远程创意仓库必须由你手动创建，且为公开仓库。</p>
         <div class="actions"><button data-action="setRemote">保存并校验</button></div>`;
     case 'remote-dir':
