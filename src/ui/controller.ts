@@ -1,19 +1,36 @@
+import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { detectWorkspace, type WorkspaceState } from '../core/status';
 import { initializeLocalRepository, ensureLocalGitRepository } from '../core/init';
 import { installPrePushHook } from '../core/hook';
-import { writeConfig } from '../core/config';
+import { remoteRepoPath, writeConfig } from '../core/config';
 import { GitHubClient } from '../core/github';
 import { validateRemoteRepository } from '../core/remote-setup';
 import { parseRemoteUrl } from '../core/remote-url';
 import { cloneRemoteRepository, removeLocalClone } from '../core/clone';
 import { appendMarker, computeProofHash, parseIdeas } from '../core/ideas';
+import {
+  commitAndPushInnerRepository,
+  copyProjectIntoInnerRepository,
+  remoteProjectUrl,
+  scanProjectDirectory,
+  syncInnerRepository
+} from '../core/publish';
 import { getGitHubToken } from './auth';
 
 export interface OpResult {
   ok: boolean;
   message: string;
+}
+
+async function exists(target: string): Promise<boolean> {
+  try {
+    await fs.lstat(target);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export class IdeahubController {
@@ -278,5 +295,98 @@ export class IdeahubController {
       ok: true,
       message: `${release.created ? '证明已生成' : '证明已存在，已补写本地标记'}：\n${tag}${time}`
     };
+  }
+
+  public async publishProject(project: string): Promise<OpResult> {
+    const state = this.currentState;
+    if (state.kind !== 'local' || !state.remote) {
+      return { ok: false, message: '请先完成本地仓库与远程仓库配置。' };
+    }
+    if (state.issues.length > 0) {
+      return { ok: false, message: '请先完成界面列出的配置，再发布项目。' };
+    }
+
+    const projectDir = path.join(state.root, project);
+    const scan = await scanProjectDirectory(projectDir);
+    if (scan.blocked.length > 0) {
+      return {
+        ok: false,
+        message: `检测到无法安全发布的文件，已停止发布：\n${scan.blocked.join('\n')}`
+      };
+    }
+
+    const target = path.join(remoteRepoPath(state.root), project);
+    const targetExists = await exists(target);
+
+    const fileList =
+      scan.files.length === 0
+        ? '（项目目录中没有文件）'
+        : scan.files.slice(0, 30).join('\n') +
+          (scan.files.length > 30 ? `\n… 共 ${scan.files.length} 个文件` : '');
+    const detail = `将公开的文件夹：${project}\n文件清单：\n${fileList}${
+      targetExists ? '\n\n远程创意仓库已存在同名目录，本次发布将覆盖该目录。' : ''
+    }`;
+
+    const first = await vscode.window.showWarningMessage(
+      `您的创意“${project}”将发布到您的远程创意仓库并公开，确认吗？`,
+      { modal: true, detail },
+      targetExists ? '覆盖并继续' : '确认发布',
+      '取消'
+    );
+    if (first === undefined || first === '取消') {
+      return { ok: false, message: '已取消发布。' };
+    }
+
+    const second = await vscode.window.showWarningMessage(
+      '为防止项目正式发布前误操作公开创意，请再确认一次！',
+      { modal: true, detail: `项目：${project}` },
+      '确认发布',
+      '取消'
+    );
+    if (second === undefined || second === '取消') {
+      return { ok: false, message: '已取消发布。' };
+    }
+
+    const token = await getGitHubToken(true);
+    if (!token) {
+      return { ok: false, message: '需要登录 GitHub 才能发布到远程创意仓库。' };
+    }
+
+    return vscode.window.withProgress(
+      { location: vscode.ProgressLocation.Notification, title: '正在发布项目…' },
+      async (progress) => {
+        const remote = state.remote!;
+        const innerPath = remoteRepoPath(state.root);
+
+        progress.report({ message: '同步远程创意仓库…' });
+        const sync = await syncInnerRepository(innerPath, remote.branch);
+        if (!sync.ok) {
+          return { ok: false, message: sync.error };
+        }
+
+        progress.report({ message: '复制项目文件…' });
+        const copy = await copyProjectIntoInnerRepository(innerPath, project, projectDir);
+        if (!copy.ok) {
+          return { ok: false, message: copy.error };
+        }
+
+        progress.report({ message: '提交并推送内层仓库…' });
+        const push = await commitAndPushInnerRepository(innerPath, {
+          url: remote.url,
+          branch: remote.branch,
+          projectName: project,
+          token
+        });
+        if (!push.ok) {
+          return { ok: false, message: push.error };
+        }
+
+        const url = remoteProjectUrl(remote.owner, remote.repo, remote.branch, project);
+        return {
+          ok: true,
+          message: `${push.pushed ? '发布成功' : '项目已是最新状态，无需推送'}。\n远程项目地址：${url}`
+        };
+      }
+    );
   }
 }

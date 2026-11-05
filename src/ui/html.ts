@@ -188,6 +188,9 @@ function renderLocal(state: Extract<WorkspaceState, { kind: 'local' }>, nonce: s
               </div>
               <div class="actions">
                 <button data-action="mark" data-project="${escapeHtml(project.name)}">标记</button>
+                <button class="secondary" data-action="publish" data-project="${escapeHtml(
+                  project.name
+                )}">发布</button>
               </div>
             </li>`
           )
