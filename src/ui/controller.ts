@@ -1,3 +1,4 @@
+import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { detectWorkspace, type WorkspaceState } from '../core/status';
 import { initializeLocalRepository, ensureLocalGitRepository } from '../core/init';
@@ -7,6 +8,7 @@ import { GitHubClient } from '../core/github';
 import { validateRemoteRepository } from '../core/remote-setup';
 import { parseRemoteUrl } from '../core/remote-url';
 import { cloneRemoteRepository, removeLocalClone } from '../core/clone';
+import { appendMarker, computeProofHash, parseIdeas } from '../core/ideas';
 import { getGitHubToken } from './auth';
 
 export interface OpResult {
@@ -183,7 +185,7 @@ export class IdeahubController {
     if (!root) {
       return;
     }
-    const uri = vscode.Uri.file(`${root}/${project}/ideas.md`);
+    const uri = vscode.Uri.file(path.join(root, project, 'ideas.md'));
     try {
       const document = await vscode.workspace.openTextDocument(uri);
       await vscode.window.showTextDocument(document);
@@ -192,5 +194,89 @@ export class IdeahubController {
         `无法打开项目 ideas.md：${error instanceof Error ? error.message : String(error)}`
       );
     }
+  }
+
+  public async markProject(project: string): Promise<OpResult> {
+    const state = this.currentState;
+    if (state.kind !== 'local' || !state.remote) {
+      return { ok: false, message: '请先完成本地仓库与远程仓库配置。' };
+    }
+    if (state.issues.length > 0) {
+      return { ok: false, message: '请先完成界面列出的配置，再生成证明。' };
+    }
+
+    const uri = vscode.Uri.file(path.join(state.root, project, 'ideas.md'));
+    let document;
+    try {
+      document = await vscode.workspace.openTextDocument(uri);
+    } catch (error) {
+      return {
+        ok: false,
+        message: `无法读取项目 ideas.md：${error instanceof Error ? error.message : String(error)}`
+      };
+    }
+
+    const text = document.getText();
+    const parsed = parseIdeas(text, project);
+    if (!parsed.hasUnsealedContent) {
+      return { ok: true, message: '没有需要生成证明的新内容。' };
+    }
+
+    if (!parsed.integrityOk) {
+      const choice = await vscode.window.showWarningMessage(
+        '检测到已封存内容已被修改，原证明将失效。仍要为当前新增内容生成新证明吗？旧标记不会被自动删除或重写。',
+        { modal: true },
+        '仍然生成',
+        '取消'
+      );
+      if (choice !== '仍然生成') {
+        return { ok: false, message: '已取消生成证明。' };
+      }
+    }
+
+    const hash = computeProofHash(project, parsed.unsealedText);
+    if (parsed.markers.some((marker) => marker.id === hash)) {
+      return { ok: true, message: '当前新增内容与已有证明相同，未重复创建 Release。' };
+    }
+
+    const token = await getGitHubToken(true);
+    if (!token) {
+      return { ok: false, message: '需要登录 GitHub 才能创建证明 Release。' };
+    }
+
+    const client = new GitHubClient(async () => token);
+    const tag = `ideahub-${hash}`;
+    let release;
+    try {
+      release = await vscode.window.withProgress(
+        { location: vscode.ProgressLocation.Notification, title: '正在创建证明 Release…' },
+        () => client.createRelease(state.remote!.owner, state.remote!.repo, tag, hash, state.remote!.branch)
+      );
+    } catch (error) {
+      return {
+        ok: false,
+        message: `创建 Release 失败，未写入任何标记：${
+          error instanceof Error ? error.message : String(error)
+        }`
+      };
+    }
+
+    const updated = appendMarker(text, hash);
+    const edit = new vscode.WorkspaceEdit();
+    edit.replace(uri, new vscode.Range(new vscode.Position(0, 0), document.positionAt(text.length)), updated);
+    const applied = await vscode.workspace.applyEdit(edit);
+    if (!applied) {
+      return { ok: false, message: 'Release 已创建，但写入 ideas.md 标记失败，请手动添加标记。' };
+    }
+    const saved = await document.save();
+    if (!saved) {
+      return { ok: false, message: '标记已写入编辑器，但文件保存失败。' };
+    }
+
+    const time = release.release?.publishedAt ? `，发布时间 ${release.release.publishedAt}` : '';
+    return {
+      ok: true,
+      message: `${release.created ? '证明已生成' : '证明已存在，已补写本地标记'}：\n${tag}${time}`
+    };
   }
 }

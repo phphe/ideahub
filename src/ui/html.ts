@@ -186,6 +186,9 @@ function renderLocal(state: Extract<WorkspaceState, { kind: 'local' }>, nonce: s
                 )}</div>
                 <div class="badges"></div>
               </div>
+              <div class="actions">
+                <button data-action="mark" data-project="${escapeHtml(project.name)}">标记</button>
+              </div>
             </li>`
           )
           .join('')}</ul>`;
