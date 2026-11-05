@@ -9,7 +9,12 @@ import { GitHubClient } from '../core/github';
 import { validateRemoteRepository } from '../core/remote-setup';
 import { parseRemoteUrl } from '../core/remote-url';
 import { decideRemoteSetup, describeReleaseImmutability } from '../core/immutability';
-import { cloneRemoteRepository, removeLocalClone } from '../core/clone';
+import { cloneRemoteRepository, inspectRemoteTarget, removeLocalClone } from '../core/clone';
+import {
+  runRemoteSetupFlow,
+  type RemoteSetupFlowResult,
+  type RemoteSetupStep
+} from '../core/remote-setup-flow';
 import { appendMarker, computeProofHash, parseIdeas } from '../core/ideas';
 import {
   commitAndPushInnerRepository,
@@ -32,6 +37,39 @@ async function exists(target: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+const REMOTE_SETUP_STEP_MESSAGES: Record<RemoteSetupStep, string> = {
+  validate: '步骤 1/2：正在校验远程创意仓库…',
+  persist: '步骤 1/2：校验通过，正在保存配置与 hook…',
+  clone: '步骤 2/2：正在克隆远程创意仓库…'
+};
+
+function formatRemoteSetupResult(result: RemoteSetupFlowResult): OpResult {
+  if (result.ok) {
+    const target = `${result.remote.owner}/${result.remote.repo}（分支 ${result.branch}）`;
+    const cloneStep =
+      result.clone === 'cloned'
+        ? `步骤 2/2：远程创意仓库已克隆（分支 ${result.branch}）。`
+        : '步骤 2/2：检测到 .ideahub/remote/ 已是有效 Git 仓库，已跳过克隆；若与新地址不一致，请使用“重新克隆”。';
+    return {
+      ok: true,
+      message: `步骤 1/2：远程地址校验通过，配置与 hook 已保存。\n${cloneStep}\n远程创意仓库：${target}\n${result.immutabilityMessage}`
+    };
+  }
+
+  const stageLabels = {
+    validation: '步骤 1/2（校验）',
+    config: '步骤 1/2（保存配置）',
+    clone: '步骤 2/2（克隆）'
+  } as const;
+  const retry = result.retryClone
+    ? '\n克隆入口已保留，可点击“克隆远程仓库”重试；如需清空并重来，请使用“重新克隆”。'
+    : '';
+  return {
+    ok: false,
+    message: `${stageLabels[result.stage]}失败：${result.message}${retry}`
+  };
 }
 
 export class IdeahubController {
@@ -161,58 +199,51 @@ export class IdeahubController {
     }
 
     const client = new GitHubClient(async () => token);
-    const validation = await vscode.window.withProgress(
-      { location: vscode.ProgressLocation.Notification, title: '正在校验远程创意仓库…' },
-      () => validateRemoteRepository(url, client)
-    );
-    if (!validation.ok) {
-      return { ok: false, message: validation.error };
-    }
-
     const settingsUrl = `https://${parsed.value.host}/${parsed.value.owner}/${parsed.value.repo}/settings`;
-    const immutability = decideRemoteSetup(
-      validation.immutability,
-      immutabilityConfirmed,
-      settingsUrl
-    );
-    if (!immutability.ok) {
-      return { ok: false, message: immutability.message };
-    }
-
     const state = this.currentState;
     const previous = state.kind === 'local' ? state.remote : null;
-    if (
-      previous &&
-      (previous.owner.toLowerCase() !== validation.remote.owner.toLowerCase() ||
-        previous.repo.toLowerCase() !== validation.remote.repo.toLowerCase())
-    ) {
-      const choice = await vscode.window.showWarningMessage(
-        '更换远程创意仓库地址会影响已有证明的可验证性；已有证明仍然保留在原远程仓库中。确认更换吗？',
-        { modal: true },
-        '确认更换'
-      );
-      if (choice !== '确认更换') {
-        return { ok: false, message: '已取消更换远程地址。' };
-      }
-    }
 
-    await writeConfig(root, { version: 1, remote: validation.remote });
-    const hookResult = await installPrePushHook(root, {
-      owner: validation.remote.owner,
-      repo: validation.remote.repo
-    });
-    if (!hookResult.ok) {
-      return { ok: false, message: `远程地址已保存，但 ${hookResult.error}` };
-    }
+    const result = await vscode.window.withProgress(
+      {
+        location: vscode.ProgressLocation.Notification,
+        title: '配置远程创意仓库（1/2 校验 → 2/2 克隆）',
+        cancellable: false
+      },
+      (progress) =>
+        runRemoteSetupFlow({
+          validate: () => validateRemoteRepository(url, client),
+          decideImmutability: (check) =>
+            decideRemoteSetup(check, immutabilityConfirmed, settingsUrl),
+          confirmChange: async (next) => {
+            const sameRepo =
+              previous !== null &&
+              previous.owner.toLowerCase() === next.owner.toLowerCase() &&
+              previous.repo.toLowerCase() === next.repo.toLowerCase();
+            if (!previous || sameRepo) {
+              return true;
+            }
+            const choice = await vscode.window.showWarningMessage(
+              '更换远程创意仓库地址会影响已有证明的可验证性；已有证明仍然保留在原远程仓库中。确认更换吗？',
+              { modal: true },
+              '确认更换'
+            );
+            return choice === '确认更换';
+          },
+          persist: async (remote) => {
+            await writeConfig(root, { version: 1, remote });
+            const hookResult = await installPrePushHook(root, {
+              owner: remote.owner,
+              repo: remote.repo
+            });
+            return hookResult.ok ? { ok: true } : { ok: false, error: hookResult.error };
+          },
+          inspect: () => inspectRemoteTarget(root),
+          clone: (remote) => cloneRemoteRepository(root, remote),
+          onStep: (step) => progress.report({ message: REMOTE_SETUP_STEP_MESSAGES[step] })
+        })
+    );
 
-    const extra =
-      state.kind === 'local' && state.remoteDirExists
-        ? '\n当前 .ideahub/remote/ 若与新地址不一致，请执行“重新克隆”。'
-        : '';
-    return {
-      ok: true,
-      message: `远程地址已保存（分支 ${validation.remote.branch}）。${immutability.message}${extra}`
-    };
+    return formatRemoteSetupResult(result);
   }
 
   public async cloneRemote(reclone: boolean): Promise<OpResult> {

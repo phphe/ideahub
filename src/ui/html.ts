@@ -56,7 +56,7 @@ function renderScript(nonce: string): string {
       if (action === 'setRemote') {
         const urlInput = document.getElementById('remote-url');
         const confirmInput = document.getElementById('immutability-confirm');
-        setBusy('正在校验远程创意仓库…');
+        setBusy('步骤 1/2：正在校验远程创意仓库…');
         vscode.postMessage({
           type: 'setRemote',
           url: urlInput ? urlInput.value : '',
@@ -174,8 +174,8 @@ function renderIssueActions(
       return `<input type="text" id="remote-url" placeholder="https://github.com/owner/repo" />
         <label class="check"><input type="checkbox" id="immutability-confirm" />
         <span>我已确认仓库启用了 <code>Enable release immutability</code>。扩展会先通过 GitHub API 检测；只有无法读取（需要仓库 admin 读权限）时才以此手动确认为准。</span></label>
-        <p class="muted">远程创意仓库必须由你手动创建，且为公开仓库。</p>
-        <div class="actions"><button data-action="setRemote">保存并校验</button></div>`;
+        <p class="muted">远程创意仓库必须由你手动创建，且为公开仓库。校验通过后会自动克隆到 .ideahub/remote/；不会自动提交、推送或公开任何内容。</p>
+        <div class="actions"><button data-action="setRemote">保存、校验并克隆</button></div>`;
     case 'remote-dir':
       return `<div class="actions">
         <button data-action="clone">克隆远程仓库</button>
