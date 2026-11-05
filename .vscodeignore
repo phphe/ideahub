@@ -5,7 +5,7 @@ test/**
 node_modules/**
 out/**
 *.ts
-*.map
+**/*.map
 tsconfig.json
 eslint.config.mjs
 esbuild.mjs
@@ -13,3 +13,11 @@ vitest.config.ts
 requirement.md
 .screenshots/**
 *.vsix
+
+# Never package local secrets or package-manager metadata
+.env
+.env.*
+!.env.example
+.gitignore
+pnpm-lock.yaml
+pnpm-workspace.yaml
