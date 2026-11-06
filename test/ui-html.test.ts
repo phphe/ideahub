@@ -61,6 +61,7 @@ describe('renderMainHtml', () => {
     expect(empty).not.toContain('initNonEmpty');
 
     const nonEmpty = renderMainHtml({ kind: 'not-ideahub', root: 'C:/non-empty' });
+    expect(nonEmpty).toContain('<h1>创意仓库</h1>');
     expect(nonEmpty).toContain('<div class="title">未识别到创意仓库</div>');
     expect(nonEmpty).toContain('data-action="initNonEmpty"');
     expect(nonEmpty).toContain('>仍要初始化</button>');
@@ -213,6 +214,8 @@ describe('renderSettingsHtml', () => {
       '不可变性：</span><span id="settings-immutability">已启用 Release 不可变性'
     );
     expect(html).toContain('codicon codicon-arrow-left');
+    expect(html).toContain('title="返回创意仓库"');
+    expect(html).toContain('<title>创意仓库 - 设置</title>');
     expect(html).toContain('data.type === \'settingsInfo\'');
     expect(html).not.toContain('id="status"');
   });

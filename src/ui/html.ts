@@ -265,12 +265,12 @@ function renderMain(state: WorkspaceState): string {
   switch (state.kind) {
     case 'no-folder':
       return `
-        <h1>创意项目</h1>
+        <h1>创意仓库</h1>
         <div class="card"><p>您尚未打开任何文件夹。</p>
         <p class="muted">请先在 VS Code 中打开一个文件夹，再回到这里。</p></div>`;
     case 'empty-folder':
       return `
-        <h1>创意项目</h1>
+        <h1>创意仓库</h1>
         <div class="card">
           <p>当前文件夹为空，可以初始化本地创意仓库。</p>
           <p class="muted">初始化只会创建 Git 仓库、.ideahub 配置、pre-push hook 与 README，不会提交或推送任何内容。</p>
@@ -281,7 +281,7 @@ function renderMain(state: WorkspaceState): string {
         </div>`;
     case 'not-ideahub':
       return `
-        <h1>创意项目</h1>
+        <h1>创意仓库</h1>
         <div class="card warn">
           <div class="title">未识别到创意仓库</div>
           <p>当前文件夹不为空，但没有 .ideahub 目录，因此不会自动初始化，以免覆盖已有内容。</p>
@@ -293,7 +293,7 @@ function renderMain(state: WorkspaceState): string {
         </div>`;
     case 'error':
       return `
-        <h1>创意项目</h1>
+        <h1>创意仓库</h1>
         <div class="card error"><div class="title">检测失败</div><p>${escapeHtml(state.message)}</p>
         <div class="actions"><button class="secondary" data-action="refresh">重新检测</button></div></div>`;
     case 'local':
@@ -437,7 +437,7 @@ export function renderMainHtml(
   state: WorkspaceState,
   assets: WebviewAssets = DEFAULT_WEBVIEW_ASSETS
 ): string {
-  return renderDocument('创意项目', renderMain(state), assets);
+  return renderDocument('创意仓库', renderMain(state), assets);
 }
 
 function settingRow(label: string, value: string, id: string): string {
@@ -458,7 +458,7 @@ export function renderSettingsHtml(
     <div class="header">
       <h1>设置</h1>
       <div class="header-actions">
-        <button class="icon" data-action="closeSettings" title="返回创意项目">${icon(
+        <button class="icon" data-action="closeSettings" title="返回创意仓库">${icon(
           'arrow-left'
         )}</button>
       </div>
@@ -487,5 +487,5 @@ export function renderSettingsHtml(
     <div class="actions">
       <button class="secondary" data-action="closeSettings">返回</button>
     </div>`;
-  return renderDocument('创意项目 - 设置', body, assets);
+  return renderDocument('创意仓库 - 设置', body, assets);
 }

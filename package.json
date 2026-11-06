@@ -21,7 +21,7 @@
       "activitybar": [
         {
           "id": "ideahub",
-          "title": "创意项目",
+          "title": "创意仓库",
           "icon": "icon.svg"
         }
       ]
@@ -31,7 +31,7 @@
         {
           "type": "webview",
           "id": "ideahub.main",
-          "name": "创意项目"
+          "name": "创意仓库"
         }
       ]
     },
