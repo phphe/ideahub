@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   buildReleaseTag,
+  ensureReleaseTarget,
   parseLsRemoteRef,
   resolveReleaseTarget,
   validateBranchName,
@@ -107,19 +108,19 @@ describe('resolveReleaseTarget', () => {
     expect(target.lookupBranch).not.toHaveBeenCalled();
   });
 
-  it('rejects a release branch that does not exist on the remote', async () => {
+  it('reports a missing release branch so the caller can create it', async () => {
     const target = deps({
       lookup: {
         ok: false,
         missing: true,
-        error: 'release 分支不存在，请先推送：release。扩展不会自动推送。'
+        error: 'release 分支不存在：release。'
       }
     });
     const result = await resolveReleaseTarget(target, 'owner', 'repo', 'release');
 
     expect(result.ok).toBe(false);
     if (!result.ok) {
-      expect(result.error).toContain('release 分支不存在，请先推送');
+      expect(result.error).toContain('release 分支不存在');
     }
   });
 
@@ -151,5 +152,100 @@ describe('resolveReleaseTarget', () => {
       expect(result.target.sha).toBe('abc123');
       expect(result.target.defaultBranch).toBeNull();
     }
+  });
+});
+
+describe('ensureReleaseTarget', () => {
+  function deps(options: {
+    lookups: BranchLookup[];
+    create?: { ok: true } | { ok: false; error: string };
+    defaultBranch?: string | null;
+  }) {
+    let index = 0;
+    const getRepository = vi.fn(async () =>
+      options.defaultBranch === null
+        ? null
+        : { defaultBranch: options.defaultBranch ?? 'main' }
+    );
+    const lookupBranch = vi.fn(async () => options.lookups[Math.min(index++, options.lookups.length - 1)]);
+    const createBranch = vi.fn(
+      async (): Promise<{ ok: true } | { ok: false; error: string }> =>
+        options.create ?? { ok: true }
+    );
+    return { getRepository, lookupBranch, createBranch };
+  }
+
+  it('creates the missing branch, then reads its newest commit', async () => {
+    const target = deps({
+      lookups: [
+        { ok: false, missing: true, error: 'release 分支不存在：release。' },
+        { ok: true, sha: 'created-sha' }
+      ]
+    });
+
+    const result = await ensureReleaseTarget(target, 'owner', 'repo', 'release');
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.target).toEqual({
+        branch: 'release',
+        sha: 'created-sha',
+        defaultBranch: 'main'
+      });
+    }
+    expect(target.createBranch).toHaveBeenCalledWith('release');
+    expect(target.lookupBranch).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not create a branch when it already exists', async () => {
+    const target = deps({ lookups: [{ ok: true, sha: 'existing-sha' }] });
+
+    const result = await ensureReleaseTarget(target, 'owner', 'repo', 'release');
+
+    expect(result.ok).toBe(true);
+    expect(target.createBranch).not.toHaveBeenCalled();
+  });
+
+  it('aborts with a clear message when branch creation fails', async () => {
+    const target = deps({
+      lookups: [{ ok: false, missing: true, error: 'release 分支不存在：release。' }],
+      create: { ok: false, error: '认证失败' }
+    });
+
+    const result = await ensureReleaseTarget(target, 'owner', 'repo', 'release');
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error).toContain('自动创建失败');
+      expect(result.error).toContain('认证失败');
+    }
+    expect(target.lookupBranch).toHaveBeenCalledTimes(1);
+  });
+
+  it('aborts when the created branch cannot be read back', async () => {
+    const target = deps({
+      lookups: [
+        { ok: false, missing: true, error: 'missing' },
+        { ok: false, missing: false, error: 'ls-remote 失败' }
+      ]
+    });
+
+    const result = await ensureReleaseTarget(target, 'owner', 'repo', 'release');
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error).toContain('读取最新 commit 失败');
+    }
+  });
+
+  it('does not attempt creation when ls-remote itself fails', async () => {
+    const target = deps({
+      lookups: [{ ok: false, missing: false, error: 'ls-remote 失败' }]
+    });
+
+    const result = await ensureReleaseTarget(target, 'owner', 'repo', 'release');
+
+    expect(result.ok).toBe(false);
+    expect(target.createBranch).not.toHaveBeenCalled();
   });
 });

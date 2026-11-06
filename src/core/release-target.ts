@@ -180,7 +180,7 @@ export async function lookupRemoteBranch(
     return {
       ok: false,
       missing: true,
-      error: `release 分支不存在，请先推送：${branch}（${ref}）。扩展不会自动推送。`
+      error: `release 分支不存在：${branch}（${ref}）。`
     };
   }
   return { ok: true, sha };
@@ -234,4 +234,60 @@ export async function resolveReleaseTarget(
     ok: true,
     target: { branch, sha: lookup.sha, defaultBranch }
   };
+}
+
+export interface EnsureReleaseTargetDeps extends ReleaseTargetDeps {
+  /** Creates the missing release branch with only the `empty` file. */
+  createBranch(branch: string): Promise<{ ok: true } | { ok: false; error: string }>;
+}
+
+/**
+ * Section 5.5 / 8.9: when the release branch is missing, create it (and push
+ * only the `empty` file) and then read its latest commit. Any creation or
+ * lookup failure aborts before a Release request or a local marker is written.
+ */
+export async function ensureReleaseTarget(
+  deps: EnsureReleaseTargetDeps,
+  owner: string,
+  repo: string,
+  branch: string
+): Promise<ReleaseTargetResult> {
+  const branchError = validateBranchName(branch);
+  if (branchError) {
+    return { ok: false, error: branchError };
+  }
+
+  let defaultBranch: string | null = null;
+  try {
+    const repository = await deps.getRepository(owner, repo);
+    defaultBranch = repository?.defaultBranch.trim() || null;
+  } catch {
+    // The API lookup is only used for logging; ls-remote is authoritative.
+  }
+
+  let lookup = await deps.lookupBranch(branch);
+  if (lookup.ok) {
+    return { ok: true, target: { branch, sha: lookup.sha, defaultBranch } };
+  }
+  if (!lookup.missing) {
+    return { ok: false, error: lookup.error };
+  }
+
+  const created = await deps.createBranch(branch);
+  if (!created.ok) {
+    return {
+      ok: false,
+      error: `远程不存在 release 分支 ${branch}，自动创建失败：${created.error}`
+    };
+  }
+
+  lookup = await deps.lookupBranch(branch);
+  if (!lookup.ok) {
+    return {
+      ok: false,
+      error: `release 分支 ${branch} 已自动创建，但读取最新 commit 失败：${lookup.error}`
+    };
+  }
+
+  return { ok: true, target: { branch, sha: lookup.sha, defaultBranch } };
 }
