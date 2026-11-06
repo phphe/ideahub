@@ -1,7 +1,14 @@
 import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
-import { detectWorkspace, type ProjectRemoteStatus, type RemoteStatus, type WorkspaceState } from '../core/status';
+import {
+  detectWorkspace,
+  summarizeProject,
+  type ProjectSummary,
+  type ProjectRemoteStatus,
+  type RemoteStatus,
+  type WorkspaceState
+} from '../core/status';
 import { hasGitDirectory, initializeLocalRepository, ensureLocalGitRepository } from '../core/init';
 import { installPrePushHook } from '../core/hook';
 import { remoteRepoPath, writeConfig } from '../core/config';
@@ -38,7 +45,7 @@ import {
   type MarkerCommitResult
 } from '../core/marker-commit';
 import { formatMarkerTime } from '../core/proof-time';
-import { createProject as createProjectOnDisk, validateProjectName } from '../core/projects';
+import { createProject as createProjectOnDisk, validateProjectName, IDEAS_FILE } from '../core/projects';
 import {
   checkInnerRepositoryHead,
   commitAndPushInnerRepository,
@@ -123,6 +130,30 @@ export class IdeahubController {
     }
     this.currentState = state;
     return state;
+  }
+
+  /**
+   * Recomputes the badges of a single project after its ideas.md changed on
+   * disk, without rescanning the whole workspace. Returns null when the project
+   * is not part of the current state (the list structure must be refreshed).
+   */
+  public async summarizeProjectByName(name: string): Promise<ProjectSummary | null> {
+    const state = this.currentState;
+    if (state.kind !== 'local') {
+      return null;
+    }
+    const index = state.projects.findIndex((project) => project.name === name);
+    if (index < 0) {
+      return null;
+    }
+    try {
+      const text = await fs.readFile(path.join(state.root, name, IDEAS_FILE), 'utf8');
+      const summary = summarizeProject(name, text);
+      state.projects[index] = summary;
+      return summary;
+    } catch {
+      return null;
+    }
   }
 
   private async loadRemoteStatus(

@@ -93,6 +93,15 @@ describe('renderMainHtml project list', () => {
     }
   };
 
+  it('marks each project item and its badge row for in-place watcher updates', () => {
+    const html = renderMainHtml(state);
+    expect(html).toContain('<li class="project" data-project-item="MyGame">');
+    expect(html).toContain('<span class="project-badges" data-project-badges>');
+    expect(html).toContain('.project-badges { display: contents; }');
+    expect(html).toContain('data-project-item]');
+    expect(html).toContain("data.type === 'projectBadges'");
+  });
+
   it('renders a borderless project with name and badges on a wrapping row', () => {
     const html = renderMainHtml(state);
     expect(html).toContain('li.project {');

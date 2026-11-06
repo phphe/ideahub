@@ -1,14 +1,19 @@
+import * as path from 'node:path';
 import * as vscode from 'vscode';
 import type { WorkspaceState } from '../core/status';
 import { IdeahubController, type OpResult } from './controller';
 import {
   DEFAULT_WEBVIEW_ASSETS,
   renderMainHtml,
+  renderProjectBadges,
   renderSettingsHtml,
   type RemoteSettingsInfo,
   type WebviewAssets
 } from './html';
 import { isSilentSuccess, routeMessage, type RouteHandlers, type WebviewMessage } from './route';
+
+const WATCH_DEBOUNCE_MS = 500;
+const IGNORED_WATCH_SEGMENTS = new Set(['.git', '.ideahub', 'node_modules']);
 
 function describeError(error: unknown): string {
   if (error instanceof Error) {
@@ -17,7 +22,7 @@ function describeError(error: unknown): string {
   return String(error);
 }
 
-export class MainViewProvider implements vscode.WebviewViewProvider {
+export class MainViewProvider implements vscode.WebviewViewProvider, vscode.Disposable {
   public static readonly viewType = 'ideahub.main';
 
   private view?: vscode.WebviewView;
@@ -25,6 +30,11 @@ export class MainViewProvider implements vscode.WebviewViewProvider {
   /** Invalidates in-flight settings refreshes after leaving the settings view. */
   private settingsRequest = 0;
   private assets: WebviewAssets = DEFAULT_WEBVIEW_ASSETS;
+  /** Watches only ideas.md files, and only while the view is visible. */
+  private watcher?: vscode.FileSystemWatcher;
+  private watcherTimer?: ReturnType<typeof setTimeout>;
+  private pendingProjectChanges = new Set<string>();
+  private pendingStructureRefresh = false;
 
   constructor(
     private readonly controller: IdeahubController,
@@ -57,10 +67,132 @@ export class MainViewProvider implements vscode.WebviewViewProvider {
     webviewView.onDidChangeVisibility(() => {
       this.log(`visibility changed: ${webviewView.visible ? 'visible' : 'hidden'}`);
       if (webviewView.visible) {
+        this.startWatching();
         void this.refresh();
+      } else {
+        this.stopWatching();
       }
     });
+    if (webviewView.visible) {
+      this.startWatching();
+    }
     void this.refresh();
+  }
+
+  public dispose(): void {
+    this.stopWatching();
+  }
+
+  private startWatching(): void {
+    if (this.watcher) {
+      return;
+    }
+    const folder = vscode.workspace.workspaceFolders?.[0];
+    if (!folder) {
+      return;
+    }
+    // A single glob scoped to the workspace root; .git/, .ideahub/ and
+    // node_modules/ events are filtered out in projectNameFor below.
+    const watcher = vscode.workspace.createFileSystemWatcher(
+      new vscode.RelativePattern(folder.uri, '**/ideas.md')
+    );
+    watcher.onDidChange((uri) => this.queueProjectChange(uri));
+    watcher.onDidCreate((uri) => this.queueStructureRefresh(uri));
+    watcher.onDidDelete((uri) => this.queueStructureRefresh(uri));
+    this.watcher = watcher;
+    this.log('watcher: watching **/ideas.md while the view is visible');
+  }
+
+  private stopWatching(): void {
+    if (this.watcherTimer) {
+      clearTimeout(this.watcherTimer);
+      this.watcherTimer = undefined;
+    }
+    this.pendingProjectChanges.clear();
+    this.pendingStructureRefresh = false;
+    this.watcher?.dispose();
+    this.watcher = undefined;
+  }
+
+  private projectNameFor(uri: vscode.Uri): string | null {
+    const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    if (!root) {
+      return null;
+    }
+    const relative = path.relative(root, uri.fsPath);
+    if (!relative || path.isAbsolute(relative)) {
+      return null;
+    }
+    const segments = relative.split(/[\\/]/);
+    if (
+      segments.some(
+        (segment) => segment === '..' || IGNORED_WATCH_SEGMENTS.has(segment)
+      )
+    ) {
+      return null;
+    }
+    // Only <root>/<project>/ideas.md is a root-level project of this workspace.
+    if (segments.length !== 2 || segments[1] !== 'ideas.md') {
+      return null;
+    }
+    return segments[0];
+  }
+
+  private queueProjectChange(uri: vscode.Uri): void {
+    const project = this.projectNameFor(uri);
+    if (!project || !this.view?.visible) {
+      return;
+    }
+    this.pendingProjectChanges.add(project);
+    this.scheduleWatcherFlush();
+  }
+
+  private queueStructureRefresh(uri: vscode.Uri): void {
+    if (!this.projectNameFor(uri) || !this.view?.visible) {
+      return;
+    }
+    this.pendingStructureRefresh = true;
+    this.scheduleWatcherFlush();
+  }
+
+  private scheduleWatcherFlush(): void {
+    if (this.watcherTimer) {
+      clearTimeout(this.watcherTimer);
+    }
+    this.watcherTimer = setTimeout(() => {
+      this.watcherTimer = undefined;
+      void this.flushWatcherEvents();
+    }, WATCH_DEBOUNCE_MS);
+  }
+
+  private async flushWatcherEvents(): Promise<void> {
+    const structureChanged = this.pendingStructureRefresh;
+    const changedProjects = Array.from(this.pendingProjectChanges);
+    this.pendingStructureRefresh = false;
+    this.pendingProjectChanges.clear();
+    if (!this.view?.visible) {
+      return;
+    }
+    if (structureChanged) {
+      // Files added or removed: the project list itself changed.
+      await this.refresh();
+      return;
+    }
+    for (const project of changedProjects) {
+      const summary = await this.controller.summarizeProjectByName(project);
+      if (!summary) {
+        continue;
+      }
+      if (!this.view?.visible) {
+        return;
+      }
+      // Patch only this project's badges; the rest of the page stays as-is.
+      void this.view.webview.postMessage({
+        type: 'projectBadges',
+        project,
+        html: renderProjectBadges(summary)
+      });
+    }
   }
 
   public async refresh(): Promise<void> {

@@ -101,10 +101,28 @@ function renderScript(nonce: string): string {
       }
     }
 
+    // Patches the badge row of one project after its ideas.md changed on disk.
+    // Every other DOM node, the scroll position and the focus stay untouched.
+    function applyProjectBadges(project, badgesHtml) {
+      const items = document.querySelectorAll('[data-project-item]');
+      for (const item of items) {
+        if (item.dataset.projectItem !== project) { continue; }
+        const container = item.querySelector('[data-project-badges]');
+        if (container) {
+          container.innerHTML = badgesHtml;
+        }
+        return;
+      }
+    }
+
     window.addEventListener('message', function (event) {
       const data = event.data;
       if (data && data.type === 'resetBusy') {
         resetBusy();
+        return;
+      }
+      if (data && data.type === 'projectBadges' && data.project) {
+        applyProjectBadges(data.project, data.html || '');
         return;
       }
       if (data && data.type === 'settingsInfo' && data.info) {
@@ -218,6 +236,7 @@ const STYLES = `
     border: none;
   }
   .project-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+  .project-badges { display: contents; }
   .project-actions { display: flex; gap: 6px; flex-wrap: wrap; }
   .project-name { font-weight: 600; word-break: break-all; cursor: pointer; }
   .project-name:hover { text-decoration: underline; }
@@ -306,7 +325,7 @@ interface Badge {
   title?: string;
 }
 
-function renderBadges(project: ProjectSummary): string {
+export function renderProjectBadges(project: ProjectSummary): string {
   const badges: Badge[] = [
     { text: `${project.proofCount}个证明`, title: '已生成的证明数量' }
   ];
@@ -369,12 +388,12 @@ function renderLocal(
         </div>`
       : `<ul class="projects">${state.projects
           .map(
-            (project) => `<li class="project">
+            (project) => `<li class="project" data-project-item="${escapeHtml(project.name)}">
               <div class="project-head">
                 <div class="project-name" data-action="open" data-project="${escapeHtml(project.name)}">${escapeHtml(
                   project.name
                 )}</div>
-                ${renderBadges(project)}
+                <span class="project-badges" data-project-badges>${renderProjectBadges(project)}</span>
               </div>
               <div class="project-actions">
                 <button class="secondary" data-action="mark" data-project="${escapeHtml(

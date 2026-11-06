@@ -28,6 +28,22 @@ function makeButton(action: string, options: { icon?: string } = {}): FakeButton
 type ClickEvent = { target: { closest(selector: string): FakeButton | null } };
 type MessageEvent = { data: unknown };
 
+interface FakeProjectItem {
+  dataset: Record<string, string>;
+  container: { innerHTML: string };
+  querySelector(selector: string): { innerHTML: string } | null;
+}
+
+function makeProjectItem(name: string, badgeHtml: string): FakeProjectItem {
+  const container = { innerHTML: badgeHtml };
+  return {
+    dataset: { projectItem: name },
+    container,
+    querySelector: (selector: string) =>
+      selector === '[data-project-badges]' ? container : null
+  };
+}
+
 function scriptOf(html: string): string {
   const match = html.match(/<script nonce="[^"]+">([\s\S]*?)<\/script>/);
   if (!match) {
@@ -36,7 +52,10 @@ function scriptOf(html: string): string {
   return match[1];
 }
 
-function runWebview(buttons: FakeButton[]): {
+function runWebview(
+  buttons: FakeButton[],
+  projectItems: FakeProjectItem[] = []
+): {
   messages: unknown[];
   click(button: FakeButton): void;
   send(data: unknown): void;
@@ -47,10 +66,15 @@ function runWebview(buttons: FakeButton[]): {
 
   const documentStub = {
     activeElement: null,
-    querySelectorAll: (selector: string) =>
-      selector === 'button'
-        ? buttons
-        : buttons.filter((button) => button.dataset.busy === 'true'),
+    querySelectorAll: (selector: string) => {
+      if (selector === 'button') {
+        return buttons;
+      }
+      if (selector === '[data-project-item]') {
+        return projectItems;
+      }
+      return buttons.filter((button) => button.dataset.busy === 'true');
+    },
     getElementById: () => null,
     addEventListener: (type: string, callback: unknown) => {
       if (type === 'click') {
@@ -129,5 +153,20 @@ describe('webview busy reset', () => {
     harness.send({ type: 'resetBusy' });
     expect(init.disabled).toBe(false);
     expect(init.dataset.busy).toBeUndefined();
+  });
+
+  it('patches only the matching project badges', () => {
+    const game = makeProjectItem('MyGame', '<span class="badge">1个证明</span>');
+    const other = makeProjectItem('Other', '<span class="badge">2个证明</span>');
+    const harness = runWebview([], [game, other]);
+
+    harness.send({
+      type: 'projectBadges',
+      project: 'MyGame',
+      html: '<span class="badge">3个证明</span>'
+    });
+
+    expect(game.container.innerHTML).toBe('<span class="badge">3个证明</span>');
+    expect(other.container.innerHTML).toBe('<span class="badge">2个证明</span>');
   });
 });

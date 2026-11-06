@@ -12,6 +12,8 @@ export function activate(context: vscode.ExtensionContext): void {
 
   context.subscriptions.push(
     output,
+    // Disposing the provider stops the ideas.md watcher when the extension unloads.
+    provider,
     vscode.window.registerWebviewViewProvider(MainViewProvider.viewType, provider, {
       webviewOptions: { retainContextWhenHidden: false }
     }),
@@ -32,5 +34,5 @@ export function activate(context: vscode.ExtensionContext): void {
 }
 
 export function deactivate(): void {
-  // No global resources to dispose.
+  // The provider and watcher are released through context.subscriptions.
 }
