@@ -11,6 +11,7 @@ import {
 import { hasHeadCommit, isGitRepository, getRemoteOriginUrl } from './git';
 import { hasHookBlock, isHookTargetCurrent, readPrePushHook } from './hook';
 import { listProjects, IDEAS_FILE } from './projects';
+import { ProjectParseCache } from './project-cache';
 import { computeProofHash, parseIdeas } from './ideas';
 import { buildReleaseTag } from './release-target';
 import { parseRemoteUrl } from './remote-url';
@@ -31,6 +32,8 @@ export interface ProjectSummary {
   publishedCount: number;
   hasNewContent: boolean;
   canPublish: boolean;
+  /** `ideas.md` mtime, reused for the default list ordering. */
+  updatedAt?: number;
 }
 
 export function summarizeProject(name: string, text: string): ProjectSummary {
@@ -75,7 +78,10 @@ export type WorkspaceState =
       remoteStatus?: RemoteStatus;
     };
 
-export async function detectWorkspace(folder: string | null): Promise<WorkspaceState> {
+export async function detectWorkspace(
+  folder: string | null,
+  projectCache?: ProjectParseCache
+): Promise<WorkspaceState> {
   if (!folder) {
     return { kind: 'no-folder' };
   }
@@ -214,14 +220,23 @@ export async function detectWorkspace(folder: string | null): Promise<WorkspaceS
     }
   }
 
+  const summarize = async (name: string): Promise<ProjectSummary> => {
+    const file = path.join(folder, name, IDEAS_FILE);
+    if (projectCache) {
+      return projectCache.summarize(folder, name);
+    }
+    const stats = await fs.stat(file);
+    const text = await fs.readFile(file, 'utf8');
+    return { ...summarizeProject(name, text), updatedAt: stats.mtimeMs };
+  };
+
   let projects: ProjectSummary[] = [];
   try {
     const names = await listProjects(folder);
     projects = await Promise.all(
       names.map(async (name) => {
         try {
-          const text = await fs.readFile(path.join(folder, name, IDEAS_FILE), 'utf8');
-          return summarizeProject(name, text);
+          return await summarize(name);
         } catch {
           return {
             name,

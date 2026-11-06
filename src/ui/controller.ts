@@ -43,6 +43,7 @@ import {
   parseIdeas
 } from '../core/ideas';
 import { ProjectOperationGuard } from '../core/operation-guard';
+import { ProjectParseCache } from '../core/project-cache';
 import {
   commitMarkerLine,
   commitSingleFile,
@@ -53,7 +54,7 @@ import {
   type MarkerCommitResult
 } from '../core/marker-commit';
 import { formatMarkerTime } from '../core/proof-time';
-import { createProject as createProjectOnDisk, validateProjectName, IDEAS_FILE } from '../core/projects';
+import { createProject as createProjectOnDisk, validateProjectName } from '../core/projects';
 import {
   checkInnerRepositoryHead,
   commitAndPushInnerRepository,
@@ -120,6 +121,9 @@ export class IdeahubController {
   private readonly operationGuard = new ProjectOperationGuard();
   /** Last fully resolved settings snapshot, reused for instant rendering. */
   private remoteSettingsCache: RemoteSettingsInfo | null = null;
+  /** Section 8.7: parsed `ideas.md` summaries, scoped to the current repo root. */
+  private projectCache: ProjectParseCache | null = null;
+  private projectCacheRoot: string | null = null;
 
   constructor(private readonly output: vscode.OutputChannel) {}
 
@@ -131,8 +135,30 @@ export class IdeahubController {
     return vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? null;
   }
 
+  /**
+   * Parsing cache is bound to the current repository root, so switching
+   * workspaces never reuses summaries keyed to another root.
+   */
+  private cacheFor(root: string): ProjectParseCache {
+    if (!this.projectCache || this.projectCacheRoot !== root) {
+      this.projectCache = new ProjectParseCache(summarizeProject);
+      this.projectCacheRoot = root;
+    }
+    return this.projectCache;
+  }
+
+  /** Section 8.7: watcher change/delete drops the cached summary. */
+  public invalidateProject(project: string): void {
+    const root = this.workspaceRoot();
+    if (root) {
+      this.cacheFor(root).invalidate(root, project);
+    }
+  }
+
   public async refresh(): Promise<WorkspaceState> {
-    const state = await detectWorkspace(this.workspaceRoot());
+    const root = this.workspaceRoot();
+    const cache = root ? this.cacheFor(root) : undefined;
+    const state = await detectWorkspace(root, cache);
     if (state.kind === 'local' && state.remote) {
       state.remoteStatus = await this.loadRemoteStatus(state);
     }
@@ -155,8 +181,7 @@ export class IdeahubController {
       return null;
     }
     try {
-      const text = await fs.readFile(path.join(state.root, name, IDEAS_FILE), 'utf8');
-      const summary = summarizeProject(name, text);
+      const summary = await this.cacheFor(state.root).summarize(state.root, name);
       state.projects[index] = summary;
       return summary;
     } catch {
