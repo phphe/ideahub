@@ -25,7 +25,8 @@ function parseSummary(name: string, text: string): ProjectSummary {
     proofTags: [],
     publishedCount: 0,
     hasNewContent: false,
-    canPublish: false
+    canPublish: false,
+    tags: []
   };
 }
 

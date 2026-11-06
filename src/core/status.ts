@@ -13,6 +13,7 @@ import { hasHookBlock, isHookTargetCurrent, readPrePushHook } from './hook';
 import { listProjects, IDEAS_FILE } from './projects';
 import { ProjectParseCache } from './project-cache';
 import { computeProofHash, parseIdeas } from './ideas';
+import { parseTags } from './front-matter';
 import { buildReleaseTag } from './release-target';
 import { parseRemoteUrl } from './remote-url';
 
@@ -32,6 +33,8 @@ export interface ProjectSummary {
   publishedCount: number;
   hasNewContent: boolean;
   canPublish: boolean;
+  /** Section 6.9: `tags` from the optional YAML front matter. */
+  tags: string[];
   /** `ideas.md` mtime, reused for the default list ordering. */
   updatedAt?: number;
 }
@@ -47,7 +50,8 @@ export function summarizeProject(name: string, text: string): ProjectSummary {
     ),
     publishedCount: parsed.publishedMarkers.length,
     hasNewContent: parsed.hasUnsealedContent,
-    canPublish: parsed.canPublish
+    canPublish: parsed.canPublish,
+    tags: parseTags(text)
   };
 }
 
@@ -244,7 +248,8 @@ export async function detectWorkspace(
             proofTags: [],
             publishedCount: 0,
             hasNewContent: false,
-            canPublish: false
+            canPublish: false,
+            tags: []
           };
         }
       })

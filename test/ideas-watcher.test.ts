@@ -50,7 +50,8 @@ const PROJECT = {
   proofTags: [`ideahub-${'a'.repeat(64)}`],
   publishedCount: 0,
   hasNewContent: false,
-  canPublish: true
+  canPublish: true,
+  tags: []
 };
 
 const STATE: WorkspaceState = {
@@ -298,7 +299,8 @@ describe('ideas.md watcher', () => {
       flags: {
         hasNewContent: false,
         canPublish: true,
-        publishedCount: 0
+        publishedCount: 0,
+        tags: []
       }
     });
   });

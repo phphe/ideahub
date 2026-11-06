@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { findFrontMatter } from './front-matter';
 
 export type MarkerKind = 'proof' | 'published';
 
@@ -58,11 +59,18 @@ export function parseMarkerLine(line: string): ParsedMarker | null {
  */
 export function parseIdeas(text: string): ParsedIdeas {
   const lines = text.split(/\r?\n/);
+  // Section 6.9: tags live in the optional front matter and are metadata only.
+  // Skipping those lines keeps them out of the proof hash and out of the
+  // "new content" check, so editing tags can never invalidate a proof.
+  const frontMatter = findFrontMatter(text);
   const markers: ParsedMarker[] = [];
   let buffer: string[] = [];
   let intervalBuffer: string[] = [];
 
   for (let index = 0; index < lines.length; index += 1) {
+    if (frontMatter && index >= frontMatter.startLine && index <= frontMatter.endLine) {
+      continue;
+    }
     const marker = parseMarkerLine(lines[index]);
     if (marker) {
       markers.push({
