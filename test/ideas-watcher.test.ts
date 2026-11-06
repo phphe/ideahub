@@ -107,9 +107,11 @@ function createView(): {
     postMessage: ReturnType<typeof vi.fn>;
   };
   htmlSets: string[];
+  send(message: unknown): void;
   setVisible(visible: boolean): void;
 } {
   let visibilityCallback: (() => void) | undefined;
+  let messageCallback: ((message: unknown) => void) | undefined;
   let htmlValue = '';
   const htmlSets: string[] = [];
   const webview = {
@@ -118,7 +120,9 @@ function createView(): {
     asWebviewUri: (uri: { fsPath: string }) => ({
       toString: () => `vscode-resource:${uri.fsPath}`
     }),
-    onDidReceiveMessage: vi.fn(),
+    onDidReceiveMessage: (callback: (message: unknown) => void) => {
+      messageCallback = callback;
+    },
     postMessage: vi.fn(async () => true)
   };
   Object.defineProperty(webview, 'html', {
@@ -142,6 +146,9 @@ function createView(): {
       postMessage: ReturnType<typeof vi.fn>;
     },
     htmlSets,
+    send(message: unknown) {
+      messageCallback?.(message);
+    },
     setVisible(visible: boolean) {
       view.visible = visible;
       visibilityCallback?.();
@@ -153,15 +160,61 @@ function outputChannel(): vscode.OutputChannel {
   return { appendLine: vi.fn() } as unknown as vscode.OutputChannel;
 }
 
+describe('busy icon reset', () => {
+  it('posts resetBusy as soon as a successful createProject settles', async () => {
+    const controller = controllerStub();
+    const created = await mount(controller);
+
+    created.send({ type: 'createProject' });
+    await vi.waitFor(() => expect(mocks.showInformationMessage).toHaveBeenCalled());
+
+    expect(created.webview.postMessage).toHaveBeenCalledWith({ type: 'resetBusy' });
+    expect(controller.refresh).toHaveBeenCalled();
+  });
+
+  it('posts resetBusy after a refresh command settles', async () => {
+    const controller = controllerStub();
+    const created = await mount(controller);
+    created.webview.postMessage.mockClear();
+
+    created.send({ type: 'refresh' });
+    await vi.waitFor(() =>
+      expect(created.webview.postMessage).toHaveBeenCalledWith({ type: 'resetBusy' })
+    );
+  });
+
+  it('posts resetBusy before waiting for the refresh to finish', async () => {
+    const controller = controllerStub();
+    const created = await mount(controller);
+    let releaseRefresh: (() => void) | undefined;
+    controller.refresh.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          releaseRefresh = () => resolve(STATE);
+        })
+    );
+    created.webview.postMessage.mockClear();
+
+    created.send({ type: 'createProject' });
+    await vi.waitFor(() =>
+      expect(created.webview.postMessage).toHaveBeenCalledWith({ type: 'resetBusy' })
+    );
+
+    releaseRefresh?.();
+  });
+});
+
 function controllerStub(): {
   currentState: WorkspaceState;
   refresh: ReturnType<typeof vi.fn>;
   summarizeProjectByName: ReturnType<typeof vi.fn>;
+  createProject: ReturnType<typeof vi.fn>;
 } {
   return {
     currentState: STATE,
     refresh: vi.fn(async () => STATE),
-    summarizeProjectByName: vi.fn(async () => ({ ...PROJECT, proofCount: 3 }))
+    summarizeProjectByName: vi.fn(async () => ({ ...PROJECT, proofCount: 3 })),
+    createProject: vi.fn(async () => ({ ok: true, message: '项目已创建。' }))
   };
 }
 

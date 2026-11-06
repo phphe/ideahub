@@ -316,10 +316,23 @@ export class MainViewProvider implements vscode.WebviewViewProvider, vscode.Disp
       return;
     }
     if (route.kind === 'command') {
-      await route.run();
+      try {
+        await route.run();
+      } finally {
+        this.resetBusy();
+      }
       return;
     }
     await this.runOperation(route.name, route.run);
+  }
+
+  /**
+   * Stops the clicked icon's loading state in place. Called as soon as an
+   * operation or refresh settles, before notifications and re-rendering, so
+   * the icon never keeps spinning while the page is being refreshed.
+   */
+  private resetBusy(): void {
+    void this.view?.webview.postMessage({ type: 'resetBusy' });
   }
 
   private async runOperation(name: string, operation: () => Promise<OpResult>): Promise<void> {
@@ -337,10 +350,12 @@ export class MainViewProvider implements vscode.WebviewViewProvider, vscode.Disp
       result = { ok: false, message: `操作失败：${reason}` };
     }
     this.log(`action finished: ${name} -> ${result.ok ? 'ok' : 'error'}: ${result.message}`);
+    // Reset before any notification or refresh so the icon stops immediately
+    // on every path: success, failure and silent cancellation.
+    this.resetBusy();
     if (result.silent) {
-      // Cancelled by the user: reset only the busy state in place. Re-rendering
-      // the page would lose the scroll position and input focus.
-      void this.view?.webview.postMessage({ type: 'resetBusy' });
+      // Cancelled by the user: the page itself must stay untouched, otherwise
+      // the scroll position and input focus would be lost.
       return;
     }
     if (!result.ok) {
