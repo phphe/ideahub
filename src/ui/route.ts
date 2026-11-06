@@ -11,6 +11,7 @@ export interface WebviewMessage {
 export interface RouteHandlers {
   refresh(): Promise<void>;
   initialize(): Promise<OpResult>;
+  initializeNonEmpty(): Promise<OpResult>;
   initGit(): Promise<OpResult>;
   installHook(): Promise<OpResult>;
   createProject(): Promise<OpResult>;
@@ -36,6 +37,12 @@ export function routeMessage(message: WebviewMessage, handlers: RouteHandlers): 
       return { kind: 'command', name: 'refresh', run: () => handlers.refresh() };
     case 'init':
       return { kind: 'operation', name: 'init', run: () => handlers.initialize() };
+    case 'initNonEmpty':
+      return {
+        kind: 'operation',
+        name: 'initNonEmpty',
+        run: () => handlers.initializeNonEmpty()
+      };
     case 'initGit':
       return { kind: 'operation', name: 'initGit', run: () => handlers.initGit() };
     case 'installHook':

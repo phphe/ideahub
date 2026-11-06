@@ -8,6 +8,7 @@ function createHandlers(): RouteHandlers {
   return {
     refresh: vi.fn(async (): Promise<void> => {}),
     initialize: vi.fn(ok),
+    initializeNonEmpty: vi.fn(ok),
     initGit: vi.fn(ok),
     installHook: vi.fn(ok),
     createProject: vi.fn(ok),
@@ -35,6 +36,20 @@ describe('routeMessage', () => {
     expect(handlers.initialize).toHaveBeenCalledTimes(1);
     expect(handlers.initGit).not.toHaveBeenCalled();
     expect(handlers.installHook).not.toHaveBeenCalled();
+  });
+
+  it('routes initNonEmpty separately from the empty-folder init handler', async () => {
+    const handlers = createHandlers();
+    const route = routeMessage({ type: 'initNonEmpty' }, handlers);
+
+    expect(route.kind).toBe('operation');
+    if (route.kind !== 'operation') {
+      throw new Error('expected initNonEmpty to be routed as an operation');
+    }
+    expect(route.name).toBe('initNonEmpty');
+    await route.run();
+    expect(handlers.initializeNonEmpty).toHaveBeenCalledTimes(1);
+    expect(handlers.initialize).not.toHaveBeenCalled();
   });
 
   it('passes the remote url and immutability confirmation to setRemote', async () => {

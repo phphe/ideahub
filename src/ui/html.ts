@@ -264,8 +264,11 @@ function renderMain(state: WorkspaceState): string {
         <div class="card warn">
           <div class="title">未识别到创意仓库</div>
           <p>当前文件夹不为空，但没有 .ideahub 目录，因此不会自动初始化，以免覆盖已有内容。</p>
-          <p class="muted">如果你确定要从头开始，请换一个空文件夹。</p>
-          <div class="actions"><button class="secondary" data-action="refresh">重新检测</button></div>
+          <p class="muted">如果你确定要从头开始，请换一个空文件夹；也可以点击「仍要初始化」在当前文件夹补齐所需结构，已存在的文件不会被覆盖。</p>
+          <div class="actions">
+            <button class="secondary" data-action="initNonEmpty">仍要初始化</button>
+            <button class="secondary" data-action="refresh">重新检测</button>
+          </div>
         </div>`;
     case 'error':
       return `

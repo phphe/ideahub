@@ -166,6 +166,7 @@ export class MainViewProvider implements vscode.WebviewViewProvider {
         await this.refresh();
       },
       initialize: () => this.controller.initialize(),
+      initializeNonEmpty: () => this.controller.initialize(true),
       initGit: () => this.controller.initGit(),
       installHook: () => this.controller.installHook(),
       createProject: () => this.controller.createProject(),

@@ -1,6 +1,12 @@
 import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
-import { configGitignorePath, describeError, ideahubDir, writeConfig } from './config';
+import {
+  configGitignorePath,
+  configPath,
+  describeError,
+  ideahubDir,
+  writeConfig
+} from './config';
 import { initGitRepository } from './git';
 import { installPrePushHook } from './hook';
 
@@ -27,17 +33,34 @@ const README_CONTENT = `# 创意仓库
 `;
 
 export type InitResult =
-  | { ok: true }
+  | { ok: true; notes: string[] }
   | { ok: false; error: string; completedSteps: string[] };
 
-export async function initializeLocalRepository(root: string): Promise<InitResult> {
+export interface InitializeOptions {
+  /** Explicit user opt-in for a non-empty folder; never overwrites existing files. */
+  allowNonEmpty?: boolean;
+}
+
+async function exists(target: string): Promise<boolean> {
+  try {
+    await fs.access(target);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function initializeLocalRepository(
+  root: string,
+  options: InitializeOptions = {}
+): Promise<InitResult> {
   let entries;
   try {
     entries = await fs.readdir(root);
   } catch (error) {
     return { ok: false, error: `无法读取当前文件夹：${describeError(error)}`, completedSteps: [] };
   }
-  if (entries.length > 0) {
+  if (entries.length > 0 && !options.allowNonEmpty) {
     return {
       ok: false,
       error: '当前文件夹不是空文件夹，为避免覆盖用户数据，已停止初始化。',
@@ -46,27 +69,42 @@ export async function initializeLocalRepository(root: string): Promise<InitResul
   }
 
   const completed: string[] = [];
+  const notes: string[] = [];
   try {
-    const gitResult = await initGitRepository(root);
-    if (gitResult.code !== 0) {
-      return {
-        ok: false,
-        error: `git init 失败：${gitResult.stderr.trim() || gitResult.stdout.trim()}`,
-        completedSteps: completed
-      };
+    if (await exists(path.join(root, '.git'))) {
+      completed.push('复用现有 Git 仓库');
+      notes.push('检测到已存在的 .git/，已按现有 Git 仓库处理，未重复执行 git init。');
+    } else {
+      const gitResult = await initGitRepository(root);
+      if (gitResult.code !== 0) {
+        return {
+          ok: false,
+          error: `git init 失败：${gitResult.stderr.trim() || gitResult.stdout.trim()}`,
+          completedSteps: completed
+        };
+      }
+      completed.push('初始化 Git 仓库');
     }
-    completed.push('初始化 Git 仓库');
 
     await fs.mkdir(ideahubDir(root), { recursive: true });
-    await fs.writeFile(
-      configGitignorePath(root),
-      '# Ignore the cloned public idea repository\nremote/\n',
-      'utf8'
-    );
-    completed.push('创建 .ideahub/.gitignore');
 
-    await writeConfig(root, { version: 1 });
-    completed.push('创建 .ideahub/config.json');
+    if (await exists(configGitignorePath(root))) {
+      completed.push('复用 .ideahub/.gitignore');
+    } else {
+      await fs.writeFile(
+        configGitignorePath(root),
+        '# Ignore the cloned public idea repository\nremote/\n',
+        'utf8'
+      );
+      completed.push('创建 .ideahub/.gitignore');
+    }
+
+    if (await exists(configPath(root))) {
+      completed.push('复用 .ideahub/config.json');
+    } else {
+      await writeConfig(root, { version: 1 });
+      completed.push('创建 .ideahub/config.json');
+    }
 
     const hookResult = await installPrePushHook(root, null);
     if (!hookResult.ok) {
@@ -74,10 +112,15 @@ export async function initializeLocalRepository(root: string): Promise<InitResul
     }
     completed.push('安装 pre-push hook');
 
-    await fs.writeFile(path.join(root, 'README.md'), README_CONTENT, 'utf8');
-    completed.push('创建 README.md');
+    if (await exists(path.join(root, 'README.md'))) {
+      notes.push('README.md 已存在，已跳过写入。');
+      completed.push('跳过 README.md');
+    } else {
+      await fs.writeFile(path.join(root, 'README.md'), README_CONTENT, 'utf8');
+      completed.push('创建 README.md');
+    }
 
-    return { ok: true };
+    return { ok: true, notes };
   } catch (error) {
     return {
       ok: false,

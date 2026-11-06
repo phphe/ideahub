@@ -175,17 +175,32 @@ export class IdeahubController {
     return this.currentState.kind === 'local' ? this.currentState.root : null;
   }
 
-  public async initialize(): Promise<OpResult> {
+  public async initialize(allowNonEmpty = false): Promise<OpResult> {
     const state = this.currentState;
-    if (state.kind !== 'empty-folder') {
+    if (allowNonEmpty) {
+      if (state.kind !== 'not-ideahub') {
+        return { ok: false, message: '当前状态不允许初始化。' };
+      }
+      const choice = await vscode.window.showWarningMessage(
+        '当前文件夹不为空。仍要在这里初始化创意仓库吗？\n将在现有文件夹中创建 .git/、.ideahub/ 与 README.md，且不会覆盖任何已存在的文件。',
+        { modal: true },
+        '仍要初始化'
+      );
+      if (choice !== '仍要初始化') {
+        return { ok: false, message: '', silent: true };
+      }
+    } else if (state.kind !== 'empty-folder') {
       return { ok: false, message: '当前状态不允许初始化。' };
     }
     const result = await vscode.window.withProgress(
       { location: vscode.ProgressLocation.Notification, title: '正在初始化本地创意仓库…' },
-      () => initializeLocalRepository(state.root)
+      () => initializeLocalRepository(state.root, { allowNonEmpty })
     );
     if (result.ok) {
-      return { ok: true, message: '本地创意仓库已初始化。' };
+      return {
+        ok: true,
+        message: ['本地创意仓库已初始化。', ...result.notes].join('\n')
+      };
     }
     const steps = result.completedSteps.length
       ? `\n已完成的步骤：${result.completedSteps.join('、')}`

@@ -55,6 +55,17 @@ describe('renderMainHtml', () => {
     expect(html).toContain("font-src vscode-resource:;");
     expect(html).toContain("style-src vscode-resource: 'unsafe-inline';");
   });
+
+  it('offers an explicit init entry only for a non-empty unrecognised folder', () => {
+    const empty = renderMainHtml({ kind: 'empty-folder', root: 'C:/empty' });
+    expect(empty).not.toContain('initNonEmpty');
+
+    const nonEmpty = renderMainHtml({ kind: 'not-ideahub', root: 'C:/non-empty' });
+    expect(nonEmpty).toContain('<div class="title">未识别到创意仓库</div>');
+    expect(nonEmpty).toContain('data-action="initNonEmpty"');
+    expect(nonEmpty).toContain('>仍要初始化</button>');
+    expect(nonEmpty).toContain('已存在的文件不会被覆盖');
+  });
 });
 
 describe('renderMainHtml project list', () => {
