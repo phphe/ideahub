@@ -208,12 +208,14 @@ function controllerStub(): {
   currentState: WorkspaceState;
   refresh: ReturnType<typeof vi.fn>;
   summarizeProjectByName: ReturnType<typeof vi.fn>;
+  invalidateProject: ReturnType<typeof vi.fn>;
   createProject: ReturnType<typeof vi.fn>;
 } {
   return {
     currentState: STATE,
     refresh: vi.fn(async () => STATE),
     summarizeProjectByName: vi.fn(async () => ({ ...PROJECT, proofCount: 3 })),
+    invalidateProject: vi.fn(),
     createProject: vi.fn(async () => ({ ok: true, message: '项目已创建。' }))
   };
 }
@@ -292,8 +294,26 @@ describe('ideas.md watcher', () => {
     expect(created.webview.postMessage).toHaveBeenCalledWith({
       type: 'projectBadges',
       project: 'MyGame',
-      html: expect.stringContaining('3个证明')
+      html: expect.stringContaining('3个证明'),
+      flags: {
+        hasNewContent: false,
+        canPublish: true,
+        publishedCount: 0
+      }
     });
+  });
+
+  it('drops the parsed cache entry on change and delete', async () => {
+    const controller = controllerStub();
+    await mount(controller);
+    const watcher = watchers[0];
+
+    watcher.change('C:/repo/MyGame/ideas.md');
+    watcher.remove('C:/repo/MyGame/ideas.md');
+    await afterDebounce();
+
+    expect(controller.invalidateProject).toHaveBeenCalledTimes(2);
+    expect(controller.invalidateProject).toHaveBeenCalledWith('MyGame');
   });
 
   it('refreshes the whole list once on a debounced create or delete', async () => {

@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import type { WorkspaceState } from '../src/core/status';
-import { renderMainHtml, renderSettingsHtml, type RemoteSettingsInfo } from '../src/ui/html';
+import type { WorkspaceState, ProjectSummary } from '../src/core/status';
+import {
+  PROJECT_FILTER_THRESHOLD,
+  renderMainHtml,
+  renderSettingsHtml,
+  sortProjects,
+  type RemoteSettingsInfo
+} from '../src/ui/html';
 
 describe('renderMainHtml', () => {
   it('includes the message script for every workspace state', () => {
@@ -95,7 +101,7 @@ describe('renderMainHtml project list', () => {
 
   it('marks each project item and its badge row for in-place watcher updates', () => {
     const html = renderMainHtml(state);
-    expect(html).toContain('<li class="project" data-project-item="MyGame">');
+    expect(html).toContain('<li class="project" data-project-item="MyGame" data-has-new="');
     expect(html).toContain('<span class="project-badges" data-project-badges>');
     expect(html).toContain('.project-badges { display: contents; }');
     expect(html).toContain('data-project-item]');
@@ -118,7 +124,7 @@ describe('renderMainHtml project list', () => {
     expect(html).toContain('title="已发布的次数">发布3次</span>');
     expect(html).toContain('title="已证明的内容可以发布">可发布</span>');
     expect(html).not.toContain('最近证明');
-    expect(html).not.toContain('未发布');
+    expect(html).not.toContain('未发布</span>');
     expect(html).not.toContain('远程状态不可用');
   });
 
@@ -194,6 +200,151 @@ describe('renderMainHtml project list', () => {
     // The old info line under the title is gone.
     expect(html).not.toContain('<p class="muted">C:/repo</p>');
     expect(html).not.toContain('<p class="muted">远程创意仓库');
+  });
+});
+
+describe('project ordering, filter and status chips', () => {
+  function project(
+    name: string,
+    options: Partial<ProjectSummary> = {}
+  ): ProjectSummary {
+    return {
+      name,
+      proofCount: 1,
+      proofTags: [],
+      publishedCount: 0,
+      hasNewContent: false,
+      canPublish: false,
+      ...options
+    };
+  }
+
+  function localState(projects: ProjectSummary[]): WorkspaceState {
+    return {
+      kind: 'local',
+      root: 'C:/repo',
+      remote: null,
+      configError: null,
+      remoteDirExists: false,
+      issues: [],
+      projects
+    };
+  }
+
+  it('orders pending work first, then publishable, then by recency and name', () => {
+    const projects = [
+      project('zeta', { updatedAt: 500 }),
+      project('alpha', { updatedAt: 100 }),
+      project('beta', { updatedAt: 300 }),
+      project('publishable', { canPublish: true, updatedAt: 1 }),
+      project('pending', { hasNewContent: true, updatedAt: 2 })
+    ];
+
+    const sorted = sortProjects(projects).map((entry) => entry.name);
+    expect(sorted).toEqual(['pending', 'publishable', 'zeta', 'beta', 'alpha']);
+    // The input array is never mutated, and the order is deterministic.
+    expect(projects.map((entry) => entry.name)).toEqual([
+      'zeta',
+      'alpha',
+      'beta',
+      'publishable',
+      'pending'
+    ]);
+    expect(sortProjects(projects).map((entry) => entry.name)).toEqual(sorted);
+  });
+
+  it('breaks the recency tie with a case-insensitive name order', () => {
+    const sorted = sortProjects([
+      project('Bravo', { updatedAt: 100 }),
+      project('alpha', { updatedAt: 100 })
+    ]).map((entry) => entry.name);
+    expect(sorted).toEqual(['alpha', 'Bravo']);
+  });
+
+  it('does not render the filter input for 10 or fewer projects', () => {
+    const projects = Array.from({ length: PROJECT_FILTER_THRESHOLD }, (_value, index) =>
+      project(`Game${index}`)
+    );
+    const html = renderMainHtml(localState(projects));
+
+    expect(html).not.toContain('id="project-filter"');
+    expect(html).not.toContain('没有匹配的项目');
+    expect(html).toContain('data-chip="all"');
+  });
+
+  it('renders the filter input above the list for more than 10 projects', () => {
+    const projects = Array.from({ length: PROJECT_FILTER_THRESHOLD + 1 }, (_value, index) =>
+      project(`Game${index}`)
+    );
+    const html = renderMainHtml(localState(projects));
+
+    expect(html).toContain('id="project-filter"');
+    expect(html).toContain('没有匹配的项目');
+    expect(html.indexOf('id="project-filter"')).toBeLessThan(
+      html.indexOf('<ul class="projects">')
+    );
+  });
+
+  it('shows chip counts from the in-memory state and dims zero counts', () => {
+    const html = renderMainHtml(
+      localState([
+        project('fresh', { hasNewContent: true }),
+        project('ready', { canPublish: true }),
+        project('published', { publishedCount: 2 })
+      ])
+    );
+
+    expect(html).toContain('data-chip="all" aria-pressed="true">全部 3</button>');
+    expect(html).toContain('data-chip="new" aria-pressed="false">有新内容 1</button>');
+    expect(html).toContain('data-chip="publishable" aria-pressed="false">可发布 1</button>');
+    expect(html).toContain('data-chip="unpublished" aria-pressed="false">未发布 2</button>');
+  });
+
+  it('keeps zero-count chips visible but dims them', () => {
+    const html = renderMainHtml(
+      localState([project('published', { publishedCount: 2 })])
+    );
+
+    expect(html).toContain('class="chip is-empty" data-chip="new" aria-pressed="false">有新内容 0</button>');
+    expect(html).toContain(
+      'class="chip is-empty" data-chip="publishable" aria-pressed="false">可发布 0</button>'
+    );
+    expect(html).toContain(
+      'class="chip is-empty" data-chip="unpublished" aria-pressed="false">未发布 0</button>'
+    );
+  });
+
+  it('exposes the status flags used by the chip filter on each project item', () => {
+    const html = renderMainHtml(
+      localState([
+        project('fresh', { hasNewContent: true }),
+        project('published', { publishedCount: 4 })
+      ])
+    );
+
+    expect(html).toContain(
+      'data-project-item="fresh" data-has-new="true" data-can-publish="false" data-published="false"'
+    );
+    expect(html).toContain(
+      'data-project-item="published" data-has-new="false" data-can-publish="false" data-published="true"'
+    );
+  });
+
+  it('renders projects in the sorted order', () => {
+    const html = renderMainHtml(
+      localState([
+        project('old', { updatedAt: 100 }),
+        project('pending', { hasNewContent: true }),
+        project('new', { updatedAt: 900 })
+      ])
+    );
+
+    expect(html.indexOf('data-project-item="pending"')).toBeLessThan(
+      html.indexOf('data-project-item="new"')
+    );
+    expect(html.indexOf('data-project-item="new"')).toBeLessThan(
+      html.indexOf('data-project-item="old"')
+    );
   });
 });
 

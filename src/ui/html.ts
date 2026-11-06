@@ -70,6 +70,102 @@ function renderScript(nonce: string): string {
       });
     }
 
+    // Section 8.7: project filter and status chips. Everything below is pure
+    // DOM work; it never posts a message, rereads the disk or rewrites the page.
+    const storedUi = (vscode.getState && vscode.getState()) || {};
+    let filterQuery = typeof storedUi.filterQuery === 'string' ? storedUi.filterQuery : '';
+    let activeChip = typeof storedUi.filterChip === 'string' ? storedUi.filterChip : 'all';
+
+    function rememberFilterState() {
+      if (vscode.setState) {
+        vscode.setState({ filterQuery: filterQuery, filterChip: activeChip });
+      }
+    }
+
+    // Case-insensitive substring match; whitespace splits terms and every term
+    // must hit (AND).
+    function matchesQuery(name, query) {
+      const tokens = query.toLowerCase().split(/\\s+/).filter(function (token) {
+        return token.length > 0;
+      });
+      if (tokens.length === 0) { return true; }
+      const lower = name.toLowerCase();
+      return tokens.every(function (token) { return lower.indexOf(token) !== -1; });
+    }
+
+    function matchesChip(item) {
+      if (activeChip === 'new') { return item.dataset.hasNew === 'true'; }
+      if (activeChip === 'publishable') { return item.dataset.canPublish === 'true'; }
+      if (activeChip === 'unpublished') { return item.dataset.published !== 'true'; }
+      return true;
+    }
+
+    function applyProjectFilters() {
+      // The input only exists when there are more than 10 projects; without it
+      // a stale query must not hide anything.
+      const input = document.getElementById('project-filter');
+      const query = input ? filterQuery : '';
+      const items = document.querySelectorAll('[data-project-item]');
+      let visible = 0;
+      for (const item of items) {
+        const show =
+          matchesQuery(item.dataset.projectItem || '', query) && matchesChip(item);
+        item.hidden = !show;
+        if (show) { visible += 1; }
+      }
+      const emptyHint = document.getElementById('project-filter-empty');
+      if (emptyHint) { emptyHint.hidden = visible > 0 || items.length === 0; }
+    }
+
+    function applyChipSelection() {
+      const chips = document.querySelectorAll('[data-chip]');
+      for (const chip of chips) {
+        const on = chip.dataset.chip === activeChip;
+        chip.classList.toggle('active', on);
+        if (chip.setAttribute) {
+          chip.setAttribute('aria-pressed', on ? 'true' : 'false');
+        }
+      }
+    }
+
+    function setActiveChip(chip) {
+      activeChip = chip;
+      applyChipSelection();
+      rememberFilterState();
+      applyProjectFilters();
+    }
+
+    document.addEventListener('input', function (event) {
+      if (!event.target || event.target.id !== 'project-filter') { return; }
+      filterQuery = event.target.value || '';
+      rememberFilterState();
+      applyProjectFilters();
+    });
+
+    document.addEventListener('keydown', function (event) {
+      const input = document.getElementById('project-filter');
+      if (!input) { return; }
+      const target = event.target;
+      const editable =
+        !!target &&
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.isContentEditable === true ||
+          target.id === 'project-filter');
+      if (event.key === '/' && !editable && !event.ctrlKey && !event.metaKey && !event.altKey) {
+        event.preventDefault();
+        input.focus();
+        return;
+      }
+      if (event.key === 'Escape' && target === input) {
+        input.value = '';
+        filterQuery = '';
+        rememberFilterState();
+        applyProjectFilters();
+        input.blur();
+      }
+    });
+
     window.addEventListener('error', function (event) {
       vscode.postMessage({
         type: 'uiError',
@@ -107,16 +203,24 @@ function renderScript(nonce: string): string {
 
     // Patches the badge row of one project after its ideas.md changed on disk.
     // Every other DOM node, the scroll position and the focus stay untouched.
-    function applyProjectBadges(project, badgesHtml) {
+    // Status flags refresh too, so chips keep filtering correctly.
+    function applyProjectBadges(project, badgesHtml, flags) {
+      let item = null;
       const items = document.querySelectorAll('[data-project-item]');
-      for (const item of items) {
-        if (item.dataset.projectItem !== project) { continue; }
-        const container = item.querySelector('[data-project-badges]');
-        if (container) {
-          container.innerHTML = badgesHtml;
-        }
-        return;
+      for (const entry of items) {
+        if (entry.dataset.projectItem === project) { item = entry; break; }
       }
+      if (!item) { return; }
+      const container = item.querySelector('[data-project-badges]');
+      if (container) {
+        container.innerHTML = badgesHtml;
+      }
+      if (flags) {
+        item.dataset.hasNew = flags.hasNewContent ? 'true' : 'false';
+        item.dataset.canPublish = flags.canPublish ? 'true' : 'false';
+        item.dataset.published = flags.publishedCount > 0 ? 'true' : 'false';
+      }
+      applyProjectFilters();
     }
 
     window.addEventListener('message', function (event) {
@@ -126,7 +230,7 @@ function renderScript(nonce: string): string {
         return;
       }
       if (data && data.type === 'projectBadges' && data.project) {
-        applyProjectBadges(data.project, data.html || '');
+        applyProjectBadges(data.project, data.html || '', data.flags);
         return;
       }
       if (data && data.type === 'settingsInfo' && data.info) {
@@ -135,6 +239,11 @@ function renderScript(nonce: string): string {
     });
 
     document.addEventListener('click', function (event) {
+      const chip = event.target.closest ? event.target.closest('[data-chip]') : null;
+      if (chip && chip.dataset.chip) {
+        setActiveChip(chip.dataset.chip);
+        return;
+      }
       const target = event.target.closest('[data-action]');
       if (!target || !target.dataset.action) { return; }
       const action = target.dataset.action;
@@ -158,6 +267,17 @@ function renderScript(nonce: string): string {
       lockButtons(target);
       vscode.postMessage({ type: action, project: target.dataset.project });
     });
+
+    // Restore the persisted filter/chip selection after a full re-render.
+    const initialFilter = document.getElementById('project-filter');
+    if (initialFilter) {
+      initialFilter.value = filterQuery;
+    } else {
+      filterQuery = '';
+      rememberFilterState();
+    }
+    applyChipSelection();
+    applyProjectFilters();
   </script>`;
 }
 
@@ -246,6 +366,23 @@ const STYLES = `
   .project-actions { display: flex; gap: 6px; flex-wrap: wrap; }
   .project-name { font-weight: 600; word-break: break-all; cursor: pointer; }
   .project-name:hover { text-decoration: underline; }
+  li.project[hidden] { display: none !important; }
+  .project-filters { display: flex; flex-direction: column; gap: 6px; margin: 4px 0 8px; }
+  .project-chips { display: flex; flex-wrap: wrap; gap: 4px; }
+  button.chip {
+    font-size: 11px;
+    padding: 2px 9px;
+    border-radius: 10px;
+    background: var(--vscode-button-secondaryBackground);
+    color: var(--vscode-button-secondaryForeground);
+  }
+  button.chip:hover { background: var(--vscode-button-secondaryHoverBackground); }
+  button.chip.active {
+    background: var(--vscode-button-background);
+    color: var(--vscode-button-foreground);
+  }
+  button.chip.is-empty { opacity: 0.55; }
+  .project-filter-empty { margin: 0; }
   .badge {
     font-size: 11px;
     border-radius: 10px;
@@ -354,6 +491,76 @@ export function renderProjectBadges(project: ProjectSummary): string {
     .join('');
 }
 
+export const PROJECT_FILTER_THRESHOLD = 10;
+
+function sortTier(project: ProjectSummary): number {
+  if (project.hasNewContent) {
+    return 0;
+  }
+  if (project.canPublish) {
+    return 1;
+  }
+  return 2;
+}
+
+/**
+ * Section 8.7: pending work first, then recently active projects. The order is
+ * computed once per render from memory only, so badge patches never reorder
+ * the list.
+ */
+export function sortProjects(projects: ProjectSummary[]): ProjectSummary[] {
+  return projects.slice().sort((a, b) => {
+    const tiers = sortTier(a) - sortTier(b);
+    if (tiers !== 0) {
+      return tiers;
+    }
+    if (sortTier(a) === 2) {
+      const recency = (b.updatedAt ?? 0) - (a.updatedAt ?? 0);
+      if (recency !== 0) {
+        return recency;
+      }
+    }
+    return a.name.toLowerCase().localeCompare(b.name.toLowerCase());
+  });
+}
+
+function renderChip(
+  id: string,
+  label: string,
+  count: number,
+  active: boolean
+): string {
+  return `<button class="chip${active ? ' active' : ''}${
+    count === 0 ? ' is-empty' : ''
+  }" data-chip="${id}" aria-pressed="${active}">${escapeHtml(label)} ${count}</button>`;
+}
+
+function renderProjectFilters(
+  projects: ProjectSummary[],
+  withInput: boolean
+): string {
+  const total = projects.length;
+  const fresh = projects.filter((project) => project.hasNewContent).length;
+  const publishable = projects.filter((project) => project.canPublish).length;
+  const unpublished = projects.filter((project) => project.publishedCount === 0).length;
+  const input = withInput
+    ? `<input id="project-filter" class="project-filter" type="text" placeholder="过滤项目（空格分隔多个关键词，按 / 聚焦）" aria-label="过滤项目" />`
+    : '';
+  const hint = withInput
+    ? `<p class="muted project-filter-empty" id="project-filter-empty" hidden>没有匹配的项目</p>`
+    : '';
+  return `<div class="project-filters">
+      ${input}
+      <div class="project-chips">
+        ${renderChip('all', '全部', total, true)}
+        ${renderChip('new', '有新内容', fresh, false)}
+        ${renderChip('publishable', '可发布', publishable, false)}
+        ${renderChip('unpublished', '未发布', unpublished, false)}
+      </div>
+      ${hint}
+    </div>`;
+}
+
 function refreshTooltip(
   state: Extract<WorkspaceState, { kind: 'local' }>
 ): string {
@@ -385,6 +592,15 @@ function renderLocal(
     })
     .join('');
 
+  const sortedProjects = sortProjects(state.projects);
+  const filters =
+    state.projects.length === 0
+      ? ''
+      : renderProjectFilters(
+          sortedProjects,
+          state.projects.length > PROJECT_FILTER_THRESHOLD
+        );
+
   const projects = hasIssues
     ? ''
     : state.projects.length === 0
@@ -393,9 +609,13 @@ function renderLocal(
           <p>点击标题栏的 + 按钮，在仓库根目录创建 <code>&lt;项目名&gt;/ideas.md</code>。</p>
           <p class="muted">也可以手动新建文件夹并放入 ideas.md；只有包含 ideas.md 的根目录一级文件夹会被识别为项目。</p>
         </div>`
-      : `<ul class="projects">${state.projects
+      : `<ul class="projects">${sortedProjects
           .map(
-            (project) => `<li class="project" data-project-item="${escapeHtml(project.name)}">
+            (project) => `<li class="project" data-project-item="${escapeHtml(
+              project.name
+            )}" data-has-new="${project.hasNewContent}" data-can-publish="${
+              project.canPublish
+            }" data-published="${project.publishedCount > 0}">
               <div class="project-head">
                 <div class="project-name" data-action="open" data-project="${escapeHtml(project.name)}">${escapeHtml(
                   project.name
@@ -431,7 +651,7 @@ function renderLocal(
         )}</button>
       </div>
     </div>
-    ${hasIssues ? `<h2>需要完成的配置</h2>${issues}` : projects}`;
+    ${hasIssues ? `<h2>需要完成的配置</h2>${issues}` : `${filters}${projects}`}`;
 }
 
 function renderDocument(

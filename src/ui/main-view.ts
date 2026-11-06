@@ -98,7 +98,14 @@ export class MainViewProvider implements vscode.WebviewViewProvider, vscode.Disp
     );
     watcher.onDidChange((uri) => this.queueProjectChange(uri));
     watcher.onDidCreate((uri) => this.queueStructureRefresh(uri));
-    watcher.onDidDelete((uri) => this.queueStructureRefresh(uri));
+    watcher.onDidDelete((uri) => {
+      const project = this.projectNameFor(uri);
+      if (project && this.view?.visible) {
+        // Section 8.7: dropped entries are re-read lazily on the next refresh.
+        this.controller.invalidateProject(project);
+      }
+      this.queueStructureRefresh(uri);
+    });
     this.watcher = watcher;
     this.log('watcher: watching **/ideas.md while the view is visible');
   }
@@ -143,6 +150,8 @@ export class MainViewProvider implements vscode.WebviewViewProvider, vscode.Disp
     if (!project || !this.view?.visible) {
       return;
     }
+    // Section 8.7: drop the cached summary so the badge patch re-reads the file.
+    this.controller.invalidateProject(project);
     this.pendingProjectChanges.add(project);
     this.scheduleWatcherFlush();
   }
@@ -190,7 +199,12 @@ export class MainViewProvider implements vscode.WebviewViewProvider, vscode.Disp
       void this.view.webview.postMessage({
         type: 'projectBadges',
         project,
-        html: renderProjectBadges(summary)
+        html: renderProjectBadges(summary),
+        flags: {
+          hasNewContent: summary.hasNewContent,
+          canPublish: summary.canPublish,
+          publishedCount: summary.publishedCount
+        }
       });
     }
   }
