@@ -1,7 +1,13 @@
 import * as vscode from 'vscode';
 import type { WorkspaceState } from '../core/status';
 import { IdeahubController, type OpResult } from './controller';
-import { renderMainHtml, renderSettingsHtml, type RemoteSettingsInfo } from './html';
+import {
+  DEFAULT_WEBVIEW_ASSETS,
+  renderMainHtml,
+  renderSettingsHtml,
+  type RemoteSettingsInfo,
+  type WebviewAssets
+} from './html';
 import { isSilentSuccess, routeMessage, type RouteHandlers, type WebviewMessage } from './route';
 
 function describeError(error: unknown): string {
@@ -18,10 +24,12 @@ export class MainViewProvider implements vscode.WebviewViewProvider {
   private settingsInfo: RemoteSettingsInfo | null = null;
   /** Invalidates in-flight settings refreshes after leaving the settings view. */
   private settingsRequest = 0;
+  private assets: WebviewAssets = DEFAULT_WEBVIEW_ASSETS;
 
   constructor(
     private readonly controller: IdeahubController,
-    private readonly output: vscode.OutputChannel
+    private readonly output: vscode.OutputChannel,
+    private readonly extensionUri: vscode.Uri
   ) {}
 
   private log(message: string): void {
@@ -31,9 +39,16 @@ export class MainViewProvider implements vscode.WebviewViewProvider {
   resolveWebviewView(webviewView: vscode.WebviewView): void {
     this.view = webviewView;
     this.log('resolveWebviewView: webview view created');
+    const mediaRoot = vscode.Uri.joinPath(this.extensionUri, 'media');
     webviewView.webview.options = {
       enableScripts: true,
-      localResourceRoots: []
+      localResourceRoots: [mediaRoot]
+    };
+    this.assets = {
+      cspSource: webviewView.webview.cspSource,
+      codiconCssUri: webviewView.webview
+        .asWebviewUri(vscode.Uri.joinPath(mediaRoot, 'codicon.css'))
+        .toString()
     };
     webviewView.webview.onDidReceiveMessage((message: WebviewMessage) => {
       this.log(`received message: ${message.type ?? '(missing type)'}`);
@@ -58,7 +73,7 @@ export class MainViewProvider implements vscode.WebviewViewProvider {
       // patch API-derived fields later instead of blocking on network IO.
       const info = this.controller.currentRemoteSettingsInfo();
       this.settingsInfo = info;
-      this.view.webview.html = renderSettingsHtml(info);
+      this.view.webview.html = renderSettingsHtml(info, this.assets);
       void this.loadSettingsInfo();
       return;
     }
@@ -71,7 +86,7 @@ export class MainViewProvider implements vscode.WebviewViewProvider {
       state = { kind: 'error' as const, message: `状态检测失败：${reason}` };
     }
     this.log(`state detected: ${state.kind}${'root' in state ? ` (${state.root})` : ''}`);
-    this.view.webview.html = renderMainHtml(state);
+    this.view.webview.html = renderMainHtml(state, this.assets);
   }
 
   private openSettings(): void {
@@ -80,7 +95,7 @@ export class MainViewProvider implements vscode.WebviewViewProvider {
     }
     const info = this.controller.currentRemoteSettingsInfo();
     this.settingsInfo = info;
-    this.view.webview.html = renderSettingsHtml(info);
+    this.view.webview.html = renderSettingsHtml(info, this.assets);
     this.log('settings: opened (instant, cached snapshot)');
     void this.loadSettingsInfo();
   }
@@ -92,7 +107,7 @@ export class MainViewProvider implements vscode.WebviewViewProvider {
     this.settingsRequest += 1;
     this.settingsInfo = null;
     // Reuse the in-memory workspace state: no git/API scan on the way back.
-    this.view.webview.html = renderMainHtml(this.controller.currentState);
+    this.view.webview.html = renderMainHtml(this.controller.currentState, this.assets);
     this.log('settings: closed (instant, reused cached state)');
   }
 
@@ -178,7 +193,11 @@ export class MainViewProvider implements vscode.WebviewViewProvider {
     this.log(`action started: ${name}`);
     let result: OpResult;
     try {
-      result = await operation();
+      // Native progress keeps the webview layout untouched while an operation runs.
+      result = await vscode.window.withProgress(
+        { location: vscode.ProgressLocation.Notification, cancellable: false },
+        () => operation()
+      );
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
       this.log(`action crashed: ${name}: ${describeError(error)}`);

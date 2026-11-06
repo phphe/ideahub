@@ -9,10 +9,15 @@ vi.mock('vscode', () => ({
     showErrorMessage: vi.fn(),
     showInformationMessage: vi.fn(),
     showWarningMessage: vi.fn(),
-    withProgress: vi.fn()
+    withProgress: vi.fn((_options, task) => task())
   },
   workspace: { getConfiguration: vi.fn() },
-  Uri: { file: (fsPath: string) => ({ fsPath }) },
+  Uri: {
+    file: (fsPath: string) => ({ fsPath }),
+    joinPath: (base: { fsPath: string }, ...parts: string[]) => ({
+      fsPath: [base.fsPath, ...parts].join('/')
+    })
+  },
   ProgressLocation: { Notification: 1 },
   env: { language: 'zh-cn' }
 }));
@@ -61,6 +66,8 @@ function createView(): {
   webview: {
     html: string;
     options: Record<string, unknown>;
+    cspSource: string;
+    asWebviewUri: (uri: { fsPath: string }) => { toString: () => string };
     onDidReceiveMessage: (callback: (message: unknown) => void) => void;
     postMessage: ReturnType<typeof vi.fn>;
   };
@@ -70,6 +77,10 @@ function createView(): {
   const webview = {
     html: '',
     options: {} as Record<string, unknown>,
+    cspSource: 'vscode-resource:',
+    asWebviewUri: (uri: { fsPath: string }) => ({
+      toString: () => `vscode-resource:${uri.fsPath}`
+    }),
     onDidReceiveMessage: (callback: (message: unknown) => void) => {
       receive = callback;
     },
@@ -90,10 +101,12 @@ function createView(): {
   };
 }
 
+const EXTENSION_URI = { fsPath: 'C:/ext' } as unknown as import('vscode').Uri;
+
 async function mount(provider: MainViewProvider) {
   const created = createView();
   provider.resolveWebviewView(created.view);
-  await vi.waitFor(() => expect(created.webview.html).toContain('<h1>创意仓库</h1>'));
+  await vi.waitFor(() => expect(created.webview.html).toContain('<h1>创意项目</h1>'));
   return created;
 }
 
@@ -109,7 +122,8 @@ describe('settings view switching', () => {
     };
     const provider = new MainViewProvider(
       controller as unknown as IdeahubController,
-      outputChannel()
+      outputChannel(),
+      EXTENSION_URI
     );
     const { webview, handler } = await mount(provider);
 
@@ -122,7 +136,7 @@ describe('settings view switching', () => {
     expect(controller.currentRemoteSettingsInfo).toHaveBeenCalledTimes(1);
 
     handler()({ type: 'closeSettings' });
-    expect(webview.html).toContain('<h1>创意仓库</h1>');
+    expect(webview.html).toContain('<h1>创意项目</h1>');
     expect(controller.refresh).toHaveBeenCalledTimes(1);
     expect(webview.postMessage).not.toHaveBeenCalled();
   });
@@ -136,7 +150,8 @@ describe('settings view switching', () => {
     };
     const provider = new MainViewProvider(
       controller as unknown as IdeahubController,
-      outputChannel()
+      outputChannel(),
+      EXTENSION_URI
     );
     const { webview, handler } = await mount(provider);
 
@@ -166,7 +181,8 @@ describe('settings view switching', () => {
     };
     const provider = new MainViewProvider(
       controller as unknown as IdeahubController,
-      outputChannel()
+      outputChannel(),
+      EXTENSION_URI
     );
     const { webview, handler } = await mount(provider);
 
@@ -175,7 +191,7 @@ describe('settings view switching', () => {
     resolveInfo(CACHED);
     await new Promise((resolve) => setTimeout(resolve, 0));
 
-    expect(webview.html).toContain('<h1>创意仓库</h1>');
+    expect(webview.html).toContain('<h1>创意项目</h1>');
     expect(webview.postMessage).not.toHaveBeenCalled();
   });
 });

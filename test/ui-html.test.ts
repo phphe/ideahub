@@ -22,7 +22,8 @@ describe('renderMainHtml', () => {
   it('renders the init button and the shared script together for an empty folder', () => {
     const html = renderMainHtml({ kind: 'empty-folder', root: 'C:/empty' });
     expect(html).toContain('data-action="init"');
-    expect(html).toContain('正在处理');
+    expect(html).not.toContain('正在处理');
+    expect(html).not.toContain('id="status"');
   });
 
   it('does not render any notice container or banner', () => {
@@ -38,6 +39,21 @@ describe('renderMainHtml', () => {
       expect(html).not.toContain('class="notice');
       expect(html).not.toContain('role="alert"');
     }
+  });
+
+  it('links the packaged codicon stylesheet and trusts only extension-local fonts', () => {
+    const html = renderMainHtml(
+      { kind: 'no-folder' },
+      {
+        cspSource: 'vscode-resource:',
+        codiconCssUri: 'vscode-resource:/media/codicon.css'
+      }
+    );
+    expect(html).toContain(
+      '<link rel="stylesheet" href="vscode-resource:/media/codicon.css" />'
+    );
+    expect(html).toContain("font-src vscode-resource:;");
+    expect(html).toContain("style-src vscode-resource: 'unsafe-inline';");
   });
 });
 
@@ -134,11 +150,21 @@ describe('renderMainHtml project list', () => {
     });
 
     expect(html).toContain('<div class="header">');
-    expect(html).toContain('<h1>创意仓库</h1>');
+    expect(html).toContain('<h1>创意项目</h1>');
     expect(html).toContain('.header-actions { margin-left: auto;');
     expect(html).toContain('class="icon" data-action="refresh"');
     expect(html).toContain('class="icon" data-action="openSettings"');
+    expect(html).toContain('class="icon" data-action="createProject" title="新建项目"');
+    expect(html).toContain('codicon codicon-add');
+    expect(html).toContain('codicon codicon-refresh');
+    expect(html).toContain('codicon codicon-settings-gear');
+    expect(html.indexOf('data-action="createProject"')).toBeLessThan(
+      html.indexOf('data-action="refresh"')
+    );
+    expect(html).not.toContain('<h2>项目</h2>');
     expect(html).not.toContain('>刷新状态</button>');
+    expect(html).not.toContain('>新建项目</button>');
+    expect(html).not.toContain('id="status"');
     expect(html).toContain(
       'title="工作区：C:/repo | 远程创意仓库：phphe/test_1027e9ad9a（分支 main）"'
     );
@@ -175,7 +201,9 @@ describe('renderSettingsHtml', () => {
     expect(html).toContain(
       '不可变性：</span><span id="settings-immutability">已启用 Release 不可变性'
     );
+    expect(html).toContain('codicon codicon-arrow-left');
     expect(html).toContain('data.type === \'settingsInfo\'');
+    expect(html).not.toContain('id="status"');
   });
 
   it('only allows changing the remote URL through the validated setRemote flow', () => {

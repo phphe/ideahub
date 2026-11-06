@@ -1,8 +1,16 @@
+import { copyFile, mkdir } from 'node:fs/promises';
 import { readFileSync } from 'node:fs';
 import esbuild from 'esbuild';
 import releaseConfig from './scripts/release-config.js';
 
 const { resolveReleaseBranch } = releaseConfig;
+
+async function copyCodicons() {
+  await mkdir('media', { recursive: true });
+  const dist = 'node_modules/@vscode/codicons/dist';
+  await copyFile(`${dist}/codicon.css`, 'media/codicon.css');
+  await copyFile(`${dist}/codicon.ttf`, 'media/codicon.ttf');
+}
 
 function readOptional(file) {
   try {
@@ -27,6 +35,8 @@ console.log(
 );
 
 const watch = process.argv.includes('--watch');
+
+await copyCodicons();
 
 const options = {
   entryPoints: ['src/extension.ts'],

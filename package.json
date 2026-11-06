@@ -21,7 +21,7 @@
       "activitybar": [
         {
           "id": "ideahub",
-          "title": "创意仓库",
+          "title": "创意项目",
           "icon": "icon.svg"
         }
       ]
@@ -31,7 +31,7 @@
         {
           "type": "webview",
           "id": "ideahub.main",
-          "name": "创意仓库"
+          "name": "创意项目"
         }
       ]
     },
@@ -79,6 +79,7 @@
     "@eslint/js": "^9.39.1",
     "@types/node": "^24.10.1",
     "@types/vscode": "^1.85.0",
+    "@vscode/codicons": "0.0.46-24",
     "esbuild": "^0.25.12",
     "eslint": "^9.39.1",
     "typescript": "^5.9.3",

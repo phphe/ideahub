@@ -5,6 +5,8 @@ coverage/
 out/
 *.tsbuildinfo
 *.vsix
+# 构建时从 @vscode/codicons 复制，随 VSIX 打包
+media/
 
 # 真实环境配置（绝不提交）
 .env

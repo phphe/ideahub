@@ -12,11 +12,19 @@ export interface RemoteSettingsInfo {
   error: string | null;
 }
 
-const REFRESH_ICON = `<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M13 8a5 5 0 1 1-1.46-3.54"/><path d="M13 3.2v3.6H9.4"/></svg>`;
+export interface WebviewAssets {
+  cspSource: string;
+  codiconCssUri: string;
+}
 
-const SETTINGS_ICON = `<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><circle cx="8" cy="8" r="2.2"/><path d="M8 1.2v2.2M8 12.6v2.2M1.2 8h2.2M12.6 8h2.2M3.2 3.2l1.6 1.6M11.2 11.2l1.6 1.6M12.8 3.2l-1.6 1.6M4.8 11.2l-1.6 1.6"/></svg>`;
+export const DEFAULT_WEBVIEW_ASSETS: WebviewAssets = {
+  cspSource: '',
+  codiconCssUri: ''
+};
 
-const BACK_ICON = `<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M6.5 3.5 2 8l4.5 4.5"/><path d="M2 8h12"/></svg>`;
+function icon(name: string): string {
+  return `<i class="codicon codicon-${name}" aria-hidden="true"></i>`;
+}
 
 function escapeHtml(value: string): string {
   return value
@@ -30,16 +38,19 @@ function escapeHtml(value: string): string {
 function renderScript(nonce: string): string {
   return `<script nonce="${nonce}">
     const vscode = acquireVsCodeApi();
-    const statusEl = document.getElementById('status');
 
-    function setBusy(text) {
-      if (statusEl) {
-        statusEl.textContent = text;
-        statusEl.hidden = false;
-      }
+    // Busy feedback must not change layout: only disable controls, and keep
+    // icon buttons at their original size by swapping the glyph in place.
+    function lockButtons(trigger) {
       document.querySelectorAll('button').forEach(function (button) {
         button.disabled = true;
       });
+      if (trigger && trigger.classList.contains('icon')) {
+        const glyph = trigger.querySelector('.codicon');
+        if (glyph) {
+          glyph.className = 'codicon codicon-loading codicon-modifier-spin';
+        }
+      }
     }
 
     window.addEventListener('error', function (event) {
@@ -87,7 +98,7 @@ function renderScript(nonce: string): string {
       if (action === 'setRemote') {
         const urlInput = document.getElementById('remote-url');
         const confirmInput = document.getElementById('immutability-confirm');
-        setBusy('步骤 1/2：正在校验远程创意仓库…');
+        lockButtons(target);
         vscode.postMessage({
           type: 'setRemote',
           url: urlInput ? urlInput.value : '',
@@ -99,11 +110,7 @@ function renderScript(nonce: string): string {
         vscode.postMessage({ type: 'open', project: target.dataset.project });
         return;
       }
-      if (action === 'createProject') {
-        vscode.postMessage({ type: 'createProject' });
-        return;
-      }
-      setBusy('正在处理…');
+      lockButtons(target);
       vscode.postMessage({ type: action, project: target.dataset.project });
     });
   </script>`;
@@ -141,7 +148,6 @@ const STYLES = `
   }
   .header h1 { margin: 0; flex: 0 0 auto; }
   .header-actions { margin-left: auto; display: flex; gap: 2px; }
-  .status { margin: 0 0 8px; opacity: 0.85; font-style: italic; }
   .actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
   button {
     border: none;
@@ -238,12 +244,12 @@ function renderMain(state: WorkspaceState): string {
   switch (state.kind) {
     case 'no-folder':
       return `
-        <h1>创意仓库</h1>
+        <h1>创意项目</h1>
         <div class="card"><p>您尚未打开任何文件夹。</p>
         <p class="muted">请先在 VS Code 中打开一个文件夹，再回到这里。</p></div>`;
     case 'empty-folder':
       return `
-        <h1>创意仓库</h1>
+        <h1>创意项目</h1>
         <div class="card">
           <p>当前文件夹为空，可以初始化本地创意仓库。</p>
           <p class="muted">初始化只会创建 Git 仓库、.ideahub 配置、pre-push hook 与 README，不会提交或推送任何内容。</p>
@@ -254,7 +260,7 @@ function renderMain(state: WorkspaceState): string {
         </div>`;
     case 'not-ideahub':
       return `
-        <h1>创意仓库</h1>
+        <h1>创意项目</h1>
         <div class="card warn">
           <div class="title">未识别到创意仓库</div>
           <p>当前文件夹不为空，但没有 .ideahub 目录，因此不会自动初始化，以免覆盖已有内容。</p>
@@ -263,7 +269,7 @@ function renderMain(state: WorkspaceState): string {
         </div>`;
     case 'error':
       return `
-        <h1>创意仓库</h1>
+        <h1>创意项目</h1>
         <div class="card error"><div class="title">检测失败</div><p>${escapeHtml(state.message)}</p>
         <div class="actions"><button class="secondary" data-action="refresh">重新检测</button></div></div>`;
     case 'local':
@@ -334,7 +340,7 @@ function renderLocal(
     : state.projects.length === 0
       ? `<div class="card">
           <div class="title">还没有项目</div>
-          <p>点击上方「新建项目」按钮，在仓库根目录创建 <code>&lt;项目名&gt;/ideas.md</code>。</p>
+          <p>点击标题栏的 + 按钮，在仓库根目录创建 <code>&lt;项目名&gt;/ideas.md</code>。</p>
           <p class="muted">也可以手动新建文件夹并放入 ideas.md；只有包含 ideas.md 的根目录一级文件夹会被识别为项目。</p>
         </div>`
       : `<ul class="projects">${state.projects
@@ -358,42 +364,56 @@ function renderLocal(
           )
           .join('')}</ul>`;
 
+  const createButton = hasIssues
+    ? ''
+    : `<button class="icon" data-action="createProject" title="新建项目">${icon('add')}</button>`;
+
   return `
     <div class="header">
-      <h1>创意仓库</h1>
+      <h1>创意项目</h1>
       <div class="header-actions">
+        ${createButton}
         <button class="icon" data-action="refresh" title="${escapeHtml(
           refreshTooltip(state)
-        )}">${REFRESH_ICON}</button>
-        <button class="icon" data-action="openSettings" title="设置">${SETTINGS_ICON}</button>
+        )}">${icon('refresh')}</button>
+        <button class="icon" data-action="openSettings" title="设置">${icon(
+          'settings-gear'
+        )}</button>
       </div>
     </div>
-    ${hasIssues ? `<h2>需要完成的配置</h2>${issues}` : `<h2>项目</h2>
-      <div class="actions"><button data-action="createProject">新建项目</button></div>
-      ${projects}`}`;
+    ${hasIssues ? `<h2>需要完成的配置</h2>${issues}` : projects}`;
 }
 
-function renderDocument(title: string, body: string): string {
+function renderDocument(
+  title: string,
+  body: string,
+  assets: WebviewAssets = DEFAULT_WEBVIEW_ASSETS
+): string {
   const nonce = crypto.randomBytes(16).toString('base64');
+  const codiconLink = assets.codiconCssUri
+    ? `<link rel="stylesheet" href="${escapeHtml(assets.codiconCssUri)}" />\n`
+    : '';
   return `<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8" />
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${assets.cspSource} 'unsafe-inline'; font-src ${assets.cspSource}; script-src 'nonce-${nonce}';" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>${title}</title>
-<style>${STYLES}</style>
+${codiconLink}<style>${STYLES}</style>
 </head>
 <body>
-<div id="status" class="status" role="status" aria-live="polite" hidden></div>
 ${body}
 ${renderScript(nonce)}
 </body>
 </html>`;
 }
 
-export function renderMainHtml(state: WorkspaceState): string {
-  return renderDocument('创意仓库', renderMain(state));
+export function renderMainHtml(
+  state: WorkspaceState,
+  assets: WebviewAssets = DEFAULT_WEBVIEW_ASSETS
+): string {
+  return renderDocument('创意项目', renderMain(state), assets);
 }
 
 function settingRow(label: string, value: string, id: string): string {
@@ -402,7 +422,10 @@ function settingRow(label: string, value: string, id: string): string {
   )}</span></p>`;
 }
 
-export function renderSettingsHtml(info: RemoteSettingsInfo): string {
+export function renderSettingsHtml(
+  info: RemoteSettingsInfo,
+  assets: WebviewAssets = DEFAULT_WEBVIEW_ASSETS
+): string {
   const ownerRepo = info.owner && info.repo ? `${info.owner}/${info.repo}` : '未配置';
   const error = `<p class="muted" id="settings-error"${
     info.error ? '' : ' hidden'
@@ -411,7 +434,9 @@ export function renderSettingsHtml(info: RemoteSettingsInfo): string {
     <div class="header">
       <h1>设置</h1>
       <div class="header-actions">
-        <button class="icon" data-action="closeSettings" title="返回创意仓库">${BACK_ICON}</button>
+        <button class="icon" data-action="closeSettings" title="返回创意项目">${icon(
+          'arrow-left'
+        )}</button>
       </div>
     </div>
     <div class="card">
@@ -438,5 +463,5 @@ export function renderSettingsHtml(info: RemoteSettingsInfo): string {
     <div class="actions">
       <button class="secondary" data-action="closeSettings">返回</button>
     </div>`;
-  return renderDocument('创意仓库 - 设置', body);
+  return renderDocument('创意项目 - 设置', body, assets);
 }
