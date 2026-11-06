@@ -106,6 +106,10 @@ export function describeCloneFailure(output: string): string {
   return `克隆远程创意仓库失败：${text}`;
 }
 
+export function buildCloneArgs(url: string, branch: string, target: string): string[] {
+  return ['clone', '--depth', '1', '--branch', branch, url, target];
+}
+
 export async function cloneRemoteRepository(
   root: string,
   remote: RemoteConfig
@@ -113,6 +117,12 @@ export async function cloneRemoteRepository(
   const parsed = parseRemoteUrl(remote.url);
   if (!parsed.ok) {
     return { ok: false, error: parsed.error };
+  }
+  if (remote.branch.trim().length === 0) {
+    return {
+      ok: false,
+      error: '远程分支为空，无法克隆。请先保存远程仓库配置（留空会自动使用远程默认分支）。'
+    };
   }
 
   const target = remoteRepoPath(root);
@@ -133,7 +143,7 @@ export async function cloneRemoteRepository(
     return { ok: false, error: REMOTE_DIR_NON_EMPTY_ERROR };
   }
 
-  const result = await runGit(root, ['clone', remote.url, target], {
+  const result = await runGit(root, buildCloneArgs(remote.url, remote.branch, target), {
     timeoutMs: 300_000
   });
 

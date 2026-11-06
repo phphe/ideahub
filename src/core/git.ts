@@ -68,6 +68,21 @@ export async function initGitRepository(cwd: string): Promise<GitResult> {
   return runGit(cwd, ['init']);
 }
 
+/**
+ * Section 8.5: `.ideahub/remote` is cloned with `--depth 1`. Before the first
+ * push (publish or release-branch creation) the missing history must be
+ * completed, otherwise a remote that lacks the shallow ancestors rejects the
+ * push with `shallow update not allowed`.
+ */
+export async function isShallowRepository(cwd: string): Promise<boolean> {
+  const result = await runGit(cwd, ['rev-parse', '--is-shallow-repository']);
+  return result.code === 0 && result.stdout.trim() === 'true';
+}
+
+export async function unshallowRepository(cwd: string): Promise<GitResult> {
+  return runGit(cwd, ['fetch', '--unshallow', 'origin'], { timeoutMs: 300_000 });
+}
+
 export async function getRemoteOriginUrl(repoPath: string): Promise<string | null> {
   const result = await runGit(repoPath, ['config', '--get', 'remote.origin.url']);
   if (result.code !== 0) {

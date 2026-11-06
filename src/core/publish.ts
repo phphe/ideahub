@@ -2,7 +2,7 @@ import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
 import { INNER_REPO_NO_HEAD_ERROR, verifyClonedRepository } from './clone';
 import { describeError } from './config';
-import { redactSecrets, runGit } from './git';
+import { isShallowRepository, redactSecrets, runGit, unshallowRepository } from './git';
 import { parseRemoteUrl } from './remote-url';
 
 export type InnerRepositoryHeadCheck =
@@ -257,6 +257,20 @@ export async function commitAndPushInnerRepository(
   const aheadCount = ahead.code === 0 ? Number.parseInt(ahead.stdout.trim(), 10) || 0 : 1;
   if (aheadCount === 0) {
     return { ok: true, pushed: false };
+  }
+
+  // Section 8.5: the inner repository is a `--depth 1` clone. Pushing from a
+  // shallow clone can be rejected (`shallow update not allowed`) when the
+  // remote lacks the missing history, so complete it once before pushing.
+  if (await isShallowRepository(remotePath)) {
+    const unshallow = await unshallowRepository(remotePath);
+    if (unshallow.code !== 0) {
+      return {
+        ok: false,
+        error: `补齐 Git 历史失败：${unshallow.stderr.trim() || unshallow.stdout.trim()}`,
+        stage: 'push'
+      };
+    }
   }
 
   const credentials = Buffer.from(`x-access-token:${params.token}`, 'utf8').toString('base64');
