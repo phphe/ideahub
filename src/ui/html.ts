@@ -49,6 +49,37 @@ function renderScript(nonce: string): string {
       });
     });
 
+    function applySettingsInfo(info) {
+      const fields = [
+        ['settings-url', info.url || '未配置'],
+        ['settings-owner-repo', info.owner && info.repo ? info.owner + '/' + info.repo : '未配置'],
+        ['settings-host', info.host || '未知'],
+        ['settings-branch', info.branch || '未知'],
+        ['settings-visibility', info.visibility],
+        ['settings-immutability', info.immutability]
+      ];
+      for (const entry of fields) {
+        const el = document.getElementById(entry[0]);
+        if (el) { el.textContent = entry[1]; }
+      }
+      const errorEl = document.getElementById('settings-error');
+      if (errorEl) {
+        errorEl.textContent = info.error || '';
+        errorEl.hidden = !info.error;
+      }
+      const urlInput = document.getElementById('remote-url');
+      if (urlInput && document.activeElement !== urlInput && info.url) {
+        urlInput.value = info.url;
+      }
+    }
+
+    window.addEventListener('message', function (event) {
+      const data = event.data;
+      if (data && data.type === 'settingsInfo' && data.info) {
+        applySettingsInfo(data.info);
+      }
+    });
+
     document.addEventListener('click', function (event) {
       const target = event.target.closest('[data-action]');
       if (!target || !target.dataset.action) { return; }
@@ -365,13 +396,17 @@ export function renderMainHtml(state: WorkspaceState): string {
   return renderDocument('创意仓库', renderMain(state));
 }
 
-function settingRow(label: string, value: string): string {
-  return `<p><span class="muted">${escapeHtml(label)}：</span>${escapeHtml(value)}</p>`;
+function settingRow(label: string, value: string, id: string): string {
+  return `<p><span class="muted">${escapeHtml(label)}：</span><span id="${id}">${escapeHtml(
+    value
+  )}</span></p>`;
 }
 
 export function renderSettingsHtml(info: RemoteSettingsInfo): string {
   const ownerRepo = info.owner && info.repo ? `${info.owner}/${info.repo}` : '未配置';
-  const error = info.error ? `<p class="muted">${escapeHtml(info.error)}</p>` : '';
+  const error = `<p class="muted" id="settings-error"${
+    info.error ? '' : ' hidden'
+  }>${escapeHtml(info.error ?? '')}</p>`;
   const body = `
     <div class="header">
       <h1>设置</h1>
@@ -381,12 +416,12 @@ export function renderSettingsHtml(info: RemoteSettingsInfo): string {
     </div>
     <div class="card">
       <div class="title">远程创意仓库</div>
-      ${settingRow('地址', info.url || '未配置')}
-      ${settingRow('owner/repo', ownerRepo)}
-      ${settingRow('host', info.host ?? '未知')}
-      ${settingRow('分支', info.branch ?? '未知')}
-      ${settingRow('是否公开', info.visibility)}
-      ${settingRow('不可变性', info.immutability)}
+      ${settingRow('地址', info.url || '未配置', 'settings-url')}
+      ${settingRow('owner/repo', ownerRepo, 'settings-owner-repo')}
+      ${settingRow('host', info.host ?? '未知', 'settings-host')}
+      ${settingRow('分支', info.branch ?? '未知', 'settings-branch')}
+      ${settingRow('是否公开', info.visibility, 'settings-visibility')}
+      ${settingRow('不可变性', info.immutability, 'settings-immutability')}
       ${error}
     </div>
     <div class="card">

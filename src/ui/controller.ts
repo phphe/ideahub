@@ -103,6 +103,8 @@ function formatRemoteSetupResult(result: RemoteSetupFlowResult): OpResult {
 export class IdeahubController {
   public currentState: WorkspaceState = { kind: 'no-folder' };
   private readonly operationGuard = new ProjectOperationGuard();
+  /** Last fully resolved settings snapshot, reused for instant rendering. */
+  private remoteSettingsCache: RemoteSettingsInfo | null = null;
 
   constructor(private readonly output: vscode.OutputChannel) {}
 
@@ -321,10 +323,21 @@ export class IdeahubController {
     return { ok: true, message: `远程创意仓库已克隆（分支 ${result.branch}）。` };
   }
 
-  public async getRemoteSettingsInfo(): Promise<RemoteSettingsInfo> {
+  private rememberSettings(info: RemoteSettingsInfo): RemoteSettingsInfo {
+    this.remoteSettingsCache = info;
+    return info;
+  }
+
+  /**
+   * Synchronous snapshot for instant rendering when the settings view opens.
+   * Uses the last resolved result when it still matches the current remote;
+   * otherwise only state-derived fields are filled and the API-derived fields
+   * are left as placeholders to be patched asynchronously.
+   */
+  public currentRemoteSettingsInfo(): RemoteSettingsInfo {
     const state = this.currentState;
     if (state.kind !== 'local') {
-      return {
+      return this.rememberSettings({
         url: '',
         owner: null,
         repo: null,
@@ -333,10 +346,10 @@ export class IdeahubController {
         visibility: '未知',
         immutability: '未知',
         error: '当前没有打开的本地创意仓库。'
-      };
+      });
     }
     if (!state.remote) {
-      return {
+      return this.rememberSettings({
         url: '',
         owner: null,
         repo: null,
@@ -345,7 +358,52 @@ export class IdeahubController {
         visibility: '未知',
         immutability: '未知',
         error: '尚未配置远程创意仓库。'
-      };
+      });
+    }
+
+    const remote = state.remote;
+    const cached = this.remoteSettingsCache;
+    if (cached && cached.url === remote.url) {
+      return cached;
+    }
+    const parsed = parseRemoteUrl(remote.url);
+    return {
+      url: remote.url,
+      owner: remote.owner,
+      repo: remote.repo,
+      host: parsed.ok ? parsed.value.host : null,
+      branch: remote.branch,
+      visibility: '读取中…',
+      immutability: '读取中…',
+      error: null
+    };
+  }
+
+  public async getRemoteSettingsInfo(): Promise<RemoteSettingsInfo> {
+    const state = this.currentState;
+    if (state.kind !== 'local') {
+      return this.rememberSettings({
+        url: '',
+        owner: null,
+        repo: null,
+        host: null,
+        branch: null,
+        visibility: '未知',
+        immutability: '未知',
+        error: '当前没有打开的本地创意仓库。'
+      });
+    }
+    if (!state.remote) {
+      return this.rememberSettings({
+        url: '',
+        owner: null,
+        repo: null,
+        host: null,
+        branch: null,
+        visibility: '未知',
+        immutability: '未知',
+        error: '尚未配置远程创意仓库。'
+      });
     }
 
     const remote = state.remote;
@@ -363,29 +421,35 @@ export class IdeahubController {
 
     const token = await getGitHubToken(false);
     if (!token) {
-      return { ...base, immutability: '未知（未登录 GitHub，无法通过 API 检查）' };
+      return this.rememberSettings({
+        ...base,
+        immutability: '未知（未登录 GitHub，无法通过 API 检查）'
+      });
     }
 
     const client = new GitHubClient(async () => token);
     try {
       const repository = await client.getRepository(remote.owner, remote.repo);
       if (!repository) {
-        return { ...base, error: '无法读取远程仓库信息（仓库不存在或没有访问权限）。' };
+        return this.rememberSettings({
+          ...base,
+          error: '无法读取远程仓库信息（仓库不存在或没有访问权限）。'
+        });
       }
       const immutability = await client.getImmutableReleasesStatus(
         remote.owner,
         remote.repo,
         parsed.ok ? parsed.value.host : undefined
       );
-      return {
+      return this.rememberSettings({
         ...base,
         branch: repository.defaultBranch || remote.branch,
         visibility: repository.isPrivate ? '私有（不符合要求，必须为公开仓库）' : '公开',
         immutability: describeImmutabilityCheck(immutability)
-      };
+      });
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
-      return { ...base, error: `无法读取远程仓库信息：${reason}` };
+      return this.rememberSettings({ ...base, error: `无法读取远程仓库信息：${reason}` });
     }
   }
 

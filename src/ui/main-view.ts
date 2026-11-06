@@ -16,6 +16,8 @@ export class MainViewProvider implements vscode.WebviewViewProvider {
 
   private view?: vscode.WebviewView;
   private settingsInfo: RemoteSettingsInfo | null = null;
+  /** Invalidates in-flight settings refreshes after leaving the settings view. */
+  private settingsRequest = 0;
 
   constructor(
     private readonly controller: IdeahubController,
@@ -51,6 +53,15 @@ export class MainViewProvider implements vscode.WebviewViewProvider {
       this.log('refresh skipped: webview view has not been created yet');
       return;
     }
+    if (this.settingsInfo) {
+      // Settings must switch instantly: render the cached snapshot first and
+      // patch API-derived fields later instead of blocking on network IO.
+      const info = this.controller.currentRemoteSettingsInfo();
+      this.settingsInfo = info;
+      this.view.webview.html = renderSettingsHtml(info);
+      void this.loadSettingsInfo();
+      return;
+    }
     let state: WorkspaceState;
     try {
       state = await this.controller.refresh();
@@ -60,21 +71,46 @@ export class MainViewProvider implements vscode.WebviewViewProvider {
       state = { kind: 'error' as const, message: `状态检测失败：${reason}` };
     }
     this.log(`state detected: ${state.kind}${'root' in state ? ` (${state.root})` : ''}`);
-    if (this.settingsInfo) {
-      this.settingsInfo = await this.controller.getRemoteSettingsInfo();
-      this.view.webview.html = renderSettingsHtml(this.settingsInfo);
-      return;
-    }
     this.view.webview.html = renderMainHtml(state);
   }
 
-  private async openSettings(): Promise<void> {
+  private openSettings(): void {
     if (!this.view) {
       return;
     }
-    this.log('settings: opened');
-    this.settingsInfo = await this.controller.getRemoteSettingsInfo();
-    this.view.webview.html = renderSettingsHtml(this.settingsInfo);
+    const info = this.controller.currentRemoteSettingsInfo();
+    this.settingsInfo = info;
+    this.view.webview.html = renderSettingsHtml(info);
+    this.log('settings: opened (instant, cached snapshot)');
+    void this.loadSettingsInfo();
+  }
+
+  private closeSettings(): void {
+    if (!this.view) {
+      return;
+    }
+    this.settingsRequest += 1;
+    this.settingsInfo = null;
+    // Reuse the in-memory workspace state: no git/API scan on the way back.
+    this.view.webview.html = renderMainHtml(this.controller.currentState);
+    this.log('settings: closed (instant, reused cached state)');
+  }
+
+  private async loadSettingsInfo(): Promise<void> {
+    const request = ++this.settingsRequest;
+    let info: RemoteSettingsInfo;
+    try {
+      info = await this.controller.getRemoteSettingsInfo();
+    } catch (error) {
+      this.log(`settings: remote info failed: ${describeError(error)}`);
+      return;
+    }
+    if (request !== this.settingsRequest || this.settingsInfo === null) {
+      return;
+    }
+    this.settingsInfo = info;
+    void this.view?.webview.postMessage({ type: 'settingsInfo', info });
+    this.log('settings: remote info patched asynchronously');
   }
 
   private async handleMessage(message: WebviewMessage): Promise<void> {
@@ -94,12 +130,11 @@ export class MainViewProvider implements vscode.WebviewViewProvider {
 
   private async dispatchMessage(message: WebviewMessage): Promise<void> {
     if (message.type === 'openSettings') {
-      await this.openSettings();
+      this.openSettings();
       return;
     }
     if (message.type === 'closeSettings') {
-      this.settingsInfo = null;
-      await this.refresh();
+      this.closeSettings();
       return;
     }
 

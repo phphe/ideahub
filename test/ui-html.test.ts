@@ -165,12 +165,17 @@ describe('renderSettingsHtml', () => {
   it('shows the current remote repository details', () => {
     const html = renderSettingsHtml(info);
     expect(html).toContain('远程创意仓库');
-    expect(html).toContain('地址：</span>https://github.com/phphe/test_1027e9ad9a');
-    expect(html).toContain('owner/repo：</span>phphe/test_1027e9ad9a');
-    expect(html).toContain('host：</span>github.com');
-    expect(html).toContain('分支：</span>main');
-    expect(html).toContain('是否公开：</span>公开');
-    expect(html).toContain('不可变性：</span>已启用 Release 不可变性');
+    expect(html).toContain(
+      '地址：</span><span id="settings-url">https://github.com/phphe/test_1027e9ad9a'
+    );
+    expect(html).toContain('owner/repo：</span><span id="settings-owner-repo">phphe/test_1027e9ad9a');
+    expect(html).toContain('host：</span><span id="settings-host">github.com');
+    expect(html).toContain('分支：</span><span id="settings-branch">main');
+    expect(html).toContain('是否公开：</span><span id="settings-visibility">公开');
+    expect(html).toContain(
+      '不可变性：</span><span id="settings-immutability">已启用 Release 不可变性'
+    );
+    expect(html).toContain('data.type === \'settingsInfo\'');
   });
 
   it('only allows changing the remote URL through the validated setRemote flow', () => {
@@ -197,9 +202,11 @@ describe('renderSettingsHtml', () => {
       immutability: '未知（未登录 GitHub，无法通过 API 检查）',
       error: '尚未配置远程创意仓库。'
     });
-    expect(html).toContain('地址：</span>未配置');
-    expect(html).toContain('owner/repo：</span>未配置');
-    expect(html).toContain('不可变性：</span>未知（未登录 GitHub，无法通过 API 检查）');
+    expect(html).toContain('地址：</span><span id="settings-url">未配置');
+    expect(html).toContain('owner/repo：</span><span id="settings-owner-repo">未配置');
+    expect(html).toContain(
+      '不可变性：</span><span id="settings-immutability">未知（未登录 GitHub，无法通过 API 检查）'
+    );
     expect(html).toContain('尚未配置远程创意仓库。');
   });
 });
