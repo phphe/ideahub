@@ -42,6 +42,7 @@ import {
   formatMarkerLine,
   parseIdeas
 } from '../core/ideas';
+import { parseTagInput, parseTags, updateTags } from '../core/front-matter';
 import { ProjectOperationGuard } from '../core/operation-guard';
 import { ProjectParseCache } from '../core/project-cache';
 import {
@@ -624,6 +625,66 @@ export class IdeahubController {
         message: `无法打开项目 ideas.md：${error instanceof Error ? error.message : String(error)}`
       };
     }
+  }
+
+  /**
+   * Section 6.9: edits the `tags` section only. Front matter is metadata, so
+   * this never touches markers, never commits and never pushes.
+   */
+  public async editProjectTags(project: string): Promise<OpResult> {
+    const root = this.requireLocalRoot();
+    if (!root) {
+      return { ok: false, message: '当前状态不允许执行该操作。' };
+    }
+    const uri = vscode.Uri.file(path.join(root, project, 'ideas.md'));
+    let document;
+    try {
+      document = await vscode.workspace.openTextDocument(uri);
+    } catch (error) {
+      return {
+        ok: false,
+        message: `无法读取项目 ideas.md：${error instanceof Error ? error.message : String(error)}`
+      };
+    }
+
+    const text = document.getText();
+    const current = parseTags(text);
+    const input = await vscode.window.showInputBox({
+      title: '编辑标签',
+      prompt: '用逗号分隔多个标签（支持中文逗号和顿号）；留空表示清除全部标签。',
+      value: current.join(', '),
+      placeHolder: '例如 游戏, 写作'
+    });
+    if (input === undefined) {
+      return { ok: false, message: '', silent: true };
+    }
+
+    const next = parseTagInput(input);
+    const updated = updateTags(text, next);
+    if (updated === text) {
+      return { ok: true, message: '标签未变化。' };
+    }
+
+    const edit = new vscode.WorkspaceEdit();
+    edit.replace(
+      uri,
+      new vscode.Range(new vscode.Position(0, 0), document.positionAt(text.length)),
+      updated
+    );
+    const applied = await vscode.workspace.applyEdit(edit);
+    if (!applied) {
+      return { ok: false, message: '写入标签失败，请检查文件是否可编辑。' };
+    }
+    const saved = await document.save();
+    if (!saved) {
+      return { ok: false, message: '标签已写入编辑器，但文件保存失败。' };
+    }
+
+    this.invalidateProject(project);
+    return {
+      ok: true,
+      message: next.length > 0 ? `已更新标签：${next.join(', ')}` : '已清除全部标签。'
+    };
   }
 
   private logReleaseFailure(

@@ -70,15 +70,21 @@ function renderScript(nonce: string): string {
       });
     }
 
-    // Section 8.7: project filter and status chips. Everything below is pure
-    // DOM work; it never posts a message, rereads the disk or rewrites the page.
+    // Section 8.7: project filter and status chips. Section 6.9 adds tag
+    // filtering. Everything below is pure DOM work; it never posts a message,
+    // rereads the disk or rewrites the page.
     const storedUi = (vscode.getState && vscode.getState()) || {};
     let filterQuery = typeof storedUi.filterQuery === 'string' ? storedUi.filterQuery : '';
     let activeChip = typeof storedUi.filterChip === 'string' ? storedUi.filterChip : 'all';
+    let activeTag = typeof storedUi.filterTag === 'string' ? storedUi.filterTag : '';
 
     function rememberFilterState() {
       if (vscode.setState) {
-        vscode.setState({ filterQuery: filterQuery, filterChip: activeChip });
+        vscode.setState({
+          filterQuery: filterQuery,
+          filterChip: activeChip,
+          filterTag: activeTag
+        });
       }
     }
 
@@ -100,7 +106,80 @@ function renderScript(nonce: string): string {
       return true;
     }
 
+    // Tags are URL-encoded JSON so quotes never break the attribute; malformed
+    // values simply mean the project has no tags.
+    function projectTags(item) {
+      try {
+        const raw = item.dataset.tags || '';
+        return raw ? JSON.parse(decodeURIComponent(raw)) : [];
+      } catch (error) {
+        return [];
+      }
+    }
+
+    function matchesTag(item) {
+      if (!activeTag) { return true; }
+      const needle = activeTag.toLowerCase();
+      return projectTags(item).some(function (tag) {
+        return String(tag).toLowerCase() === needle;
+      });
+    }
+
+    // Counts depend on the name search and the status chip only, never on the
+    // tag that is currently selected.
+    function updateTagCounts() {
+      const row = document.getElementById('project-tags');
+      if (!row) { return; }
+      const input = document.getElementById('project-filter');
+      const query = input ? filterQuery : '';
+      const counts = {};
+      const items = document.querySelectorAll('[data-project-item]');
+      for (const item of items) {
+        if (!matchesQuery(item.dataset.projectItem || '', query) || !matchesChip(item)) {
+          continue;
+        }
+        for (const tag of projectTags(item)) {
+          const key = String(tag).toLowerCase();
+          counts[key] = (counts[key] || 0) + 1;
+        }
+      }
+      let visible = 0;
+      for (const chip of row.querySelectorAll('[data-tag]')) {
+        const key = (chip.dataset.tag || '').toLowerCase();
+        const count = counts[key] || 0;
+        const countEl = chip.querySelector('[data-tag-count]');
+        if (countEl) { countEl.textContent = String(count); }
+        chip.hidden = count === 0;
+        if (count > 0) { visible += 1; }
+      }
+      row.hidden = visible === 0;
+    }
+
+    function applyTagSelection() {
+      const row = document.getElementById('project-tags');
+      if (!row) {
+        if (activeTag) {
+          activeTag = '';
+          rememberFilterState();
+        }
+        return;
+      }
+      let found = false;
+      for (const chip of row.querySelectorAll('[data-tag]')) {
+        const on =
+          !!activeTag && (chip.dataset.tag || '').toLowerCase() === activeTag.toLowerCase();
+        chip.classList.toggle('active', on);
+        if (chip.setAttribute) { chip.setAttribute('aria-pressed', on ? 'true' : 'false'); }
+        if (on) { found = true; }
+      }
+      if (activeTag && !found) {
+        activeTag = '';
+        rememberFilterState();
+      }
+    }
+
     function applyProjectFilters() {
+      updateTagCounts();
       // The input only exists when there are more than 10 projects; without it
       // a stale query must not hide anything.
       const input = document.getElementById('project-filter');
@@ -109,7 +188,9 @@ function renderScript(nonce: string): string {
       let visible = 0;
       for (const item of items) {
         const show =
-          matchesQuery(item.dataset.projectItem || '', query) && matchesChip(item);
+          matchesQuery(item.dataset.projectItem || '', query) &&
+          matchesChip(item) &&
+          matchesTag(item);
         item.hidden = !show;
         if (show) { visible += 1; }
       }
@@ -135,6 +216,13 @@ function renderScript(nonce: string): string {
       applyProjectFilters();
     }
 
+    function setActiveTag(tag) {
+      activeTag = activeTag && tag.toLowerCase() === activeTag.toLowerCase() ? '' : tag;
+      applyTagSelection();
+      rememberFilterState();
+      applyProjectFilters();
+    }
+
     document.addEventListener('input', function (event) {
       if (!event.target || event.target.id !== 'project-filter') { return; }
       filterQuery = event.target.value || '';
@@ -143,6 +231,7 @@ function renderScript(nonce: string): string {
     });
 
     document.addEventListener('keydown', function (event) {
+      if (event.key === 'Escape') { closeMenu(); }
       const input = document.getElementById('project-filter');
       if (!input) { return; }
       const target = event.target;
@@ -165,6 +254,49 @@ function renderScript(nonce: string): string {
         input.blur();
       }
     });
+
+    let menuProject = null;
+
+    function closeMenu() {
+      const menu = document.getElementById('project-menu');
+      if (menu) { menu.hidden = true; }
+      menuProject = null;
+    }
+
+    // A fixed overlay replaces the native context menu, which the webview does
+    // not provide. Near the viewport bottom it opens upward so it is never cut.
+    function openMenu(project, x, y) {
+      const menu = document.getElementById('project-menu');
+      if (!menu) { return; }
+      menuProject = project;
+      menu.hidden = false;
+      menu.style.left = x + 'px';
+      menu.style.top = y + 'px';
+      const rect = menu.getBoundingClientRect ? menu.getBoundingClientRect() : null;
+      if (!rect) { return; }
+      const viewportWidth = window.innerWidth || 0;
+      const viewportHeight = window.innerHeight || 0;
+      let left = x;
+      let top = y;
+      if (viewportWidth && left + rect.width > viewportWidth) {
+        left = Math.max(4, viewportWidth - rect.width - 4);
+      }
+      if (viewportHeight && top + rect.height > viewportHeight) {
+        top = Math.max(4, y - rect.height);
+      }
+      menu.style.left = left + 'px';
+      menu.style.top = top + 'px';
+    }
+
+    document.addEventListener('contextmenu', function (event) {
+      const anchor = event.target.closest ? event.target.closest('[data-project-menu]') : null;
+      if (!anchor) { return; }
+      event.preventDefault();
+      openMenu(anchor.dataset.projectMenu || '', event.clientX, event.clientY);
+    });
+
+    // Section 6.9: the menu also closes on Escape and when the window loses focus.
+    window.addEventListener('blur', function () { closeMenu(); });
 
     window.addEventListener('error', function (event) {
       vscode.postMessage({
@@ -219,6 +351,9 @@ function renderScript(nonce: string): string {
         item.dataset.hasNew = flags.hasNewContent ? 'true' : 'false';
         item.dataset.canPublish = flags.canPublish ? 'true' : 'false';
         item.dataset.published = flags.publishedCount > 0 ? 'true' : 'false';
+        if (flags.tags) {
+          item.dataset.tags = encodeURIComponent(JSON.stringify(flags.tags));
+        }
       }
       applyProjectFilters();
     }
@@ -239,6 +374,24 @@ function renderScript(nonce: string): string {
     });
 
     document.addEventListener('click', function (event) {
+      const menuItem = event.target.closest ? event.target.closest('[data-menu-action]') : null;
+      if (menuItem && menuProject) {
+        const project = menuProject;
+        const action = menuItem.dataset.menuAction;
+        closeMenu();
+        vscode.postMessage({
+          type: action === 'open' ? 'open' : 'editTags',
+          project: project
+        });
+        return;
+      }
+      // Any click outside the menu closes it before the regular handling.
+      closeMenu();
+      const tagChip = event.target.closest ? event.target.closest('[data-tag]') : null;
+      if (tagChip && tagChip.dataset.tag) {
+        setActiveTag(tagChip.dataset.tag);
+        return;
+      }
       const chip = event.target.closest ? event.target.closest('[data-chip]') : null;
       if (chip && chip.dataset.chip) {
         setActiveChip(chip.dataset.chip);
@@ -268,7 +421,7 @@ function renderScript(nonce: string): string {
       vscode.postMessage({ type: action, project: target.dataset.project });
     });
 
-    // Restore the persisted filter/chip selection after a full re-render.
+    // Restore the persisted filter/chip/tag selection after a full re-render.
     const initialFilter = document.getElementById('project-filter');
     if (initialFilter) {
       initialFilter.value = filterQuery;
@@ -277,6 +430,7 @@ function renderScript(nonce: string): string {
       rememberFilterState();
     }
     applyChipSelection();
+    applyTagSelection();
     applyProjectFilters();
   </script>`;
 }
@@ -382,7 +536,34 @@ const STYLES = `
     color: var(--vscode-button-foreground);
   }
   button.chip.is-empty { opacity: 0.55; }
+  .project-tags { display: flex; flex-wrap: wrap; gap: 4px; }
+  .project-tags[hidden] { display: none !important; }
+  button.tag-chip { max-width: 100%; overflow-wrap: anywhere; }
   .project-filter-empty { margin: 0; }
+  .project-menu {
+    position: fixed;
+    z-index: 1000;
+    display: flex;
+    flex-direction: column;
+    min-width: 110px;
+    padding: 4px;
+    border: 1px solid var(--vscode-menu-border, var(--vscode-panel-border));
+    border-radius: 4px;
+    background: var(--vscode-menu-background, var(--vscode-editorWidget-background));
+    box-shadow: 0 2px 8px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.3));
+  }
+  .project-menu[hidden] { display: none !important; }
+  .project-menu button {
+    text-align: left;
+    padding: 4px 10px;
+    border-radius: 3px;
+    background: transparent;
+    color: var(--vscode-menu-foreground, var(--vscode-foreground));
+  }
+  .project-menu button:hover {
+    background: var(--vscode-menu-selectionBackground, var(--vscode-toolbar-hoverBackground));
+    color: var(--vscode-menu-selectionForeground, var(--vscode-foreground));
+  }
   .badge {
     font-size: 11px;
     border-radius: 10px;
@@ -535,6 +716,49 @@ function renderChip(
   }" data-chip="${id}" aria-pressed="${active}">${escapeHtml(label)} ${count}</button>`;
 }
 
+function collectTags(projects: ProjectSummary[]): string[] {
+  const seen = new Map<string, string>();
+  for (const project of projects) {
+    for (const tag of project.tags) {
+      const key = tag.toLowerCase();
+      if (!seen.has(key)) {
+        seen.set(key, tag);
+      }
+    }
+  }
+  return Array.from(seen.values()).sort((a, b) =>
+    a.toLowerCase().localeCompare(b.toLowerCase())
+  );
+}
+
+function countTag(projects: ProjectSummary[], tag: string): number {
+  const key = tag.toLowerCase();
+  return projects.filter((project) =>
+    project.tags.some((entry) => entry.toLowerCase() === key)
+  ).length;
+}
+
+// Section 6.9: the tag row sits on its own line after the status chips.
+// Counts and visibility are refreshed in place by the webview script.
+function renderTagRow(projects: ProjectSummary[]): string {
+  const tags = collectTags(projects);
+  if (tags.length === 0) {
+    return '';
+  }
+  const chips = tags
+    .map(
+      (tag) =>
+        `<button class="chip tag-chip" data-tag="${escapeHtml(
+          tag
+        )}" aria-pressed="false">${escapeHtml(tag)} <span data-tag-count>${countTag(
+          projects,
+          tag
+        )}</span></button>`
+    )
+    .join('');
+  return `<div class="project-tags" id="project-tags">${chips}</div>`;
+}
+
 function renderProjectFilters(
   projects: ProjectSummary[],
   withInput: boolean
@@ -544,7 +768,7 @@ function renderProjectFilters(
   const publishable = projects.filter((project) => project.canPublish).length;
   const unpublished = projects.filter((project) => project.publishedCount === 0).length;
   const input = withInput
-    ? `<input id="project-filter" class="project-filter" type="text" placeholder="过滤项目（空格分隔多个关键词，按 / 聚焦）" aria-label="过滤项目" />`
+    ? `<input id="project-filter" class="project-filter" type="text" placeholder="按名称搜索" aria-label="按名称搜索" />`
     : '';
   const hint = withInput
     ? `<p class="muted project-filter-empty" id="project-filter-empty" hidden>没有匹配的项目</p>`
@@ -557,6 +781,7 @@ function renderProjectFilters(
         ${renderChip('publishable', '可发布', publishable, false)}
         ${renderChip('unpublished', '未发布', unpublished, false)}
       </div>
+      ${renderTagRow(projects)}
       ${hint}
     </div>`;
 }
@@ -615,9 +840,13 @@ function renderLocal(
               project.name
             )}" data-has-new="${project.hasNewContent}" data-can-publish="${
               project.canPublish
-            }" data-published="${project.publishedCount > 0}">
+            }" data-published="${project.publishedCount > 0}" data-tags="${escapeHtml(
+              encodeURIComponent(JSON.stringify(project.tags))
+            )}">
               <div class="project-head">
-                <div class="project-name" data-action="open" data-project="${escapeHtml(project.name)}">${escapeHtml(
+                <div class="project-name" data-action="open" data-project="${escapeHtml(
+                  project.name
+                )}" data-project-menu="${escapeHtml(project.name)}">${escapeHtml(
                   project.name
                 )}</div>
                 <span class="project-badges" data-project-badges>${renderProjectBadges(project)}</span>
@@ -638,6 +867,15 @@ function renderLocal(
     ? ''
     : `<button class="icon" data-action="createProject" title="新建项目">${icon('add')}</button>`;
 
+  // Section 6.9: the webview has no native context menu, so the project-name
+  // right click uses this fixed overlay.
+  const menu = hasIssues
+    ? ''
+    : `<div class="project-menu" id="project-menu" hidden>
+        <button data-menu-action="open">打开</button>
+        <button data-menu-action="editTags">编辑标签</button>
+      </div>`;
+
   return `
     <div class="header">
       <h1>创意项目</h1>
@@ -651,7 +889,8 @@ function renderLocal(
         )}</button>
       </div>
     </div>
-    ${hasIssues ? `<h2>需要完成的配置</h2>${issues}` : `${filters}${projects}`}`;
+    ${hasIssues ? `<h2>需要完成的配置</h2>${issues}` : `${filters}${projects}`}
+    ${menu}`;
 }
 
 function renderDocument(

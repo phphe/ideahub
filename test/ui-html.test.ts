@@ -90,7 +90,8 @@ describe('renderMainHtml project list', () => {
         proofTags: ['ideahub-' + 'a'.repeat(64)],
         publishedCount: 3,
         hasNewContent: true,
-        canPublish: true
+        canPublish: true,
+        tags: []
       }
     ],
     remoteStatus: {
@@ -138,7 +139,8 @@ describe('renderMainHtml project list', () => {
           proofTags: [],
           publishedCount: 0,
           hasNewContent: false,
-          canPublish: false
+          canPublish: false,
+          tags: []
         }
       ]
     };
@@ -215,6 +217,7 @@ describe('project ordering, filter and status chips', () => {
       publishedCount: 0,
       hasNewContent: false,
       canPublish: false,
+      tags: [],
       ...options
     };
   }

@@ -15,6 +15,7 @@ function createHandlers(): RouteHandlers {
     setRemote: vi.fn(ok),
     cloneRemote: vi.fn(ok),
     openProject: vi.fn(ok),
+    editTags: vi.fn(ok),
     markProject: vi.fn(ok),
     publishProject: vi.fn(ok)
   };
@@ -99,6 +100,21 @@ describe('routeMessage', () => {
     expect(isSilentSuccess('open')).toBe(true);
     expect(isSilentSuccess('mark')).toBe(false);
     expect(isSilentSuccess('createProject')).toBe(false);
+  });
+
+  it('routes editTags to the controller and requires a project name', async () => {
+    const handlers = createHandlers();
+    const route = routeMessage({ type: 'editTags', project: 'Demo' }, handlers);
+
+    expect(route.kind).toBe('operation');
+    if (route.kind !== 'operation') {
+      throw new Error('expected editTags to be routed as an operation');
+    }
+    expect(route.name).toBe('editTags');
+    await route.run();
+    expect(handlers.editTags).toHaveBeenCalledWith('Demo');
+    expect(routeMessage({ type: 'editTags' }, handlers).kind).toBe('unknown');
+    expect(isSilentSuccess('editTags')).toBe(false);
   });
 
   it('ignores unknown message types and project actions without a project name', () => {

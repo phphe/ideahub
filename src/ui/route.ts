@@ -19,6 +19,7 @@ export interface RouteHandlers {
   setRemote(url: string, immutabilityConfirmed: boolean, branch?: string): Promise<OpResult>;
   cloneRemote(reclone: boolean): Promise<OpResult>;
   openProject(project: string): Promise<OpResult>;
+  editTags(project: string): Promise<OpResult>;
   markProject(project: string): Promise<OpResult>;
   publishProject(project: string): Promise<OpResult>;
 }
@@ -71,6 +72,13 @@ export function routeMessage(message: WebviewMessage, handlers: RouteHandlers): 
         return { kind: 'unknown' };
       }
       return { kind: 'operation', name: 'open', run: () => handlers.openProject(project) };
+    }
+    case 'editTags': {
+      const project = message.project;
+      if (!project) {
+        return { kind: 'unknown' };
+      }
+      return { kind: 'operation', name: 'editTags', run: () => handlers.editTags(project) };
     }
     case 'mark': {
       const project = message.project;

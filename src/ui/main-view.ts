@@ -203,7 +203,8 @@ export class MainViewProvider implements vscode.WebviewViewProvider, vscode.Disp
         flags: {
           hasNewContent: summary.hasNewContent,
           canPublish: summary.canPublish,
-          publishedCount: summary.publishedCount
+          publishedCount: summary.publishedCount,
+          tags: summary.tags
         }
       });
     }
@@ -320,6 +321,7 @@ export class MainViewProvider implements vscode.WebviewViewProvider, vscode.Disp
         this.controller.setRemote(url, immutabilityConfirmed),
       cloneRemote: (reclone) => this.controller.cloneRemote(reclone),
       openProject: (project) => this.controller.openProject(project),
+      editTags: (project) => this.controller.editProjectTags(project),
       markProject: (project) => this.controller.markProject(project),
       publishProject: (project) => this.controller.publishProject(project)
     };

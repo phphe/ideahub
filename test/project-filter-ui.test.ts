@@ -11,6 +11,7 @@ function project(name: string, options: Partial<ProjectSummary> = {}): ProjectSu
     publishedCount: 0,
     hasNewContent: false,
     canPublish: false,
+    tags: [],
     ...options
   };
 }
@@ -128,7 +129,7 @@ interface Harness {
   input: FakeInput;
   hint: { hidden: boolean };
   messages: unknown[];
-  state(): { filterQuery?: string; filterChip?: string };
+  state(): { filterQuery?: string; filterChip?: string; filterTag?: string };
   input_(value: string): void;
   clickChip(chip: FakeChip): void;
   keydown(event: {
@@ -139,7 +140,10 @@ interface Harness {
   send(data: unknown): void;
 }
 
-function run(html: string, saved?: { filterQuery?: string; filterChip?: string }): Harness {
+function run(
+  html: string,
+  saved?: { filterQuery?: string; filterChip?: string; filterTag?: string }
+): Harness {
   const items = itemsFrom(html);
   const chips = chipsFrom(html);
   const hint = { hidden: true };
@@ -188,7 +192,7 @@ function run(html: string, saved?: { filterQuery?: string; filterChip?: string }
     acquireVsCodeApi: () => ({
       postMessage: (message: unknown) => messages.push(message),
       getState: () => persisted,
-      setState: (next: { filterQuery?: string; filterChip?: string }) => {
+      setState: (next: { filterQuery?: string; filterChip?: string; filterTag?: string }) => {
         persisted = next;
       }
     }),
@@ -300,7 +304,7 @@ describe('project filter webview behaviour', () => {
     harness.input_('game');
     harness.clickChip(harness.chips.find((chip) => chip.dataset.chip === 'new')!);
 
-    expect(harness.state()).toEqual({ filterQuery: 'game', filterChip: 'new' });
+    expect(harness.state()).toEqual({ filterQuery: 'game', filterChip: 'new', filterTag: '' });
 
     // A refresh adds a project; it stays visible only when it matches.
     const refreshed = [
@@ -372,6 +376,6 @@ describe('project filter webview behaviour', () => {
     expect(harness.input.value).toBe('');
     expect(harness.input.focused).toBe(false);
     expect(harness.items.every((item) => !item.hidden)).toBe(true);
-    expect(harness.state()).toEqual({ filterQuery: '', filterChip: 'all' });
+    expect(harness.state()).toEqual({ filterQuery: '', filterChip: 'all', filterTag: '' });
   });
 });
