@@ -1,11 +1,26 @@
 import { describe, expect, it } from 'vitest';
 import {
   appendMarkerLine,
+  computeProofHash,
   formatMarkerLine,
   normalizeContent,
   parseIdeas,
   parseMarkerLine
 } from '../src/core/ideas';
+
+describe('computeProofHash', () => {
+  it('hashes the project name and normalised content to 64 lowercase hex', () => {
+    const hash = computeProofHash('MyGame', '第一行\n\n第二行\n');
+    expect(hash).toMatch(/^[0-9a-f]{64}$/);
+    expect(hash).toBe(computeProofHash('MyGame', '第一行\n第二行'));
+  });
+
+  it('changes when the project name or content changes', () => {
+    const base = computeProofHash('MyGame', '创意');
+    expect(computeProofHash('OtherGame', '创意')).not.toBe(base);
+    expect(computeProofHash('MyGame', '另一个创意')).not.toBe(base);
+  });
+});
 
 const TIME = '2026-11-06 18:33:28 (UTC+08:00)';
 const PROOF_LINE = `Proof: ${TIME} [ideahub]`;
@@ -71,6 +86,24 @@ describe('parseIdeas', () => {
     expect(parsed.proofMarkers).toHaveLength(1);
     expect(parsed.hasUnsealedContent).toBe(true);
     expect(normalizeContent(parsed.unsealedText)).toBe('新增内容');
+  });
+
+  it('records the normalised content between markers for hashing', () => {
+    const text = `第一段\n${PROOF_LINE}\n\n${PUBLISHED_LINE}\n第二段\n${PROOF_LINE}\n`;
+    const parsed = parseIdeas(text);
+    expect(parsed.proofMarkers[0].hashContent).toBe('第一段');
+    expect(parsed.publishedMarkers[0].hashContent).toBe('');
+    expect(parsed.proofMarkers[1].hashContent).toBe('第二段');
+    expect(parsed.tailAfterLastMarker).toBe('');
+  });
+
+  it('allows publishing only when the last non-blank line is a proof marker', () => {
+    expect(parseIdeas(`创意\n${PROOF_LINE}\n`).canPublish).toBe(true);
+    expect(parseIdeas(`创意\n${PROOF_LINE}\n\n  \n`).canPublish).toBe(true);
+    expect(parseIdeas(`创意\n${PROOF_LINE}\n新增\n`).canPublish).toBe(false);
+    expect(parseIdeas(`创意\n${PROOF_LINE}\n${PUBLISHED_LINE}\n`).canPublish).toBe(false);
+    expect(parseIdeas('创意\n').canPublish).toBe(false);
+    expect(parseIdeas('').canPublish).toBe(false);
   });
 
   it('recognises markers with surrounding whitespace but rejects the old format', () => {

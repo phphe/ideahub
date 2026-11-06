@@ -84,6 +84,8 @@ describe('GitHubClient.createRelease', () => {
       tag_name: 'ideahub-abc123',
       target_commitish: 'abc123def456'
     });
+    const sent = sentBody as Record<string, unknown> | null;
+    expect(String(sent?.['body'])).not.toContain('sha256=');
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 

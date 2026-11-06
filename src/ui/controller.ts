@@ -22,7 +22,13 @@ import {
   type RemoteSetupFlowResult,
   type RemoteSetupStep
 } from '../core/remote-setup-flow';
-import { appendMarkerLine, formatMarkerLine, parseIdeas } from '../core/ideas';
+import {
+  appendMarkerLine,
+  computeProofHash,
+  formatMarkerLine,
+  parseIdeas
+} from '../core/ideas';
+import { ProjectOperationGuard } from '../core/operation-guard';
 import {
   commitMarkerLine,
   DEFAULT_PROOF_COMMIT_MESSAGE,
@@ -44,6 +50,8 @@ import { getGitHubToken } from './auth';
 export interface OpResult {
   ok: boolean;
   message: string;
+  /** Duplicate requests are ignored without notice or refresh. */
+  silent?: boolean;
 }
 
 async function exists(target: string): Promise<boolean> {
@@ -90,6 +98,7 @@ function formatRemoteSetupResult(result: RemoteSetupFlowResult): OpResult {
 
 export class IdeahubController {
   public currentState: WorkspaceState = { kind: 'no-folder' };
+  private readonly operationGuard = new ProjectOperationGuard();
 
   constructor(private readonly output: vscode.OutputChannel) {}
 
@@ -409,6 +418,17 @@ export class IdeahubController {
   }
 
   public async markProject(project: string): Promise<OpResult> {
+    const outcome = await this.operationGuard.run(project, () =>
+      this.markProjectUnlocked(project)
+    );
+    if (outcome.ignored) {
+      this.log(`mark: ignored duplicate request for ${project}`);
+      return { ok: true, message: '操作进行中，已忽略重复请求。', silent: true };
+    }
+    return outcome.value!;
+  }
+
+  private async markProjectUnlocked(project: string): Promise<OpResult> {
     const state = this.currentState;
     if (state.kind !== 'local' || !state.remote) {
       return { ok: false, message: '请先完成本地仓库与远程仓库配置。' };
@@ -437,11 +457,13 @@ export class IdeahubController {
 
     this.log(`mark: release branch config: release_branch=${RELEASE_BRANCH} source=build`);
 
-    // A fresh timestamp per proof; seconds-level granularity makes the tag unique.
+    // Section 7.3 / 7.4: the tag is the SHA-256 of the project name and the
+    // content sealed by this proof marker.
+    const contentHash = computeProofHash(project, parsed.tailAfterLastMarker);
     const proofTime = new Date();
     const proofTimeText = formatMarkerTime(proofTime);
     const markerLine = formatMarkerLine('proof', proofTimeText);
-    const tag = buildReleaseTag(proofTime).tag;
+    const tag = buildReleaseTag(contentHash).tag;
     const tagError = validateTagName(tag);
     if (tagError) {
       this.log(
@@ -527,7 +549,7 @@ export class IdeahubController {
           if (existing) {
             return { created: false, release: existing };
           }
-          return client.createRelease(remote.owner, remote.repo, tag, markerLine, target.sha);
+          return client.createRelease(remote.owner, remote.repo, tag, proofTimeText, target.sha);
         }
       );
     } catch (error) {
@@ -632,12 +654,42 @@ export class IdeahubController {
   }
 
   public async publishProject(project: string): Promise<OpResult> {
+    const outcome = await this.operationGuard.run(project, () =>
+      this.publishProjectUnlocked(project)
+    );
+    if (outcome.ignored) {
+      this.log(`publish: ignored duplicate request for ${project}`);
+      return { ok: true, message: '操作进行中，已忽略重复请求。', silent: true };
+    }
+    return outcome.value!;
+  }
+
+  private async publishProjectUnlocked(project: string): Promise<OpResult> {
     const state = this.currentState;
     if (state.kind !== 'local' || !state.remote) {
       return { ok: false, message: '请先完成本地仓库与远程仓库配置。' };
     }
     if (state.issues.length > 0) {
       return { ok: false, message: '请先完成界面列出的配置，再发布项目。' };
+    }
+
+    // Section 8.10: block before any write, commit, copy or push.
+    let currentText: string;
+    try {
+      currentText = await fs.readFile(
+        path.join(state.root, project, 'ideas.md'),
+        'utf8'
+      );
+    } catch (error) {
+      return {
+        ok: false,
+        message: `无法读取项目 ideas.md：${
+          error instanceof Error ? error.message : String(error)
+        }`
+      };
+    }
+    if (parseIdeas(currentText).hasUnsealedContent) {
+      return { ok: false, message: '存在未证明的新内容，请先证明' };
     }
 
     const projectDir = path.join(state.root, project);

@@ -44,9 +44,10 @@ describe('renderMainHtml project list', () => {
       {
         name: 'MyGame',
         proofCount: 2,
-        proofTags: ['ideahub-20261106T103328Z'],
-        latestProofTime: '2026-11-06 18:33:28 (UTC+08:00)',
-        hasNewContent: true
+        proofTags: ['ideahub-' + 'a'.repeat(64)],
+        publishedCount: 3,
+        hasNewContent: true,
+        canPublish: true
       }
     ],
     remoteStatus: {
@@ -55,11 +56,45 @@ describe('renderMainHtml project list', () => {
     }
   };
 
-  it('renders a borderless project item with three lines', () => {
+  it('renders a borderless project with name and badges on a wrapping row', () => {
     const html = renderMainHtml(state);
     expect(html).toContain('li.project {');
     expect(html).toContain('border: none;');
-    expect(html.match(/<div class="project-line/g)).toHaveLength(3);
+    expect(html).toContain('.project-head { display: flex; flex-wrap: wrap;');
+    expect(html.match(/<div class="project-head">/g)).toHaveLength(1);
+    expect(html).not.toContain('class="project-line');
+  });
+
+  it('renders exactly the four supported badges with titles', () => {
+    const html = renderMainHtml(state);
+    expect(html).toContain('title="已生成的证明数量">2个证明</span>');
+    expect(html).toContain('title="存在尚未证明的新内容">有新内容</span>');
+    expect(html).toContain('title="已发布的次数">发布3次</span>');
+    expect(html).toContain('title="已证明的内容可以发布">可发布</span>');
+    expect(html).not.toContain('最近证明');
+    expect(html).not.toContain('未发布');
+    expect(html).not.toContain('远程状态不可用');
+  });
+
+  it('hides 有新内容, 发布N次 and 可发布 when they do not apply', () => {
+    const emptyState: WorkspaceState = {
+      ...state,
+      projects: [
+        {
+          name: 'EmptyGame',
+          proofCount: 0,
+          proofTags: [],
+          publishedCount: 0,
+          hasNewContent: false,
+          canPublish: false
+        }
+      ]
+    };
+    const html = renderMainHtml(emptyState);
+    expect(html).toContain('>0个证明</span>');
+    expect(html).not.toContain('>有新内容</span>');
+    expect(html).not.toContain('>发布0次</span>');
+    expect(html).not.toContain('>可发布</span>');
   });
 
   it('renders the proof and publish buttons with tooltips', () => {

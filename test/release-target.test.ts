@@ -9,17 +9,16 @@ import {
 } from '../src/core/release-target';
 
 describe('buildReleaseTag / validateTagName', () => {
-  it('derives a compact UTC tag from the proof time', () => {
-    const result = buildReleaseTag(new Date('2026-11-06T10:33:28.000Z'));
-    expect(result.tag).toBe('ideahub-20261106T103328Z');
+  it('derives ideahub-<64hex> from the content hash', () => {
+    const hash = 'a'.repeat(64);
+    const result = buildReleaseTag(hash);
+    expect(result.tag).toBe(`ideahub-${hash}`);
     expect(result.tag).toMatch(/^[A-Za-z0-9-]+$/);
     expect(validateTagName(result.tag)).toBeNull();
   });
 
-  it('produces different tags for different seconds', () => {
-    const first = buildReleaseTag(new Date('2026-11-06T10:33:28.000Z'));
-    const second = buildReleaseTag(new Date('2026-11-06T10:33:29.000Z'));
-    expect(first.tag).not.toBe(second.tag);
+  it('normalises upper-case hashes to lower-case', () => {
+    expect(buildReleaseTag('ABCDEF').tag).toBe('ideahub-abcdef');
   });
 
   it('rejects tags with spaces, "..", trailing dots and .lock segments', () => {

@@ -1,13 +1,5 @@
 import * as crypto from 'node:crypto';
-import { formatProofTime } from '../core/proof-time';
-import type { RemoteStatus, WorkspaceState } from '../core/status';
-
-export interface RenderOptions {
-  now: Date;
-  locale: string;
-}
-
-const DEFAULT_RENDER_OPTIONS: RenderOptions = { now: new Date(), locale: 'zh-CN' };
+import type { ProjectSummary, WorkspaceState } from '../core/status';
 
 function escapeHtml(value: string): string {
   return value
@@ -156,16 +148,15 @@ const STYLES = `
   li.project {
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: 6px;
     padding: 8px 0;
     margin-bottom: 6px;
     border: none;
   }
-  .project-line { display: flex; }
+  .project-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
   .project-actions { display: flex; gap: 6px; flex-wrap: wrap; }
   .project-name { font-weight: 600; word-break: break-all; cursor: pointer; }
   .project-name:hover { text-decoration: underline; }
-  .badges { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
   .badge {
     font-size: 11px;
     border-radius: 10px;
@@ -206,7 +197,7 @@ function renderIssueActions(
   }
 }
 
-function renderMain(state: WorkspaceState, options: RenderOptions): string {
+function renderMain(state: WorkspaceState): string {
   switch (state.kind) {
     case 'no-folder':
       return `
@@ -239,7 +230,7 @@ function renderMain(state: WorkspaceState, options: RenderOptions): string {
         <div class="card error"><div class="title">检测失败</div><p>${escapeHtml(state.message)}</p>
         <div class="actions"><button class="secondary" data-action="refresh">重新检测</button></div></div>`;
     case 'local':
-      return renderLocal(state, options);
+      return renderLocal(state);
   }
 }
 
@@ -248,34 +239,18 @@ interface Badge {
   title?: string;
 }
 
-function renderBadges(
-  project: Extract<WorkspaceState, { kind: 'local' }>['projects'][number],
-  remote: RemoteStatus | undefined,
-  options: RenderOptions
-): string {
+function renderBadges(project: ProjectSummary): string {
   const badges: Badge[] = [
-    { text: project.proofCount > 0 ? `证明 ${project.proofCount}` : '暂无证明' }
+    { text: `${project.proofCount}个证明`, title: '已生成的证明数量' }
   ];
   if (project.hasNewContent) {
-    badges.push({ text: '有新内容' });
+    badges.push({ text: '有新内容', title: '存在尚未证明的新内容' });
   }
-  const status = remote?.available ? remote.projects[project.name] : undefined;
-  if (!remote || !remote.available) {
-    if (project.proofCount > 0) {
-      badges.push({ text: '远程状态不可用' });
-    }
-  } else {
-    badges.push({ text: status?.published ? '已发布' : '未发布' });
+  if (project.publishedCount > 0) {
+    badges.push({ text: `发布${project.publishedCount}次`, title: '已发布的次数' });
   }
-  if (project.proofCount > 0) {
-    const display = formatProofTime(
-      {
-        markerTime: project.latestProofTime,
-        publishedAt: status?.latestProofAt ?? null
-      },
-      { now: options.now, locale: options.locale }
-    );
-    badges.push({ text: `最近证明 ${display.text}`, title: display.tooltip });
+  if (project.canPublish) {
+    badges.push({ text: '可发布', title: '已证明的内容可以发布' });
   }
   return badges
     .map((badge) =>
@@ -287,8 +262,7 @@ function renderBadges(
 }
 
 function renderLocal(
-  state: Extract<WorkspaceState, { kind: 'local' }>,
-  options: RenderOptions
+  state: Extract<WorkspaceState, { kind: 'local' }>
 ): string {
   const hasIssues = state.issues.length > 0;
   const issues = state.issues
@@ -322,13 +296,13 @@ function renderLocal(
       : `<ul class="projects">${state.projects
           .map(
             (project) => `<li class="project">
-              <div class="project-line">
+              <div class="project-head">
                 <div class="project-name" data-action="open" data-project="${escapeHtml(project.name)}">${escapeHtml(
                   project.name
                 )}</div>
+                ${renderBadges(project)}
               </div>
-              <div class="project-line badges">${renderBadges(project, state.remoteStatus, options)}</div>
-              <div class="project-line project-actions">
+              <div class="project-actions">
                 <button data-action="mark" data-project="${escapeHtml(
                   project.name
                 )}" title="发布新增内容的时间证明">证明</button>
@@ -355,10 +329,8 @@ function renderLocal(
 
 export function renderMainHtml(
   state: WorkspaceState,
-  notice?: ViewNotice | null,
-  options: Partial<RenderOptions> = {}
+  notice?: ViewNotice | null
 ): string {
-  const resolved: RenderOptions = { ...DEFAULT_RENDER_OPTIONS, ...options };
   const nonce = crypto.randomBytes(16).toString('base64');
   return `<!DOCTYPE html>
 <html lang="zh-CN">
@@ -372,7 +344,7 @@ export function renderMainHtml(
 <body>
 ${renderNotice(notice)}
 <div id="status" class="status" role="status" aria-live="polite" hidden></div>
-${renderMain(state, resolved)}
+${renderMain(state)}
 ${renderScript(nonce)}
 </body>
 </html>`;

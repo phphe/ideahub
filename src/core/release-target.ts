@@ -130,15 +130,12 @@ export interface ReleaseTagResult {
 }
 
 /**
- * Section 7.4: `ideahub-YYYYMMDDTHHmmssZ` from the proof time in UTC.
- * The result only contains letters and digits, so it is always a valid tag.
+ * Section 7.4: `ideahub-<sha256>` where the hash is computed over the project
+ * name and the content sealed by the proof marker. Lowercase hex only contains
+ * letters and digits, so it is always a valid tag.
  */
-export function buildReleaseTag(time: Date): ReleaseTagResult {
-  const compact = time
-    .toISOString()
-    .replace(/[-:]/g, '')
-    .replace(/\.\d{3}Z$/, 'Z');
-  return { tag: `ideahub-${compact}` };
+export function buildReleaseTag(hash: string): ReleaseTagResult {
+  return { tag: `ideahub-${hash.trim().toLowerCase()}` };
 }
 
 export type BranchLookup =

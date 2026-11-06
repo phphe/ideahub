@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+
 export type MarkerKind = 'proof' | 'published';
 
 /**
@@ -12,6 +14,8 @@ export interface ParsedMarker {
   line: number;
   /** Time text as written, e.g. `2026-11-06 18:33:28 (UTC+08:00)`. */
   time: string | null;
+  /** Normalised content between the previous marker and this marker. */
+  hashContent: string;
 }
 
 export interface ParsedIdeas {
@@ -21,6 +25,10 @@ export interface ParsedIdeas {
   /** Non-blank content after the last `Proof:` marker, excluding markers. */
   unsealedText: string;
   hasUnsealedContent: boolean;
+  /** Non-blank content after the last marker of any kind, excluding markers. */
+  tailAfterLastMarker: string;
+  /** True when the last non-blank line is a `Proof:` marker. */
+  canPublish: boolean;
 }
 
 export function formatMarkerLine(kind: MarkerKind, timeText: string): string {
@@ -39,7 +47,8 @@ export function parseMarkerLine(line: string): ParsedMarker | null {
   return {
     kind: match[1] === 'Proof' ? 'proof' : 'published',
     line: 0,
-    time: match[2].trim() || null
+    time: match[2].trim() || null,
+    hashContent: ''
   };
 }
 
@@ -51,27 +60,47 @@ export function parseIdeas(text: string): ParsedIdeas {
   const lines = text.split(/\r?\n/);
   const markers: ParsedMarker[] = [];
   let buffer: string[] = [];
+  let intervalBuffer: string[] = [];
 
   for (let index = 0; index < lines.length; index += 1) {
     const marker = parseMarkerLine(lines[index]);
     if (marker) {
-      markers.push({ ...marker, line: index });
+      markers.push({
+        ...marker,
+        line: index,
+        hashContent: normalizeContent(intervalBuffer.join('\n'))
+      });
+      intervalBuffer = [];
       if (marker.kind === 'proof') {
         buffer = [];
       }
       continue;
     }
     buffer.push(lines[index]);
+    intervalBuffer.push(lines[index]);
   }
 
   const unsealedText = buffer.join('\n');
+  const tailAfterLastMarker = normalizeContent(intervalBuffer.join('\n'));
+  const lastNonEmptyLine = [...lines].reverse().find((line) => line.trim().length > 0) ?? '';
+  const lastMarker = parseMarkerLine(lastNonEmptyLine);
   return {
     markers,
     proofMarkers: markers.filter((marker) => marker.kind === 'proof'),
     publishedMarkers: markers.filter((marker) => marker.kind === 'published'),
     unsealedText,
-    hasUnsealedContent: normalizeContent(unsealedText).length > 0
+    hasUnsealedContent: normalizeContent(unsealedText).length > 0,
+    tailAfterLastMarker,
+    canPublish: lastMarker?.kind === 'proof'
   };
+}
+
+/**
+ * Section 7.3: SHA-256 over the project name and the normalised content
+ * sealed by a proof marker. The result is the release tag suffix.
+ */
+export function computeProofHash(project: string, content: string): string {
+  return createHash('sha256').update(`${project}\n${normalizeContent(content)}`).digest('hex');
 }
 
 /**

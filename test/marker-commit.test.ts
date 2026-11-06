@@ -50,7 +50,9 @@ function options(root: string, markerLine = PROOF_LINE, enabled = true, message 
 
 afterEach(async () => {
   await Promise.all(
-    roots.splice(0).map((root) => fs.rm(root, { recursive: true, force: true }))
+    roots.splice(0).map((root) =>
+      fs.rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 })
+    )
   );
 });
 
@@ -77,7 +79,7 @@ describe('resolveCommitMessage', () => {
   });
 });
 
-describe('commitMarkerLine', () => {
+describe('commitMarkerLine', { timeout: 20000 }, () => {
   it('commits only the proof marker line even when ideas.md has uncommitted content', async () => {
     const root = await createRepo();
     const ideasPath = path.join(root, 'MyGame', 'ideas.md');

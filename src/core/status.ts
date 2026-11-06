@@ -11,8 +11,7 @@ import {
 import { isGitRepository, getRemoteOriginUrl } from './git';
 import { hasHookBlock, isHookTargetCurrent, readPrePushHook } from './hook';
 import { listProjects, IDEAS_FILE } from './projects';
-import { parseIdeas } from './ideas';
-import { parseMarkerTime } from './proof-time';
+import { computeProofHash, parseIdeas } from './ideas';
 import { buildReleaseTag } from './release-target';
 import { parseRemoteUrl } from './remote-url';
 
@@ -27,37 +26,25 @@ export interface LocalIssue {
 export interface ProjectSummary {
   name: string;
   proofCount: number;
-  /** Release tags derived from `Proof:` marker times. */
+  /** Release tags derived from the content hash of each `Proof:` marker. */
   proofTags: string[];
-  /** Newest `Proof:` time text, or null when none is parseable. */
-  latestProofTime: string | null;
+  publishedCount: number;
   hasNewContent: boolean;
+  canPublish: boolean;
 }
 
-function summarizeProject(name: string, text: string): ProjectSummary {
+export function summarizeProject(name: string, text: string): ProjectSummary {
   const parsed = parseIdeas(text);
-  const proofTags: string[] = [];
-  let latestProofTime: string | null = null;
-  let latestMs = Number.NEGATIVE_INFINITY;
-
-  for (const marker of parsed.proofMarkers) {
-    const time = parseMarkerTime(marker.time);
-    if (!time) {
-      continue;
-    }
-    proofTags.push(buildReleaseTag(time.instant).tag);
-    if (time.instant.getTime() > latestMs) {
-      latestMs = time.instant.getTime();
-      latestProofTime = marker.time;
-    }
-  }
 
   return {
     name,
     proofCount: parsed.proofMarkers.length,
-    proofTags,
-    latestProofTime,
-    hasNewContent: parsed.hasUnsealedContent
+    proofTags: parsed.proofMarkers.map((marker) =>
+      buildReleaseTag(computeProofHash(name, marker.hashContent)).tag
+    ),
+    publishedCount: parsed.publishedMarkers.length,
+    hasNewContent: parsed.hasUnsealedContent,
+    canPublish: parsed.canPublish
   };
 }
 
@@ -235,8 +222,9 @@ export async function detectWorkspace(folder: string | null): Promise<WorkspaceS
             name,
             proofCount: 0,
             proofTags: [],
-            latestProofTime: null,
-            hasNewContent: false
+            publishedCount: 0,
+            hasNewContent: false,
+            canPublish: false
           };
         }
       })
