@@ -4,8 +4,10 @@ import * as path from 'node:path';
 import { appendMarkerLine } from './ideas';
 import { isGitRepository, runGit, type GitResult } from './git';
 
-export const DEFAULT_PROOF_COMMIT_MESSAGE = 'feat(ideas): record proof for {project}';
-export const DEFAULT_PUBLISH_COMMIT_MESSAGE = 'feat(ideas): mark {project} as published';
+export const DEFAULT_PROOF_COMMIT_MESSAGE = 'ideahub: record proof';
+export const DEFAULT_PUBLISH_COMMIT_MESSAGE = 'ideahub: mark published';
+export const CONFIG_INIT_COMMIT_MESSAGE = 'ideahub: initialize config';
+export const CONFIG_REMOTE_COMMIT_MESSAGE = 'ideahub: update remote config';
 
 export interface CommitMessageValues {
   project: string;
@@ -144,6 +146,100 @@ export async function commitMarkerLine(
     }
 
     // Keep the real index in sync for this path (there were no staged changes).
+    await runGit(repoRoot, ['update-index', '--add', '--cacheinfo', `100644,${blobSha},${relPath}`]);
+
+    const head = await runGit(repoRoot, ['rev-parse', 'HEAD']);
+    return {
+      status: 'committed',
+      reason: '',
+      silent: false,
+      commit: head.stdout.trim()
+    };
+  } finally {
+    await fs.unlink(tempFile).catch(() => undefined);
+    await fs.unlink(tempIndex).catch(() => undefined);
+  }
+}
+
+export interface SingleFileCommitOptions {
+  /** Workspace root (the local idea repository). */
+  root: string;
+  /** Absolute path of the only file that may be committed. */
+  filePath: string;
+  message: string;
+}
+
+/**
+ * Section 2.4 exception two: commit `.ideahub/config.json` alone after it is
+ * created by init or changed in settings. Uses the same temporary-index trick
+ * as `commitMarkerLine`, so the user's index, working tree and other changes
+ * are untouched. Never pushes, never amends.
+ */
+export async function commitSingleFile(
+  options: SingleFileCommitOptions
+): Promise<MarkerCommitResult> {
+  if (!(await isGitRepository(options.root))) {
+    return skipped('本地不是 Git 仓库', true);
+  }
+
+  const toplevel = await runGit(options.root, ['rev-parse', '--show-toplevel']);
+  if (toplevel.code !== 0) {
+    return skipped('无法确定 Git 仓库根目录', true);
+  }
+  const repoRoot = toplevel.stdout.trim();
+  const relPath = path.relative(repoRoot, options.filePath).split(path.sep).join('/');
+  if (!relPath || relPath.startsWith('../')) {
+    return { status: 'failed', reason: '配置文件不在 Git 仓库内', silent: false };
+  }
+
+  let content: string;
+  try {
+    content = await fs.readFile(options.filePath, 'utf8');
+  } catch {
+    return skipped('配置文件不存在，无需提交', true);
+  }
+
+  const hasHead = (await runGit(repoRoot, ['rev-parse', '--verify', 'HEAD'])).code === 0;
+  if (hasHead) {
+    const headContent = await runGit(repoRoot, ['cat-file', '-p', `HEAD:${relPath}`]);
+    if (headContent.code === 0 && headContent.stdout === content) {
+      return skipped('配置文件内容未变化', true);
+    }
+  }
+
+  const tempFile = tempName('ideahub-config');
+  const tempIndex = tempName('ideahub-index');
+  const indexEnv = { GIT_INDEX_FILE: tempIndex };
+  try {
+    await fs.writeFile(tempFile, content, 'utf8');
+
+    const blob = await runGit(repoRoot, ['hash-object', '-w', '-t', 'blob', tempFile]);
+    if (blob.code !== 0) {
+      return gitFailure('无法写入 Git blob', blob);
+    }
+    const blobSha = blob.stdout.trim();
+
+    const readTree = await runGit(repoRoot, ['read-tree', hasHead ? 'HEAD' : '--empty'], {
+      env: indexEnv
+    });
+    if (readTree.code !== 0) {
+      return gitFailure('无法初始化临时索引', readTree);
+    }
+
+    const updateIndex = await runGit(
+      repoRoot,
+      ['update-index', '--add', '--cacheinfo', `100644,${blobSha},${relPath}`],
+      { env: indexEnv }
+    );
+    if (updateIndex.code !== 0) {
+      return gitFailure('无法写入临时索引', updateIndex);
+    }
+
+    const commit = await runGit(repoRoot, ['commit', '-m', options.message], { env: indexEnv });
+    if (commit.code !== 0) {
+      return gitFailure('git commit 失败', commit);
+    }
+
     await runGit(repoRoot, ['update-index', '--add', '--cacheinfo', `100644,${blobSha},${relPath}`]);
 
     const head = await runGit(repoRoot, ['rev-parse', 'HEAD']);

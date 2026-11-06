@@ -55,12 +55,12 @@
         },
         "ideahub.proof.commitMessage": {
           "type": "string",
-          "default": "feat(ideas): record proof for {project}",
+          "default": "ideahub: record proof",
           "description": "证明标记自动提交信息模板，支持 {project}、{time} 占位符；未知占位符原样保留，空值回落默认值。"
         },
         "ideahub.publish.commitMessage": {
           "type": "string",
-          "default": "feat(ideas): mark {project} as published",
+          "default": "ideahub: mark published",
           "description": "发布标记自动提交信息模板，支持 {project}、{time} 占位符；未知占位符原样保留，空值回落默认值。"
         }
       }

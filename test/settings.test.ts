@@ -42,11 +42,11 @@ describe('package.json contributes.configuration', () => {
     });
     expect(properties['ideahub.proof.commitMessage']).toMatchObject({
       type: 'string',
-      default: 'feat(ideas): record proof for {project}'
+      default: 'ideahub: record proof'
     });
     expect(properties['ideahub.publish.commitMessage']).toMatchObject({
       type: 'string',
-      default: 'feat(ideas): mark {project} as published'
+      default: 'ideahub: mark published'
     });
     for (const key of ['ideahub.proof.commitMessage', 'ideahub.publish.commitMessage']) {
       expect(properties[key].description).toContain('{project}');

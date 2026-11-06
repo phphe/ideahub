@@ -73,11 +73,11 @@ describe('resolveCommitMessage', () => {
 
   it('falls back to the proof or publish default for empty templates', () => {
     expect(resolveCommitMessage('', { project: 'MyGame', time: TIME })).toBe(
-      'feat(ideas): record proof for MyGame'
+      'ideahub: record proof'
     );
     expect(
       resolveCommitMessage('   ', { project: 'MyGame', time: TIME }, DEFAULT_PUBLISH_COMMIT_MESSAGE)
-    ).toBe('feat(ideas): mark MyGame as published');
+    ).toBe('ideahub: mark published');
   });
 });
 
@@ -166,10 +166,10 @@ describe('commitMarkerLine', { timeout: 20000 }, () => {
     );
 
     await commitMarkerLine(options(root, PROOF_LINE, true, proof));
-    expect(await headSubject(root)).toBe('feat(ideas): record proof for MyGame');
+    expect(await headSubject(root)).toBe('ideahub: record proof');
 
     await commitMarkerLine(options(root, PUBLISHED_LINE, true, publish));
-    expect(await headSubject(root)).toBe('feat(ideas): mark MyGame as published');
+    expect(await headSubject(root)).toBe('ideahub: mark published');
   });
 
   it('skips when ideas.md already has staged changes', async () => {
