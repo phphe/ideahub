@@ -230,7 +230,7 @@ describe('busy state recovery', () => {
     return created;
   }
 
-  it('re-renders after a cancelled non-empty init so the button works again', async () => {
+  it('posts a busy reset instead of rewriting the page after a cancelled non-empty init', async () => {
     const controller = {
       currentState: NOT_IDEAHUB,
       refresh: vi.fn(async () => NOT_IDEAHUB),
@@ -240,20 +240,22 @@ describe('busy state recovery', () => {
     expect(webview.html).toContain('data-action="initNonEmpty"');
 
     handler()({ type: 'initNonEmpty' });
-    await vi.waitFor(() => expect(htmlSets.length).toBe(2));
-    expect(controller.initialize).toHaveBeenCalledWith(true);
-    // A full re-render ships the idle markup again, so the button is clickable.
-    expect(webview.html).toContain(
-      '<button class="secondary" data-action="initNonEmpty">仍要初始化</button>'
+    await vi.waitFor(() =>
+      expect(webview.postMessage).toHaveBeenCalledWith({ type: 'resetBusy' })
     );
+    expect(controller.initialize).toHaveBeenCalledWith(true);
+    // The page stays intact so the scroll position and focus survive cancellation.
+    expect(htmlSets.length).toBe(1);
+    expect(controller.refresh).toHaveBeenCalledTimes(1);
 
-    // The restored page can prompt for confirmation a second time.
+    // The already-rendered page can prompt for confirmation a second time.
     handler()({ type: 'initNonEmpty' });
     await vi.waitFor(() => expect(controller.initialize).toHaveBeenCalledTimes(2));
-    await vi.waitFor(() => expect(htmlSets.length).toBe(3));
+    await vi.waitFor(() => expect(webview.postMessage).toHaveBeenCalledTimes(2));
+    expect(htmlSets.length).toBe(1);
   });
 
-  it('re-renders the settings view after a cancelled setRemote', async () => {
+  it('posts the same busy reset when setRemote is cancelled in the settings view', async () => {
     const controller = {
       currentState: STATE,
       refresh: vi.fn(async () => STATE),
@@ -274,11 +276,12 @@ describe('busy state recovery', () => {
       url: 'https://github.com/phphe/other',
       immutabilityConfirmed: true
     });
-    await vi.waitFor(() => expect(htmlSets.length).toBe(3));
+    await vi.waitFor(() =>
+      expect(webview.postMessage).toHaveBeenCalledWith({ type: 'resetBusy' })
+    );
     expect(controller.setRemote).toHaveBeenCalledWith('https://github.com/phphe/other', true);
+    expect(htmlSets.length).toBe(2);
     expect(webview.html).toContain('<h1>设置</h1>');
-    expect(webview.html).toContain('data-action="setRemote"');
-    expect(webview.html).toContain('data-action="closeSettings"');
   });
 
   it('re-renders after a failed clone so the retry button is clickable again', async () => {

@@ -41,16 +41,33 @@ function renderScript(nonce: string): string {
 
     // Busy feedback must not change layout: only disable controls, and keep
     // icon buttons at their original size by swapping the glyph in place.
+    // Each button remembers its idle icon class so a later reset can restore it.
     function lockButtons(trigger) {
       document.querySelectorAll('button').forEach(function (button) {
         button.disabled = true;
-      });
-      if (trigger && trigger.classList.contains('icon')) {
-        const glyph = trigger.querySelector('.codicon');
+        button.dataset.busy = 'true';
+        const glyph = button.querySelector('.codicon');
         if (glyph) {
-          glyph.className = 'codicon codicon-loading codicon-modifier-spin';
+          button.dataset.idleIcon = glyph.className;
+          if (button === trigger && button.classList.contains('icon')) {
+            glyph.className = 'codicon codicon-loading codicon-modifier-spin';
+          }
         }
-      }
+      });
+    }
+
+    // Cancelled operations reset the busy state in place, so the page keeps its
+    // scroll position and input focus instead of being rebuilt.
+    function resetBusy() {
+      document.querySelectorAll('button[data-busy]').forEach(function (button) {
+        button.disabled = false;
+        delete button.dataset.busy;
+        const glyph = button.querySelector('.codicon');
+        if (glyph && button.dataset.idleIcon) {
+          glyph.className = button.dataset.idleIcon;
+        }
+        delete button.dataset.idleIcon;
+      });
     }
 
     window.addEventListener('error', function (event) {
@@ -86,6 +103,10 @@ function renderScript(nonce: string): string {
 
     window.addEventListener('message', function (event) {
       const data = event.data;
+      if (data && data.type === 'resetBusy') {
+        resetBusy();
+        return;
+      }
       if (data && data.type === 'settingsInfo' && data.info) {
         applySettingsInfo(data.info);
       }
