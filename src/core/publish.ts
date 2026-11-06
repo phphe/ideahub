@@ -1,8 +1,32 @@
 import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
+import { INNER_REPO_NO_HEAD_ERROR, verifyClonedRepository } from './clone';
 import { describeError } from './config';
 import { redactSecrets, runGit } from './git';
 import { parseRemoteUrl } from './remote-url';
+
+export type InnerRepositoryHeadCheck =
+  | { ok: true }
+  | { ok: false; error: string; detail: string };
+
+/**
+ * Section 8.10 preflight: an inner repository can exist but have no usable
+ * HEAD (empty clone, interrupted clone). Publishing must stop with an
+ * actionable message instead of leaking `fatal: ambiguous argument 'HEAD'`.
+ */
+export async function checkInnerRepositoryHead(
+  remotePath: string
+): Promise<InnerRepositoryHeadCheck> {
+  const verified = await verifyClonedRepository(remotePath);
+  if (verified.ok) {
+    return { ok: true };
+  }
+  return {
+    ok: false,
+    error: verified.error ?? INNER_REPO_NO_HEAD_ERROR,
+    detail: verified.detail ?? 'git rev-parse --verify HEAD failed'
+  };
+}
 
 export interface ProjectScan {
   files: string[];
@@ -51,7 +75,12 @@ export async function scanProjectDirectory(projectDir: string): Promise<ProjectS
 export async function syncInnerRepository(
   remotePath: string,
   branch: string
-): Promise<{ ok: true } | { ok: false; error: string }> {
+): Promise<{ ok: true } | { ok: false; error: string; detail?: string }> {
+  const readiness = await checkInnerRepositoryHead(remotePath);
+  if (!readiness.ok) {
+    return readiness;
+  }
+
   const status = await runGit(remotePath, ['status', '--porcelain']);
   if (status.code !== 0) {
     return { ok: false, error: `无法读取内层仓库状态：${status.stderr.trim()}` };
@@ -73,7 +102,11 @@ export async function syncInnerRepository(
 
   const current = await runGit(remotePath, ['rev-parse', '--abbrev-ref', 'HEAD']);
   if (current.code !== 0) {
-    return { ok: false, error: `无法确定内层仓库当前分支：${current.stderr.trim()}` };
+    return {
+      ok: false,
+      error: INNER_REPO_NO_HEAD_ERROR,
+      detail: current.stderr.trim() || current.stdout.trim()
+    };
   }
   if (current.stdout.trim() !== branch) {
     const checkout = await runGit(remotePath, ['checkout', branch]);

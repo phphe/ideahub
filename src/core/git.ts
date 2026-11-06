@@ -54,6 +54,16 @@ export async function isGitRepository(cwd: string): Promise<boolean> {
   return result.code === 0;
 }
 
+/**
+ * A repository can exist (`.git` present) yet have an unborn HEAD, for
+ * example after cloning an empty remote or an interrupted clone. Publishing
+ * needs a real commit, so callers must verify HEAD separately.
+ */
+export async function hasHeadCommit(cwd: string): Promise<boolean> {
+  const result = await runGit(cwd, ['rev-parse', '--verify', 'HEAD']);
+  return result.code === 0 && result.stdout.trim().length > 0;
+}
+
 export async function initGitRepository(cwd: string): Promise<GitResult> {
   return runGit(cwd, ['init']);
 }

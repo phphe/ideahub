@@ -68,6 +68,22 @@ async function createProject(content: string): Promise<{ root: string; controlle
   await runGit(root, ['add', '.']);
   await runGit(root, ['commit', '-m', 'base']);
 
+  const remotePath = path.join(root, '.ideahub', 'remote');
+  await fs.mkdir(remotePath, { recursive: true });
+  const initRemote = await runGit(remotePath, ['init']);
+  expect(initRemote.code).toBe(0);
+  const commitRemote = await runGit(remotePath, [
+    '-c',
+    'user.email=test@example.com',
+    '-c',
+    'user.name=Test',
+    'commit',
+    '--allow-empty',
+    '-m',
+    'inner head'
+  ]);
+  expect(commitRemote.code).toBe(0);
+
   const controller = new IdeahubController({
     appendLine: vi.fn()
   } as unknown as import('vscode').OutputChannel);
@@ -93,11 +109,13 @@ beforeEach(() => {
 
 afterEach(async () => {
   await Promise.all(
-    roots.splice(0).map((root) => fs.rm(root, { recursive: true, force: true }))
+    roots.splice(0).map((root) =>
+      fs.rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 })
+    )
   );
 });
 
-describe('publishProject precondition', () => {
+describe('publishProject precondition', { timeout: 30000 }, () => {
   it('blocks unproven content before writing, committing, copying or confirming', async () => {
     const { root, controller } = await createProject(`创意\n${PROOF}\n新增内容\n`);
     const before = await head(root);

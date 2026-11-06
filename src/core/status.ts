@@ -8,7 +8,7 @@ import {
   remoteRepoPath,
   type RemoteConfig
 } from './config';
-import { isGitRepository, getRemoteOriginUrl } from './git';
+import { hasHeadCommit, isGitRepository, getRemoteOriginUrl } from './git';
 import { hasHookBlock, isHookTargetCurrent, readPrePushHook } from './hook';
 import { listProjects, IDEAS_FILE } from './projects';
 import { computeProofHash, parseIdeas } from './ideas';
@@ -141,23 +141,28 @@ export async function detectWorkspace(folder: string | null): Promise<WorkspaceS
 
   let remoteDirOk = false;
   let remoteDirExists = false;
+  let remoteGitOk = false;
   if (remote) {
     const remotePath = remoteRepoPath(folder);
     try {
       const stat = await fs.stat(remotePath);
       remoteDirExists = stat.isDirectory();
       if (remoteDirExists && (await isGitRepository(remotePath))) {
-        remoteDirOk = true;
+        remoteGitOk = true;
+        remoteDirOk = await hasHeadCommit(remotePath);
       }
     } catch {
       remoteDirExists = false;
       remoteDirOk = false;
+      remoteGitOk = false;
     }
     if (!remoteDirOk) {
       issues.push({
         id: 'remote-dir',
-        title: '缺少远程仓库克隆',
-        message: '缺少 .ideahub/remote/ 或它不是有效的 Git 仓库。可以点击下方按钮执行克隆。'
+        title: remoteGitOk ? '远程仓库克隆不完整' : '缺少远程仓库克隆',
+        message: remoteGitOk
+          ? '内层仓库没有可用的 HEAD（可能为空克隆或克隆未完成）。请使用“重新克隆”重新获取远程创意仓库。'
+          : '缺少 .ideahub/remote/ 或它不是有效的 Git 仓库。可以点击下方按钮执行克隆。'
       });
     } else {
       const origin = await getRemoteOriginUrl(remoteRepoPath(folder));

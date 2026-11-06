@@ -224,6 +224,17 @@ describe('inspectRemoteTarget', () => {
     await fs.mkdir(remoteRepoPath(root), { recursive: true });
     const init = await runGit(remoteRepoPath(root), ['init']);
     expect(init.code).toBe(0);
+    const commit = await runGit(remoteRepoPath(root), [
+      '-c',
+      'user.email=test@example.com',
+      '-c',
+      'user.name=Test',
+      'commit',
+      '--allow-empty',
+      '-m',
+      'inner head'
+    ]);
+    expect(commit.code).toBe(0);
 
     expect(await inspectRemoteTarget(root)).toEqual({ kind: 'valid-repo' });
 

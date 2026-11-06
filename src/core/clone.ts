@@ -1,17 +1,50 @@
 import { promises as fs } from 'node:fs';
 import { describeError, readConfig, remoteRepoPath, writeConfig, type RemoteConfig } from './config';
-import { isGitRepository, runGit } from './git';
+import { hasHeadCommit, isGitRepository, runGit } from './git';
 import { parseRemoteUrl } from './remote-url';
 
 export type CloneResult =
   | { ok: true; branch: string }
-  | { ok: false; error: string };
+  | { ok: false; error: string; detail?: string };
 
 export const REMOTE_PATH_NOT_DIRECTORY_ERROR =
   '.ideahub/remote 已存在且不是目录，请先手动处理后再重试。';
 
 export const REMOTE_DIR_NON_EMPTY_ERROR =
   '.ideahub/remote 目录已存在且非空。为避免覆盖已有内容，已停止克隆；如需重新克隆，请使用“重新克隆”操作。';
+
+export const INNER_REPO_NO_HEAD_ERROR =
+  '内层仓库为空、不完整或克隆未完成（没有可用的 HEAD）。请先使用“重新克隆”重新获取远程创意仓库，然后再重试。';
+
+export interface RepositoryReadyResult {
+  ok: boolean;
+  error?: string;
+  detail?: string;
+}
+
+/**
+ * A successful `git clone` can still leave an unborn HEAD (empty remote or an
+ * interrupted checkout). Treat that as a failed clone so the half-finished
+ * directory is cleaned up and the user keeps a retry entry point.
+ */
+export async function verifyClonedRepository(target: string): Promise<RepositoryReadyResult> {
+  if (!(await isGitRepository(target))) {
+    return {
+      ok: false,
+      error: INNER_REPO_NO_HEAD_ERROR,
+      detail: 'git rev-parse --git-dir failed'
+    };
+  }
+  const head = await runGit(target, ['rev-parse', '--verify', 'HEAD']);
+  if (head.code !== 0 || head.stdout.trim().length === 0) {
+    return {
+      ok: false,
+      error: INNER_REPO_NO_HEAD_ERROR,
+      detail: head.stderr.trim() || head.stdout.trim() || 'git rev-parse --verify HEAD failed'
+    };
+  }
+  return { ok: true };
+}
 
 export type RemoteTargetInspection =
   | { kind: 'missing' }
@@ -30,7 +63,10 @@ export async function inspectRemoteTarget(root: string): Promise<RemoteTargetIns
     return { kind: 'blocked', reason: REMOTE_PATH_NOT_DIRECTORY_ERROR };
   }
   if (await isGitRepository(target)) {
-    return { kind: 'valid-repo' };
+    if (await hasHeadCommit(target)) {
+      return { kind: 'valid-repo' };
+    }
+    return { kind: 'blocked', reason: INNER_REPO_NO_HEAD_ERROR };
   }
   try {
     const entries = await fs.readdir(target);
@@ -102,28 +138,33 @@ export async function cloneRemoteRepository(
   });
 
   if (result.code !== 0) {
-    try {
-      if (!targetExists) {
-        await fs.rm(target, { recursive: true, force: true });
-      } else if (targetWasEmpty) {
-        await fs.rm(target, { recursive: true, force: true });
-        await fs.mkdir(target, { recursive: true });
-      }
-    } catch {
-      // Best effort cleanup; the error below still reports the clone failure.
-    }
+    await cleanupFailedClone(target, targetExists, targetWasEmpty);
     return {
       ok: false,
-      error: describeCloneFailure(result.stderr.trim() || result.stdout.trim())
+      error: describeCloneFailure(result.stderr.trim() || result.stdout.trim()),
+      detail: result.stderr.trim() || result.stdout.trim()
     };
   }
 
-  if (!(await isGitRepository(target))) {
-    return { ok: false, error: '克隆完成，但 .ideahub/remote/.git 无效。' };
+  const verified = await verifyClonedRepository(target);
+  if (!verified.ok) {
+    await cleanupFailedClone(target, targetExists, targetWasEmpty);
+    return {
+      ok: false,
+      error: verified.error ?? INNER_REPO_NO_HEAD_ERROR,
+      detail: verified.detail
+    };
   }
 
   const branchResult = await runGit(target, ['rev-parse', '--abbrev-ref', 'HEAD']);
-  const branch = branchResult.stdout.trim() || remote.branch;
+  const branch = branchResult.stdout.trim();
+  if (branchResult.code !== 0 || branch.length === 0 || branch === 'HEAD') {
+    return {
+      ok: false,
+      error: INNER_REPO_NO_HEAD_ERROR,
+      detail: branchResult.stderr.trim() || branch
+    };
+  }
 
   if (branch !== remote.branch) {
     const configResult = await readConfig(root);
@@ -136,6 +177,23 @@ export async function cloneRemoteRepository(
   }
 
   return { ok: true, branch };
+}
+
+async function cleanupFailedClone(
+  target: string,
+  targetExists: boolean,
+  targetWasEmpty: boolean
+): Promise<void> {
+  try {
+    if (!targetExists) {
+      await fs.rm(target, { recursive: true, force: true });
+    } else if (targetWasEmpty) {
+      await fs.rm(target, { recursive: true, force: true });
+      await fs.mkdir(target, { recursive: true });
+    }
+  } catch {
+    // Best effort cleanup; the caller still reports the clone failure.
+  }
 }
 
 export async function removeLocalClone(root: string): Promise<{ ok: true } | { ok: false; error: string }> {

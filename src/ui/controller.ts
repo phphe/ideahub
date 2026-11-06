@@ -39,6 +39,7 @@ import {
 import { formatMarkerTime } from '../core/proof-time';
 import { createProject as createProjectOnDisk, validateProjectName } from '../core/projects';
 import {
+  checkInnerRepositoryHead,
   commitAndPushInnerRepository,
   copyProjectIntoInnerRepository,
   remoteProjectUrl,
@@ -309,6 +310,9 @@ export class IdeahubController {
       () => cloneRemoteRepository(root, state.remote!)
     );
     if (!result.ok) {
+      this.log(
+        `clone: failed: ${result.error}${result.detail ? `\n${result.detail}` : ''}`
+      );
       return { ok: false, message: result.error };
     }
     return { ok: true, message: `远程创意仓库已克隆（分支 ${result.branch}）。` };
@@ -692,6 +696,17 @@ export class IdeahubController {
       return { ok: false, message: '存在未证明的新内容，请先证明' };
     }
 
+    // Section 8.10 preflight: avoid offering "publish" when the inner clone
+    // has no usable HEAD (empty or interrupted clone).
+    const innerPath = remoteRepoPath(state.root);
+    const innerHead = await checkInnerRepositoryHead(innerPath);
+    if (!innerHead.ok) {
+      this.log(
+        `publish: inner repository preflight failed: ${innerHead.error}\n${innerHead.detail}`
+      );
+      return { ok: false, message: innerHead.error };
+    }
+
     const projectDir = path.join(state.root, project);
     const scan = await scanProjectDirectory(projectDir);
     if (scan.blocked.length > 0) {
@@ -741,11 +756,15 @@ export class IdeahubController {
       { location: vscode.ProgressLocation.Notification, title: '正在发布项目…' },
       async (progress) => {
         const remote = state.remote!;
-        const innerPath = remoteRepoPath(state.root);
 
         progress.report({ message: '同步远程创意仓库…' });
         const sync = await syncInnerRepository(innerPath, remote.branch);
         if (!sync.ok) {
+          this.log(
+            `publish: inner repository sync failed: ${sync.error}${
+              sync.detail ? `\n${sync.detail}` : ''
+            }`
+          );
           return { ok: false, message: sync.error };
         }
 
