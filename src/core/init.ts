@@ -50,6 +50,10 @@ async function exists(target: string): Promise<boolean> {
   }
 }
 
+export async function hasGitDirectory(root: string): Promise<boolean> {
+  return exists(path.join(root, '.git'));
+}
+
 export async function initializeLocalRepository(
   root: string,
   options: InitializeOptions = {}

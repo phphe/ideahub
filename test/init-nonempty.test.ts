@@ -58,14 +58,37 @@ describe('explicit init in a non-empty folder', () => {
 
     expect(result).toMatchObject({ ok: false, silent: true });
     expect(vscodeMocks.showWarningMessage).toHaveBeenCalledTimes(1);
-    expect(vscodeMocks.showWarningMessage.mock.calls[0][0]).toContain('.git/');
-    expect(vscodeMocks.showWarningMessage.mock.calls[0][0]).toContain('.ideahub/');
-    expect(vscodeMocks.showWarningMessage.mock.calls[0][0]).toContain('不会覆盖任何已存在的文件');
+    const confirmation = vscodeMocks.showWarningMessage.mock.calls[0][0] as string;
+    expect(confirmation).toContain('将在此文件夹创建 .git/');
+    expect(confirmation).toContain('.ideahub/');
+    expect(confirmation).toContain('README.md 已存在则跳过');
+    expect(confirmation).toContain('不会覆盖任何已有文件');
+    expect(confirmation).toContain('不会自动提交、推送或公开');
+    expect(confirmation).not.toContain('检测到现有');
 
     await expect(fs.access(path.join(root, '.git'))).rejects.toThrow();
     await expect(fs.access(path.join(root, '.ideahub'))).rejects.toThrow();
     await expect(fs.access(path.join(root, 'README.md'))).rejects.toThrow();
     expect(await fs.readFile(path.join(root, 'keep.txt'), 'utf8')).toBe('user content');
+  });
+
+  it('mentions reusing an existing .git instead of creating one', async () => {
+    const root = await tempRoot('ideahub-nonempty-git-copy-');
+    expect((await runGit(root, ['init'])).code).toBe(0);
+    await fs.writeFile(path.join(root, 'keep.txt'), 'user content', 'utf8');
+    vscodeMocks.showWarningMessage.mockResolvedValue(undefined);
+
+    const result = await controllerFor(root).initialize(true);
+
+    expect(result).toMatchObject({ ok: false, silent: true });
+    const confirmation = vscodeMocks.showWarningMessage.mock.calls[0][0] as string;
+    expect(confirmation).toContain('检测到现有 .git/');
+    expect(confirmation).toContain('不会重新初始化或覆盖');
+    expect(confirmation).toContain('.ideahub/');
+    expect(confirmation).toContain('README.md 已存在则跳过');
+    expect(confirmation).toContain('不会覆盖任何已有文件');
+    expect(confirmation).toContain('不会自动提交、推送或公开');
+    expect(confirmation).not.toContain('将在此文件夹创建 .git/');
   });
 
   it('creates the structure and skips an existing README.md', async () => {

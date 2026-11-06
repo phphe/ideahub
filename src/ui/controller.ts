@@ -2,7 +2,7 @@ import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { detectWorkspace, type ProjectRemoteStatus, type RemoteStatus, type WorkspaceState } from '../core/status';
-import { initializeLocalRepository, ensureLocalGitRepository } from '../core/init';
+import { hasGitDirectory, initializeLocalRepository, ensureLocalGitRepository } from '../core/init';
 import { installPrePushHook } from '../core/hook';
 import { remoteRepoPath, writeConfig } from '../core/config';
 import { GitHubApiError, GitHubClient } from '../core/github';
@@ -181,8 +181,12 @@ export class IdeahubController {
       if (state.kind !== 'not-ideahub') {
         return { ok: false, message: '当前状态不允许初始化。' };
       }
+      const hasGit = await hasGitDirectory(state.root);
+      const confirmation = hasGit
+        ? '检测到现有 .git/，初始化将沿用该仓库，不会重新初始化或覆盖它。\n.ideahub/ 已有内容会被复用；README.md 已存在则跳过写入。不会覆盖任何已有文件，也不会自动提交、推送或公开。\n仍要在此文件夹初始化创意仓库吗？'
+        : '将在此文件夹创建 .git/，并创建 .ideahub/ 与 README.md（.ideahub/ 已有内容会被复用，README.md 已存在则跳过）。不会覆盖任何已有文件，也不会自动提交、推送或公开。\n仍要在此文件夹初始化创意仓库吗？';
       const choice = await vscode.window.showWarningMessage(
-        '当前文件夹不为空。仍要在这里初始化创意仓库吗？\n将在现有文件夹中创建 .git/、.ideahub/ 与 README.md，且不会覆盖任何已存在的文件。',
+        confirmation,
         { modal: true },
         '仍要初始化'
       );

@@ -100,6 +100,15 @@ export class MainViewProvider implements vscode.WebviewViewProvider {
     void this.loadSettingsInfo();
   }
 
+  private renderCurrentView(): void {
+    if (!this.view) {
+      return;
+    }
+    this.view.webview.html = this.settingsInfo
+      ? renderSettingsHtml(this.settingsInfo, this.assets)
+      : renderMainHtml(this.controller.currentState, this.assets);
+  }
+
   private closeSettings(): void {
     if (!this.view) {
       return;
@@ -206,6 +215,9 @@ export class MainViewProvider implements vscode.WebviewViewProvider {
     }
     this.log(`action finished: ${name} -> ${result.ok ? 'ok' : 'error'}: ${result.message}`);
     if (result.silent) {
+      // Cancelled by the user: restore the un-busy page without any IO so the
+      // buttons that the webview disabled become clickable again.
+      this.renderCurrentView();
       return;
     }
     if (!result.ok) {

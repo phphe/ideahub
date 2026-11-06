@@ -61,21 +61,26 @@ function outputChannel(): import('vscode').OutputChannel {
   return { appendLine: vi.fn() } as unknown as import('vscode').OutputChannel;
 }
 
+type FakeWebview = {
+  html: string;
+  options: Record<string, unknown>;
+  cspSource: string;
+  asWebviewUri: (uri: { fsPath: string }) => { toString: () => string };
+  onDidReceiveMessage: (callback: (message: unknown) => void) => void;
+  postMessage: ReturnType<typeof vi.fn>;
+};
+
 function createView(): {
   view: import('vscode').WebviewView;
-  webview: {
-    html: string;
-    options: Record<string, unknown>;
-    cspSource: string;
-    asWebviewUri: (uri: { fsPath: string }) => { toString: () => string };
-    onDidReceiveMessage: (callback: (message: unknown) => void) => void;
-    postMessage: ReturnType<typeof vi.fn>;
-  };
+  webview: FakeWebview;
+  /** Every html assignment, so tests can assert a full re-render happened. */
+  htmlSets: string[];
   handler: () => (message: unknown) => void;
 } {
   let receive: ((message: unknown) => void) | undefined;
+  let htmlValue = '';
+  const htmlSets: string[] = [];
   const webview = {
-    html: '',
     options: {} as Record<string, unknown>,
     cspSource: 'vscode-resource:',
     asWebviewUri: (uri: { fsPath: string }) => ({
@@ -85,7 +90,14 @@ function createView(): {
       receive = callback;
     },
     postMessage: vi.fn(async () => true)
-  };
+  } as unknown as FakeWebview;
+  Object.defineProperty(webview, 'html', {
+    get: () => htmlValue,
+    set: (value: string) => {
+      htmlValue = value;
+      htmlSets.push(value);
+    }
+  });
   const view = {
     visible: true,
     webview,
@@ -94,6 +106,7 @@ function createView(): {
   return {
     view: view as unknown as import('vscode').WebviewView,
     webview,
+    htmlSets,
     handler: () => {
       expect(receive).toBeTypeOf('function');
       return receive!;
@@ -193,5 +206,92 @@ describe('settings view switching', () => {
 
     expect(webview.html).toContain('<h1>创意项目</h1>');
     expect(webview.postMessage).not.toHaveBeenCalled();
+  });
+});
+
+describe('busy state recovery', () => {
+  const NOT_IDEAHUB: WorkspaceState = { kind: 'not-ideahub', root: 'C:/repo' };
+
+  function createProvider(controller: Record<string, unknown>): MainViewProvider {
+    return new MainViewProvider(
+      controller as unknown as IdeahubController,
+      outputChannel(),
+      EXTENSION_URI
+    );
+  }
+
+  async function mountState(
+    controller: Record<string, unknown>
+  ): Promise<ReturnType<typeof createView>> {
+    const provider = createProvider(controller);
+    const created = createView();
+    provider.resolveWebviewView(created.view);
+    await vi.waitFor(() => expect(created.htmlSets.length).toBe(1));
+    return created;
+  }
+
+  it('re-renders after a cancelled non-empty init so the button works again', async () => {
+    const controller = {
+      currentState: NOT_IDEAHUB,
+      refresh: vi.fn(async () => NOT_IDEAHUB),
+      initialize: vi.fn(async () => ({ ok: false, message: '', silent: true }))
+    };
+    const { webview, htmlSets, handler } = await mountState(controller);
+    expect(webview.html).toContain('data-action="initNonEmpty"');
+
+    handler()({ type: 'initNonEmpty' });
+    await vi.waitFor(() => expect(htmlSets.length).toBe(2));
+    expect(controller.initialize).toHaveBeenCalledWith(true);
+    // A full re-render ships the idle markup again, so the button is clickable.
+    expect(webview.html).toContain(
+      '<button class="secondary" data-action="initNonEmpty">仍要初始化</button>'
+    );
+
+    // The restored page can prompt for confirmation a second time.
+    handler()({ type: 'initNonEmpty' });
+    await vi.waitFor(() => expect(controller.initialize).toHaveBeenCalledTimes(2));
+    await vi.waitFor(() => expect(htmlSets.length).toBe(3));
+  });
+
+  it('re-renders the settings view after a cancelled setRemote', async () => {
+    const controller = {
+      currentState: STATE,
+      refresh: vi.fn(async () => STATE),
+      currentRemoteSettingsInfo: vi.fn(() => CACHED),
+      getRemoteSettingsInfo: vi.fn(
+        () => new Promise<RemoteSettingsInfo>(() => undefined)
+      ),
+      setRemote: vi.fn(async () => ({ ok: false, message: '', silent: true }))
+    };
+    const { webview, htmlSets, handler } = await mountState(controller);
+
+    handler()({ type: 'openSettings' });
+    expect(htmlSets.length).toBe(2);
+    expect(webview.html).toContain('<h1>设置</h1>');
+
+    handler()({
+      type: 'setRemote',
+      url: 'https://github.com/phphe/other',
+      immutabilityConfirmed: true
+    });
+    await vi.waitFor(() => expect(htmlSets.length).toBe(3));
+    expect(controller.setRemote).toHaveBeenCalledWith('https://github.com/phphe/other', true);
+    expect(webview.html).toContain('<h1>设置</h1>');
+    expect(webview.html).toContain('data-action="setRemote"');
+    expect(webview.html).toContain('data-action="closeSettings"');
+  });
+
+  it('re-renders after a failed clone so the retry button is clickable again', async () => {
+    const controller = {
+      currentState: NOT_IDEAHUB,
+      refresh: vi.fn(async () => NOT_IDEAHUB),
+      cloneRemote: vi.fn(async () => ({ ok: false, message: 'clone failed' }))
+    };
+    const { webview, htmlSets, handler } = await mountState(controller);
+
+    handler()({ type: 'clone' });
+    await vi.waitFor(() => expect(htmlSets.length).toBe(2));
+    expect(controller.refresh).toHaveBeenCalledTimes(2);
+    expect(webview.html).toContain('data-action="initNonEmpty"');
   });
 });
