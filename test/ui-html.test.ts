@@ -238,7 +238,8 @@ describe('renderSettingsHtml', () => {
     expect(html).toContain('data-action="closeSettings"');
     expect(html).not.toContain('data-action="clone"');
     expect(html).not.toContain('data-action="publish"');
-    expect(html).toContain('不会自动提交、推送或公开任何内容');
+    expect(html).toContain('id="remote-branch"');
+    expect(html).toContain('配置只自动提交到本地仓库');
   });
 
   it('renders unconfigured values and API errors without crashing', () => {

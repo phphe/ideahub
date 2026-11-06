@@ -107,7 +107,7 @@ vi.mock('../src/core/release-target', async (importOriginal) => {
     await importOriginal<typeof import('../src/core/release-target')>();
   return {
     ...actual,
-    resolveReleaseTarget: vi.fn(async () => ({
+    ensureReleaseTarget: vi.fn(async () => ({
       ok: true,
       target: { branch: 'release', sha: 'abc123def456', defaultBranch: 'release' }
     }))
@@ -200,7 +200,7 @@ describe('markProject guard and release payload', { timeout: 20000 }, () => {
     expect(current).toBe(appendMarkerLine(ORIGINAL, markerLine));
 
     const subject = (await runGit(root, ['log', '-1', '--format=%s'])).stdout.trim();
-    expect(subject).toBe('feat(ideas): record proof for MyGame');
+    expect(subject).toBe('ideahub: record proof');
     const stat = (await runGit(root, ['show', '--stat', '--format=', 'HEAD'])).stdout;
     expect(stat).toContain('1 file changed, 2 insertions(+)');
   });

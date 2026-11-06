@@ -99,6 +99,10 @@ function renderScript(nonce: string): string {
       if (urlInput && document.activeElement !== urlInput && info.url) {
         urlInput.value = info.url;
       }
+      const branchInput = document.getElementById('remote-branch');
+      if (branchInput && document.activeElement !== branchInput) {
+        branchInput.value = info.branch || '';
+      }
     }
 
     // Patches the badge row of one project after its ideas.md changed on disk.
@@ -136,11 +140,13 @@ function renderScript(nonce: string): string {
       const action = target.dataset.action;
       if (action === 'setRemote') {
         const urlInput = document.getElementById('remote-url');
+        const branchInput = document.getElementById('remote-branch');
         const confirmInput = document.getElementById('immutability-confirm');
         lockButtons(target);
         vscode.postMessage({
           type: 'setRemote',
           url: urlInput ? urlInput.value : '',
+          branch: branchInput ? branchInput.value : '',
           immutabilityConfirmed: !!(confirmInput && confirmInput.checked)
         });
         return;
@@ -262,9 +268,10 @@ function renderIssueActions(
       return `<div class="actions"><button data-action="initGit">初始化 Git 仓库</button></div>`;
     case 'remote-url':
       return `<input type="text" id="remote-url" placeholder="https://github.com/owner/repo" />
+        <input type="text" id="remote-branch" placeholder="分支（留空自动使用远程默认分支）" />
         <label class="check"><input type="checkbox" id="immutability-confirm" />
         <span>我已确认仓库启用了 <code>Enable release immutability</code>。扩展会先通过 GitHub API 检测；只有无法读取（需要仓库 admin 读权限）时才以此手动确认为准。</span></label>
-        <p class="muted">远程创意仓库必须由你手动创建，且为公开仓库。校验通过后会自动克隆到 .ideahub/remote/；不会自动提交、推送或公开任何内容。</p>
+        <p class="muted">远程创意仓库必须由你手动创建，且为公开仓库。分支留空时会自动使用远程默认分支并显示在设置中。校验通过后会自动克隆到 .ideahub/remote/；配置只自动提交到本地仓库，不会推送或公开任何内容。</p>
         <div class="actions"><button data-action="setRemote">保存、校验并克隆</button></div>`;
     case 'remote-dir':
       return `<div class="actions">
@@ -497,11 +504,14 @@ export function renderSettingsHtml(
       <input id="remote-url" type="text" value="${escapeHtml(
         info.url
       )}" placeholder="https://github.com/owner/repo" />
+      <input id="remote-branch" type="text" value="${escapeHtml(
+        info.branch ?? ''
+      )}" placeholder="分支（留空自动使用远程默认分支）" />
       <label class="check"><input id="immutability-confirm" type="checkbox" /> 我已在 GitHub 启用 Release 不可变性</label>
       <div class="actions">
         <button data-action="setRemote">校验、保存并克隆</button>
       </div>
-      <p class="muted">修改后走既有的校验 → 保存配置 → 自动克隆/重新克隆流程；不会自动提交、推送或公开任何内容。</p>
+      <p class="muted">修改后走既有的校验 → 保存配置 → 自动克隆/重新克隆流程；配置只自动提交到本地仓库，不会推送或公开任何内容。</p>
     </div>
     <div class="actions">
       <button class="secondary" data-action="closeSettings">返回</button>

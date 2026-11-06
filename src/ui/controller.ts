@@ -9,17 +9,23 @@ import {
   type RemoteStatus,
   type WorkspaceState
 } from '../core/status';
-import { hasGitDirectory, initializeLocalRepository, ensureLocalGitRepository } from '../core/init';
+import {
+  hasGitDirectory,
+  hasReadmeFile,
+  initializeLocalRepository,
+  ensureLocalGitRepository
+} from '../core/init';
 import { installPrePushHook } from '../core/hook';
-import { remoteRepoPath, writeConfig } from '../core/config';
+import { configPath, remoteRepoPath, writeConfig } from '../core/config';
 import { GitHubApiError, GitHubClient } from '../core/github';
 import { RELEASE_BRANCH } from '../core/release-config';
 import {
   buildReleaseTag,
+  ensureReleaseTarget,
   lookupRemoteBranch,
-  resolveReleaseTarget,
   validateTagName
 } from '../core/release-target';
+import { ensureReleaseBranchExists } from '../core/release-branch';
 import { validateRemoteRepository } from '../core/remote-setup';
 import { parseRemoteUrl } from '../core/remote-url';
 import { decideRemoteSetup, describeImmutabilityCheck, describeReleaseImmutability } from '../core/immutability';
@@ -39,6 +45,8 @@ import {
 import { ProjectOperationGuard } from '../core/operation-guard';
 import {
   commitMarkerLine,
+  commitSingleFile,
+  CONFIG_REMOTE_COMMIT_MESSAGE,
   DEFAULT_PROOF_COMMIT_MESSAGE,
   DEFAULT_PUBLISH_COMMIT_MESSAGE,
   resolveCommitMessage,
@@ -213,9 +221,14 @@ export class IdeahubController {
         return { ok: false, message: '当前状态不允许初始化。' };
       }
       const hasGit = await hasGitDirectory(state.root);
+      const hasReadme = await hasReadmeFile(state.root);
+      const readmeLine = hasReadme
+        ? 'README.md 已存在，将保留现有 README.md。'
+        : '将创建 README.md。';
+      const common = `.ideahub/ 已有内容会被复用；${readmeLine} 不会覆盖任何已有文件，也不会自动推送或公开；仅本次新建的 .ideahub/config.json 会自动提交到本地仓库。\n仍要在此文件夹初始化创意仓库吗？`;
       const confirmation = hasGit
-        ? '检测到现有 .git/，初始化将沿用该仓库，不会重新初始化或覆盖它。\n.ideahub/ 已有内容会被复用；README.md 已存在则跳过写入。不会覆盖任何已有文件，也不会自动提交、推送或公开。\n仍要在此文件夹初始化创意仓库吗？'
-        : '将在此文件夹创建 .git/，并创建 .ideahub/ 与 README.md（.ideahub/ 已有内容会被复用，README.md 已存在则跳过）。不会覆盖任何已有文件，也不会自动提交、推送或公开。\n仍要在此文件夹初始化创意仓库吗？';
+        ? `检测到现有 .git/，初始化将沿用该仓库，不会重新初始化或覆盖它。\n${common}`
+        : `将在此文件夹创建 .git/，并创建 .ideahub/。\n${common}`;
       const choice = await vscode.window.showWarningMessage(
         confirmation,
         { modal: true },
@@ -269,7 +282,11 @@ export class IdeahubController {
     return { ok: true, message: 'pre-push hook 已安装 / 更新。' };
   }
 
-  public async setRemote(url: string, immutabilityConfirmed: boolean): Promise<OpResult> {
+  public async setRemote(
+    url: string,
+    immutabilityConfirmed: boolean,
+    branch: string = ''
+  ): Promise<OpResult> {
     const root = this.requireLocalRoot();
     if (!root) {
       return { ok: false, message: '当前状态不允许执行该操作。' };
@@ -289,6 +306,7 @@ export class IdeahubController {
     const settingsUrl = `https://${parsed.value.host}/${parsed.value.owner}/${parsed.value.repo}/settings`;
     const state = this.currentState;
     const previous = state.kind === 'local' ? state.remote : null;
+    let configCommitNote = '';
 
     const result = await vscode.window.withProgress(
       {
@@ -298,7 +316,7 @@ export class IdeahubController {
       },
       (progress) =>
         runRemoteSetupFlow({
-          validate: () => validateRemoteRepository(url, client),
+          validate: () => validateRemoteRepository(url, client, branch),
           decideImmutability: (check) =>
             decideRemoteSetup(check, immutabilityConfirmed, settingsUrl),
           confirmChange: async (next) => {
@@ -322,7 +340,20 @@ export class IdeahubController {
               owner: remote.owner,
               repo: remote.repo
             });
-            return hookResult.ok ? { ok: true } : { ok: false, error: hookResult.error };
+            if (!hookResult.ok) {
+              return { ok: false, error: hookResult.error };
+            }
+            const commit = await commitSingleFile({
+              root,
+              filePath: configPath(root),
+              message: CONFIG_REMOTE_COMMIT_MESSAGE
+            });
+            if (commit.status === 'committed') {
+              configCommitNote = '已自动提交 .ideahub/config.json 到本地仓库（未推送）。';
+            } else if (commit.status === 'failed') {
+              configCommitNote = `.ideahub/config.json 已保存，但自动提交失败：${commit.reason}`;
+            }
+            return { ok: true };
           },
           inspect: () => inspectRemoteTarget(root),
           clone: (remote) => cloneRemoteRepository(root, remote),
@@ -330,7 +361,11 @@ export class IdeahubController {
         })
     );
 
-    return formatRemoteSetupResult(result);
+    const formatted = formatRemoteSetupResult(result);
+    if (formatted.ok && configCommitNote) {
+      return { ok: true, message: `${formatted.message}\n${configCommitNote}` };
+    }
+    return formatted;
   }
 
   public async cloneRemote(reclone: boolean): Promise<OpResult> {
@@ -674,13 +709,34 @@ export class IdeahubController {
     }
 
     const client = new GitHubClient(async () => token);
+    const innerPath = remoteRepoPath(state.root);
     const targetResult = await vscode.window.withProgress(
-      { location: vscode.ProgressLocation.Notification, title: '正在读取远程 release 分支…' },
+      { location: vscode.ProgressLocation.Notification, title: '正在检查远程 release 分支…' },
       () =>
-        resolveReleaseTarget(
+        ensureReleaseTarget(
           {
             getRepository: (owner, repo) => client.getRepository(owner, repo),
-            lookupBranch: (branch) => lookupRemoteBranch(state.root, remote.url, branch)
+            lookupBranch: (branch) => lookupRemoteBranch(state.root, remote.url, branch),
+            createBranch: async (branch) => {
+              const created = await ensureReleaseBranchExists(
+                innerPath,
+                remote.url,
+                branch,
+                token
+              );
+              if (!created.ok) {
+                return created;
+              }
+              this.log(
+                [
+                  'mark: release branch created automatically',
+                  `release_branch=${branch}`,
+                  `commit=${created.commit}`,
+                  'pushed_file=empty'
+                ].join('\n')
+              );
+              return { ok: true };
+            }
           },
           remote.owner,
           remote.repo,
