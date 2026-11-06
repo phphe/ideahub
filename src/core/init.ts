@@ -9,6 +9,7 @@ import {
 } from './config';
 import { initGitRepository } from './git';
 import { installPrePushHook } from './hook';
+import { commitSingleFile, CONFIG_INIT_COMMIT_MESSAGE } from './marker-commit';
 
 const README_CONTENT = `# 创意仓库
 
@@ -25,7 +26,7 @@ const README_CONTENT = `# 创意仓库
 - 本地仓库只能连接你自己的**私有** Git 仓库，**不能**把本地仓库直接推送到远程创意仓库。
 - 扩展会安装 \`pre-push\` hook，阻止误把本地仓库推送到远程创意仓库。
 - 创意内容只能通过“发布”功能公开，发布前需要两次确认。
-- 扩展不会自动提交、推送或公开任何本地文件。
+- 扩展不会自动推送或公开任何本地文件；仅在写入证明标记、发布标记或修改 \`.ideahub/config.json\` 时自动提交到本地仓库。
 
 ## 如何创建项目
 
@@ -52,6 +53,10 @@ async function exists(target: string): Promise<boolean> {
 
 export async function hasGitDirectory(root: string): Promise<boolean> {
   return exists(path.join(root, '.git'));
+}
+
+export async function hasReadmeFile(root: string): Promise<boolean> {
+  return exists(path.join(root, 'README.md'));
 }
 
 export async function initializeLocalRepository(
@@ -103,11 +108,13 @@ export async function initializeLocalRepository(
       completed.push('创建 .ideahub/.gitignore');
     }
 
+    let createdConfig = false;
     if (await exists(configPath(root))) {
       completed.push('复用 .ideahub/config.json');
     } else {
       await writeConfig(root, { version: 1 });
       completed.push('创建 .ideahub/config.json');
+      createdConfig = true;
     }
 
     const hookResult = await installPrePushHook(root, null);
@@ -116,12 +123,25 @@ export async function initializeLocalRepository(
     }
     completed.push('安装 pre-push hook');
 
-    if (await exists(path.join(root, 'README.md'))) {
-      notes.push('README.md 已存在，已跳过写入。');
-      completed.push('跳过 README.md');
+    if (await hasReadmeFile(root)) {
+      notes.push('README.md 已存在，已保留现有 README.md（未覆盖）。');
+      completed.push('保留现有 README.md');
     } else {
       await fs.writeFile(path.join(root, 'README.md'), README_CONTENT, 'utf8');
       completed.push('创建 README.md');
+    }
+
+    if (createdConfig) {
+      const commit = await commitSingleFile({
+        root,
+        filePath: configPath(root),
+        message: CONFIG_INIT_COMMIT_MESSAGE
+      });
+      if (commit.status === 'committed') {
+        notes.push('已自动提交新建的 .ideahub/config.json 到本地仓库（未推送）。');
+      } else if (commit.status === 'failed') {
+        notes.push(`.ideahub/config.json 已创建，但自动提交失败：${commit.reason}`);
+      }
     }
 
     return { ok: true, notes };

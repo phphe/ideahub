@@ -61,9 +61,9 @@ describe('explicit init in a non-empty folder', () => {
     const confirmation = vscodeMocks.showWarningMessage.mock.calls[0][0] as string;
     expect(confirmation).toContain('将在此文件夹创建 .git/');
     expect(confirmation).toContain('.ideahub/');
-    expect(confirmation).toContain('README.md 已存在则跳过');
+    expect(confirmation).toContain('将创建 README.md');
     expect(confirmation).toContain('不会覆盖任何已有文件');
-    expect(confirmation).toContain('不会自动提交、推送或公开');
+    expect(confirmation).toContain('不会自动推送或公开');
     expect(confirmation).not.toContain('检测到现有');
 
     await expect(fs.access(path.join(root, '.git'))).rejects.toThrow();
@@ -85,9 +85,9 @@ describe('explicit init in a non-empty folder', () => {
     expect(confirmation).toContain('检测到现有 .git/');
     expect(confirmation).toContain('不会重新初始化或覆盖');
     expect(confirmation).toContain('.ideahub/');
-    expect(confirmation).toContain('README.md 已存在则跳过');
+    expect(confirmation).toContain('将创建 README.md');
     expect(confirmation).toContain('不会覆盖任何已有文件');
-    expect(confirmation).toContain('不会自动提交、推送或公开');
+    expect(confirmation).toContain('不会自动推送或公开');
     expect(confirmation).not.toContain('将在此文件夹创建 .git/');
   });
 
@@ -100,7 +100,11 @@ describe('explicit init in a non-empty folder', () => {
     const result = await controllerFor(root).initialize(true);
 
     expect(result.ok).toBe(true);
-    expect(result.message).toContain('README.md 已存在，已跳过写入。');
+    expect(result.message).toContain('README.md 已存在，已保留现有 README.md（未覆盖）。');
+    expect(result.message).not.toContain('覆盖 README.md');
+    const confirmation = vscodeMocks.showWarningMessage.mock.calls[0][0] as string;
+    expect(confirmation).toContain('保留现有 README.md');
+    expect(confirmation).not.toContain('覆盖 README.md');
     expect(await fs.readFile(path.join(root, 'README.md'), 'utf8')).toBe('# my own readme');
     expect(await fs.readFile(path.join(root, 'keep.txt'), 'utf8')).toBe('user content');
     await expect(fs.access(path.join(root, '.git'))).resolves.toBeUndefined();

@@ -4,6 +4,7 @@ import * as path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { initializeLocalRepository } from '../src/core/init';
 import { configPath } from '../src/core/config';
+import { runGit } from '../src/core/git';
 import { hasHookBlock, prePushPath, readPrePushHook } from '../src/core/hook';
 import { detectWorkspace } from '../src/core/status';
 
@@ -40,6 +41,44 @@ describe('initializeLocalRepository', () => {
     }
 
     await fs.rm(root, { recursive: true, force: true });
+  });
+
+  it('commits only the newly created config.json when git identity is available', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'ideahub-init-commit-'));
+    const previous = {
+      GIT_AUTHOR_NAME: process.env.GIT_AUTHOR_NAME,
+      GIT_AUTHOR_EMAIL: process.env.GIT_AUTHOR_EMAIL,
+      GIT_COMMITTER_NAME: process.env.GIT_COMMITTER_NAME,
+      GIT_COMMITTER_EMAIL: process.env.GIT_COMMITTER_EMAIL
+    };
+    Object.assign(process.env, {
+      GIT_AUTHOR_NAME: 'Test',
+      GIT_AUTHOR_EMAIL: 'test@example.com',
+      GIT_COMMITTER_NAME: 'Test',
+      GIT_COMMITTER_EMAIL: 'test@example.com'
+    });
+    try {
+      const result = await initializeLocalRepository(root);
+      expect(result.ok).toBe(true);
+
+      expect((await runGit(root, ['log', '-1', '--format=%s'])).stdout.trim()).toBe(
+        'ideahub: initialize config'
+      );
+      const changed = (await runGit(root, ['show', '--name-only', '--format=', 'HEAD'])).stdout
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter(Boolean);
+      expect(changed).toEqual(['.ideahub/config.json']);
+    } finally {
+      for (const [key, value] of Object.entries(previous)) {
+        if (value === undefined) {
+          delete process.env[key];
+        } else {
+          process.env[key] = value;
+        }
+      }
+      await fs.rm(root, { recursive: true, force: true });
+    }
   });
 
   it('does not initialize a non-empty folder without .ideahub', async () => {
