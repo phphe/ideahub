@@ -14,8 +14,8 @@ import { appendMarkerLine } from '../src/core/ideas';
 const TIME = '2026-11-06 18:33:28 (UTC+08:00)';
 const PROOF_TEXT = `Proof: ${TIME} [ideahub]`;
 const PUBLISHED_TEXT = `Published: ${TIME} [ideahub]`;
-const PROOF_LINE = `\`${PROOF_TEXT}\``;
-const PUBLISHED_LINE = `\`${PUBLISHED_TEXT}\``;
+const PROOF_LINE = `###### \`${PROOF_TEXT}\``;
+const PUBLISHED_LINE = `###### \`${PUBLISHED_TEXT}\``;
 const BASE = '第一行\n\n第二行\n';
 const roots: string[] = [];
 
@@ -99,7 +99,7 @@ describe('commitMarkerLine', { timeout: 20000 }, () => {
     expect(nameOnly).toEqual(['MyGame/ideas.md']);
 
     const stat = (await runGit(root, ['show', '--stat', '--format=', 'HEAD'])).stdout;
-    expect(stat).toContain('1 file changed, 1 insertion(+)');
+    expect(stat).toContain('1 file changed, 2 insertions(+)');
 
     const committed = (await runGit(root, ['show', 'HEAD:MyGame/ideas.md'])).stdout;
     expect(committed).toBe(appendMarkerLine(BASE, PROOF_LINE));
@@ -123,7 +123,7 @@ describe('commitMarkerLine', { timeout: 20000 }, () => {
 
     expect(result.status).toBe('committed');
     const committed = (await runGit(root, ['show', 'HEAD:MyGame/ideas.md'])).stdout;
-    expect(committed).toBe(`第一行\n\n第二行\n${PROOF_LINE}\n`);
+    expect(committed).toBe(`第一行\n\n第二行\n\n${PROOF_LINE}\n`);
   });
 
   it('commits only the published marker line', async () => {
@@ -133,7 +133,7 @@ describe('commitMarkerLine', { timeout: 20000 }, () => {
 
     expect(result.status).toBe('committed');
     const stat = (await runGit(root, ['show', '--stat', '--format=', 'HEAD'])).stdout;
-    expect(stat).toContain('1 file changed, 1 insertion(+)');
+    expect(stat).toContain('1 file changed, 2 insertions(+)');
     const committed = (await runGit(root, ['show', 'HEAD:MyGame/ideas.md'])).stdout;
     expect(committed).toBe(appendMarkerLine(BASE, PUBLISHED_LINE));
     expect(await headSubject(root)).toBe('publish commit');

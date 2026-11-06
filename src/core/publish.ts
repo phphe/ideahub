@@ -166,6 +166,51 @@ async function isSymlink(target: string): Promise<boolean> {
   }
 }
 
+export type InnerRepositoryHead =
+  | { ok: true; head: string }
+  | { ok: false; error: string; detail: string };
+
+export async function readInnerRepositoryHead(
+  remotePath: string
+): Promise<InnerRepositoryHead> {
+  const head = await runGit(remotePath, ['rev-parse', '--verify', 'HEAD']);
+  if (head.code !== 0 || head.stdout.trim().length === 0) {
+    return {
+      ok: false,
+      error: INNER_REPO_NO_HEAD_ERROR,
+      detail: head.stderr.trim() || head.stdout.trim()
+    };
+  }
+  return { ok: true, head: head.stdout.trim() };
+}
+
+/**
+ * Restores the inner repository after a failed publish. Only tracked changes
+ * are reset and only untracked files under the published project are removed;
+ * `.git`, ignored files and other user content are left alone.
+ */
+export async function restoreInnerRepository(
+  remotePath: string,
+  head: string,
+  projectName: string
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const reset = await runGit(remotePath, ['reset', '--hard', head]);
+  if (reset.code !== 0) {
+    return {
+      ok: false,
+      error: `回滚本地 remote 失败：${reset.stderr.trim() || reset.stdout.trim()}`
+    };
+  }
+  const clean = await runGit(remotePath, ['clean', '-fd', '--', projectName]);
+  if (clean.code !== 0) {
+    return {
+      ok: false,
+      error: `清理本次发布文件失败：${clean.stderr.trim() || clean.stdout.trim()}`
+    };
+  }
+  return { ok: true };
+}
+
 export async function commitAndPushInnerRepository(
   remotePath: string,
   params: {
@@ -174,20 +219,23 @@ export async function commitAndPushInnerRepository(
     projectName: string;
     token: string;
   }
-): Promise<{ ok: true; pushed: boolean } | { ok: false; error: string }> {
+): Promise<
+  | { ok: true; pushed: boolean }
+  | { ok: false; error: string; stage: 'add' | 'commit' | 'push' }
+> {
   const parsed = parseRemoteUrl(params.url);
   if (!parsed.ok) {
-    return { ok: false, error: parsed.error };
+    return { ok: false, error: parsed.error, stage: 'add' };
   }
 
   const add = await runGit(remotePath, ['add', '-A']);
   if (add.code !== 0) {
-    return { ok: false, error: `暂存变更失败：${add.stderr.trim()}` };
+    return { ok: false, error: `暂存变更失败：${add.stderr.trim()}`, stage: 'add' };
   }
 
   const staged = await runGit(remotePath, ['diff', '--cached', '--name-only']);
   if (staged.code !== 0) {
-    return { ok: false, error: `检查暂存变更失败：${staged.stderr.trim()}` };
+    return { ok: false, error: `检查暂存变更失败：${staged.stderr.trim()}`, stage: 'add' };
   }
   const hasStagedChanges = staged.stdout.trim().length > 0;
   if (hasStagedChanges) {
@@ -199,7 +247,8 @@ export async function commitAndPushInnerRepository(
     if (commit.code !== 0) {
       return {
         ok: false,
-        error: `提交内层仓库失败：${commit.stderr.trim() || commit.stdout.trim()}`
+        error: `提交内层仓库失败：${commit.stderr.trim() || commit.stdout.trim()}`,
+        stage: 'commit'
       };
     }
   }
@@ -227,10 +276,7 @@ export async function commitAndPushInnerRepository(
       credentials,
       params.token
     ]);
-    return {
-      ok: false,
-      error: `推送内层仓库失败（本地提交已产生，远程尚未更新）：${detail}`
-    };
+    return { ok: false, error: `推送内层仓库失败：${detail}`, stage: 'push' };
   }
 
   return { ok: true, pushed: true };

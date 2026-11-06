@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { WorkspaceState } from '../src/core/status';
-import { renderMainHtml } from '../src/ui/html';
+import { renderMainHtml, renderSettingsHtml, type RemoteSettingsInfo } from '../src/ui/html';
 
 describe('renderMainHtml', () => {
   it('includes the message script for every workspace state', () => {
@@ -121,7 +121,7 @@ describe('renderMainHtml project list', () => {
     expect(html).not.toContain('已有证明，不建议重命名项目文件夹');
   });
 
-  it('puts the refresh button on the title row and moves info into its tooltip', () => {
+  it('renders refresh and settings icon buttons on the title row', () => {
     const html = renderMainHtml({
       ...state,
       remote: {
@@ -135,14 +135,71 @@ describe('renderMainHtml project list', () => {
 
     expect(html).toContain('<div class="header">');
     expect(html).toContain('<h1>创意仓库</h1>');
-    expect(html).toContain('.header > button { margin-left: auto; }');
-    expect(html).toMatch(
-      /<button class="secondary" data-action="refresh" title="[^"]*工作区：C:\/repo[^"]*">刷新状态<\/button>/
+    expect(html).toContain('.header-actions { margin-left: auto;');
+    expect(html).toContain('class="icon" data-action="refresh"');
+    expect(html).toContain('class="icon" data-action="openSettings"');
+    expect(html).not.toContain('>刷新状态</button>');
+    expect(html).toContain(
+      'title="工作区：C:/repo | 远程创意仓库：phphe/test_1027e9ad9a（分支 main）"'
     );
     expect(html).toContain('远程创意仓库：phphe/test_1027e9ad9a（分支 main）');
 
     // The old info line under the title is gone.
     expect(html).not.toContain('<p class="muted">C:/repo</p>');
     expect(html).not.toContain('<p class="muted">远程创意仓库');
+  });
+});
+
+describe('renderSettingsHtml', () => {
+  const info: RemoteSettingsInfo = {
+    url: 'https://github.com/phphe/test_1027e9ad9a',
+    owner: 'phphe',
+    repo: 'test_1027e9ad9a',
+    host: 'github.com',
+    branch: 'main',
+    visibility: '公开',
+    immutability: '已启用 Release 不可变性',
+    error: null
+  };
+
+  it('shows the current remote repository details', () => {
+    const html = renderSettingsHtml(info);
+    expect(html).toContain('远程创意仓库');
+    expect(html).toContain('地址：</span>https://github.com/phphe/test_1027e9ad9a');
+    expect(html).toContain('owner/repo：</span>phphe/test_1027e9ad9a');
+    expect(html).toContain('host：</span>github.com');
+    expect(html).toContain('分支：</span>main');
+    expect(html).toContain('是否公开：</span>公开');
+    expect(html).toContain('不可变性：</span>已启用 Release 不可变性');
+  });
+
+  it('only allows changing the remote URL through the validated setRemote flow', () => {
+    const html = renderSettingsHtml(info);
+    expect(html).toContain('id="remote-url"');
+    expect(html).toContain('value="https://github.com/phphe/test_1027e9ad9a"');
+    expect(html).toContain('id="immutability-confirm"');
+    expect(html).toContain('class="actions">\n        <button data-action="setRemote">');
+    expect(html).toContain('data-action="closeSettings"');
+    expect(html).not.toContain('data-action="clone"');
+    expect(html).not.toContain('data-action="publish"');
+    expect(html).toContain('不会自动提交、推送或公开任何内容');
+  });
+
+  it('renders unconfigured values and API errors without crashing', () => {
+    const html = renderSettingsHtml({
+      ...info,
+      url: '',
+      owner: null,
+      repo: null,
+      host: null,
+      branch: null,
+      visibility: '未知',
+      immutability: '未知（未登录 GitHub，无法通过 API 检查）',
+      error: '尚未配置远程创意仓库。'
+    });
+    expect(html).toContain('地址：</span>未配置');
+    expect(html).toContain('owner/repo：</span>未配置');
+    expect(html).toContain('不可变性：</span>未知（未登录 GitHub，无法通过 API 检查）');
+    expect(html).toContain('尚未配置远程创意仓库。');
   });
 });

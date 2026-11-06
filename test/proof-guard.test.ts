@@ -196,17 +196,17 @@ describe('markProject guard and release payload', { timeout: 20000 }, () => {
     const current = await fs.readFile(path.join(root, 'MyGame', 'ideas.md'), 'utf8');
     expect(current.match(/Proof:/g)).toHaveLength(1);
     const markerLine = current.trimEnd().split(/\r?\n/).pop() as string;
-    expect(markerLine).toMatch(/Proof: .+ \[ideahub\]/);
+    expect(markerLine).toMatch(/^###### `Proof: .+ \[ideahub\]`$/);
     expect(current).toBe(appendMarkerLine(ORIGINAL, markerLine));
 
     const subject = (await runGit(root, ['log', '-1', '--format=%s'])).stdout.trim();
     expect(subject).toBe('feat(ideas): record proof for MyGame');
     const stat = (await runGit(root, ['show', '--stat', '--format=', 'HEAD'])).stdout;
-    expect(stat).toContain('1 file changed, 1 insertion(+)');
+    expect(stat).toContain('1 file changed, 2 insertions(+)');
   });
 
   it('treats an existing release for the same hash as idempotent and does not create a new one', async () => {
-    const { root, controller } = await createProject(`旧内容\n\`Proof: 2026-11-01 10:00:00 (UTC+08:00) [ideahub]\`\n新内容\n`);
+    const { root, controller } = await createProject(`旧内容\n###### \`Proof: 2026-11-01 10:00:00 (UTC+08:00) [ideahub]\`\n新内容\n`);
     existingReleaseMock.mockReturnValue(
       Promise.resolve({ publishedAt: '2026-11-06T10:33:28Z', immutable: true })
     );

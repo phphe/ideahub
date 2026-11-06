@@ -1,6 +1,23 @@
 import * as crypto from 'node:crypto';
 import type { ProjectSummary, WorkspaceState } from '../core/status';
 
+export interface RemoteSettingsInfo {
+  url: string;
+  owner: string | null;
+  repo: string | null;
+  host: string | null;
+  branch: string | null;
+  visibility: string;
+  immutability: string;
+  error: string | null;
+}
+
+const REFRESH_ICON = `<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M13 8a5 5 0 1 1-1.46-3.54"/><path d="M13 3.2v3.6H9.4"/></svg>`;
+
+const SETTINGS_ICON = `<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><circle cx="8" cy="8" r="2.2"/><path d="M8 1.2v2.2M8 12.6v2.2M1.2 8h2.2M12.6 8h2.2M3.2 3.2l1.6 1.6M11.2 11.2l1.6 1.6M12.8 3.2l-1.6 1.6M4.8 11.2l-1.6 1.6"/></svg>`;
+
+const BACK_ICON = `<svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M6.5 3.5 2 8l4.5 4.5"/><path d="M2 8h12"/></svg>`;
+
 function escapeHtml(value: string): string {
   return value
     .replace(/&/g, '&amp;')
@@ -92,7 +109,7 @@ const STYLES = `
     margin-bottom: 4px;
   }
   .header h1 { margin: 0; flex: 0 0 auto; }
-  .header > button { margin-left: auto; }
+  .header-actions { margin-left: auto; display: flex; gap: 2px; }
   .status { margin: 0 0 8px; opacity: 0.85; font-style: italic; }
   .actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
   button {
@@ -112,6 +129,17 @@ const STYLES = `
     background: var(--vscode-button-secondaryBackground);
   }
   button.secondary:hover { background: var(--vscode-button-secondaryHoverBackground); }
+  button.icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    padding: 0;
+    background: transparent;
+    color: var(--vscode-icon-foreground, var(--vscode-foreground));
+  }
+  button.icon:hover { background: var(--vscode-toolbar-hoverBackground); }
   input[type="text"] {
     width: 100%;
     padding: 5px 7px;
@@ -302,16 +330,19 @@ function renderLocal(
   return `
     <div class="header">
       <h1>创意仓库</h1>
-      <button class="secondary" data-action="refresh" title="${escapeHtml(
-        refreshTooltip(state)
-      )}">刷新状态</button>
+      <div class="header-actions">
+        <button class="icon" data-action="refresh" title="${escapeHtml(
+          refreshTooltip(state)
+        )}">${REFRESH_ICON}</button>
+        <button class="icon" data-action="openSettings" title="设置">${SETTINGS_ICON}</button>
+      </div>
     </div>
     ${hasIssues ? `<h2>需要完成的配置</h2>${issues}` : `<h2>项目</h2>
       <div class="actions"><button data-action="createProject">新建项目</button></div>
       ${projects}`}`;
 }
 
-export function renderMainHtml(state: WorkspaceState): string {
+function renderDocument(title: string, body: string): string {
   const nonce = crypto.randomBytes(16).toString('base64');
   return `<!DOCTYPE html>
 <html lang="zh-CN">
@@ -319,13 +350,58 @@ export function renderMainHtml(state: WorkspaceState): string {
 <meta charset="UTF-8" />
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>创意仓库</title>
+<title>${title}</title>
 <style>${STYLES}</style>
 </head>
 <body>
 <div id="status" class="status" role="status" aria-live="polite" hidden></div>
-${renderMain(state)}
+${body}
 ${renderScript(nonce)}
 </body>
 </html>`;
+}
+
+export function renderMainHtml(state: WorkspaceState): string {
+  return renderDocument('创意仓库', renderMain(state));
+}
+
+function settingRow(label: string, value: string): string {
+  return `<p><span class="muted">${escapeHtml(label)}：</span>${escapeHtml(value)}</p>`;
+}
+
+export function renderSettingsHtml(info: RemoteSettingsInfo): string {
+  const ownerRepo = info.owner && info.repo ? `${info.owner}/${info.repo}` : '未配置';
+  const error = info.error ? `<p class="muted">${escapeHtml(info.error)}</p>` : '';
+  const body = `
+    <div class="header">
+      <h1>设置</h1>
+      <div class="header-actions">
+        <button class="icon" data-action="closeSettings" title="返回创意仓库">${BACK_ICON}</button>
+      </div>
+    </div>
+    <div class="card">
+      <div class="title">远程创意仓库</div>
+      ${settingRow('地址', info.url || '未配置')}
+      ${settingRow('owner/repo', ownerRepo)}
+      ${settingRow('host', info.host ?? '未知')}
+      ${settingRow('分支', info.branch ?? '未知')}
+      ${settingRow('是否公开', info.visibility)}
+      ${settingRow('不可变性', info.immutability)}
+      ${error}
+    </div>
+    <div class="card">
+      <div class="title">修改远程仓库地址</div>
+      <input id="remote-url" type="text" value="${escapeHtml(
+        info.url
+      )}" placeholder="https://github.com/owner/repo" />
+      <label class="check"><input id="immutability-confirm" type="checkbox" /> 我已在 GitHub 启用 Release 不可变性</label>
+      <div class="actions">
+        <button data-action="setRemote">校验、保存并克隆</button>
+      </div>
+      <p class="muted">修改后走既有的校验 → 保存配置 → 自动克隆/重新克隆流程；不会自动提交、推送或公开任何内容。</p>
+    </div>
+    <div class="actions">
+      <button class="secondary" data-action="closeSettings">返回</button>
+    </div>`;
+  return renderDocument('创意仓库 - 设置', body);
 }

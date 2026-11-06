@@ -3,11 +3,11 @@ import { createHash } from 'node:crypto';
 export type MarkerKind = 'proof' | 'published';
 
 /**
- * Section 7.1: a marker line must be fully wrapped in backticks, e.g.
- * `` `Proof: ... [ideahub]` ``. Only whitespace may surround the backticks.
- * Lines without backticks are ordinary content and are not recognised.
+ * Section 7.1: a marker line must start with `###### ` and wrap the whole
+ * marker in backticks, e.g. `` ###### `Proof: ... [ideahub]` ``. No other
+ * content is allowed on the line. Older formats are ordinary content.
  */
-export const MARKER_PATTERN = /^\s*`(Proof|Published):\s*(.+?)\s*\[ideahub\]`\s*$/;
+export const MARKER_PATTERN = /^###### `(Proof|Published):\s*(.+?)\s*\[ideahub\]`[ \t]*$/;
 
 export interface ParsedMarker {
   kind: MarkerKind;
@@ -32,7 +32,7 @@ export interface ParsedIdeas {
 }
 
 export function formatMarkerLine(kind: MarkerKind, timeText: string): string {
-  return `\`${kind === 'proof' ? 'Proof' : 'Published'}: ${timeText} [ideahub]\``;
+  return `###### \`${kind === 'proof' ? 'Proof' : 'Published'}: ${timeText} [ideahub]\``;
 }
 
 export function markerLabel(kind: MarkerKind): string {
@@ -104,16 +104,28 @@ export function computeProofHash(project: string, content: string): string {
 }
 
 /**
- * Appends the marker on its own line, adding a leading newline when the
- * existing content does not already end with one.
+ * Appends the marker on its own line. Preserves CRLF files, adds a trailing
+ * newline, and inserts a blank line before the heading marker when the
+ * previous line is not already blank (otherwise Markdown rendering breaks).
  */
 export function appendMarkerLine(text: string, markerLine: string): string {
   const eol = text.includes('\r\n') ? '\r\n' : '\n';
   if (text.length === 0) {
     return `${markerLine}${eol}`;
   }
-  const needsNewline = !text.endsWith('\n') && !text.endsWith('\r');
-  return `${text}${needsNewline ? eol : ''}${markerLine}${eol}`;
+
+  let result = text;
+  if (!result.endsWith('\n') && !result.endsWith('\r')) {
+    result += eol;
+  }
+
+  const withoutTrailingEol = result.replace(/\r?\n$/, '');
+  const lastLineBlank = withoutTrailingEol === '' || /\r?\n$/.test(withoutTrailingEol);
+  if (!lastLineBlank) {
+    result += eol;
+  }
+
+  return `${result}${markerLine}${eol}`;
 }
 
 /** Section 7.2: blank-line removal used only to detect meaningful content. */

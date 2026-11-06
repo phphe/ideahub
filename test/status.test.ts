@@ -3,8 +3,8 @@ import { computeProofHash } from '../src/core/ideas';
 import { summarizeProject } from '../src/core/status';
 
 const TIME = '2026-11-06 18:33:28 (UTC+08:00)';
-const PROOF = `\`Proof: ${TIME} [ideahub]\``;
-const PUBLISHED = `\`Published: ${TIME} [ideahub]\``;
+const PROOF = `###### \`Proof: ${TIME} [ideahub]\``;
+const PUBLISHED = `###### \`Published: ${TIME} [ideahub]\``;
 
 describe('summarizeProject badges', () => {
   it('reports zero proofs and no content flags for an empty file', () => {

@@ -25,29 +25,39 @@ describe('computeProofHash', () => {
 const TIME = '2026-11-06 18:33:28 (UTC+08:00)';
 const PROOF_TEXT = `Proof: ${TIME} [ideahub]`;
 const PUBLISHED_TEXT = `Published: ${TIME} [ideahub]`;
-const PROOF_LINE = `\`${PROOF_TEXT}\``;
-const PUBLISHED_LINE = `\`${PUBLISHED_TEXT}\``;
+const PROOF_LINE = `###### \`${PROOF_TEXT}\``;
+const PUBLISHED_LINE = `###### \`${PUBLISHED_TEXT}\``;
+const OLD_BACKTICK_LINE = `\`${PROOF_TEXT}\``;
 
 describe('formatMarkerLine', () => {
-  it('wraps both marker kinds in backticks with a space before [ideahub]', () => {
+  it('writes a level-six heading with the marker wrapped in backticks', () => {
     expect(formatMarkerLine('proof', TIME)).toBe(PROOF_LINE);
     expect(formatMarkerLine('published', TIME)).toBe(PUBLISHED_LINE);
-    expect(formatMarkerLine('proof', TIME)).toBe(`\`${PROOF_TEXT}\``);
+    expect(formatMarkerLine('proof', TIME)).toBe(`###### \`${PROOF_TEXT}\``);
   });
 });
 
 describe('parseMarkerLine', () => {
-  it('matches a backtick-wrapped marker with surrounding whitespace', () => {
-    expect(parseMarkerLine(`  ${PUBLISHED_LINE}  `)).toMatchObject({
+  it('matches the exact heading plus backtick format', () => {
+    expect(parseMarkerLine(PUBLISHED_LINE)).toMatchObject({
       kind: 'published',
       time: TIME
     });
   });
 
-  it('does not recognise markers without backticks', () => {
+  it('does not recognise the old single-backtick format without the heading prefix', () => {
+    expect(parseMarkerLine(OLD_BACKTICK_LINE)).toBeNull();
+  });
+
+  it('does not recognise a heading marker without backticks', () => {
+    expect(parseMarkerLine(`###### ${PROOF_TEXT}`)).toBeNull();
     expect(parseMarkerLine(PROOF_TEXT)).toBeNull();
-    expect(parseMarkerLine(`prefix ${PROOF_LINE}`)).toBeNull();
+  });
+
+  it('does not recognise surrounding content or leading whitespace', () => {
+    expect(parseMarkerLine(`  ${PROOF_LINE}`)).toBeNull();
     expect(parseMarkerLine(`${PROOF_LINE} suffix`)).toBeNull();
+    expect(parseMarkerLine(`prefix ${PROOF_LINE}`)).toBeNull();
   });
 
   it('returns null for the legacy hidden marker format', () => {
@@ -55,7 +65,7 @@ describe('parseMarkerLine', () => {
   });
 
   it('returns null for lines without the trailing [ideahub] tag', () => {
-    expect(parseMarkerLine(`\`Proof: 2026-11-06 18:33:28 (UTC+08:00)\``)).toBeNull();
+    expect(parseMarkerLine(`###### \`Proof: 2026-11-06 18:33:28 (UTC+08:00)\``)).toBeNull();
   });
 });
 
@@ -117,37 +127,47 @@ describe('parseIdeas', () => {
     expect(normalizeContent(parsed.unsealedText)).toBe(`创意\n${PROOF_TEXT}`);
   });
 
-  it('does not reset the proof boundary for an unquoted marker', () => {
-    const text = `旧内容\n${PROOF_LINE}\n新增内容\n${PROOF_TEXT}\n`;
+  it('does not reset the proof boundary for old or unquoted marker formats', () => {
+    const text = `旧内容\n${PROOF_LINE}\n新增内容\n${OLD_BACKTICK_LINE}\n${PROOF_TEXT}\n`;
     const parsed = parseIdeas(text);
     expect(parsed.proofMarkers).toHaveLength(1);
     expect(parsed.hasUnsealedContent).toBe(true);
-    expect(normalizeContent(parsed.unsealedText)).toBe(`新增内容\n${PROOF_TEXT}`);
+    expect(normalizeContent(parsed.unsealedText)).toBe(
+      `新增内容\n${OLD_BACKTICK_LINE}\n${PROOF_TEXT}`
+    );
   });
 
-  it('recognises markers with surrounding whitespace but rejects the old format', () => {
-    const parsed = parseIdeas(`abc\n  ${PROOF_LINE}  \n<!-- ideahub:deadbeef date=2026-11-05 -->\n`);
+  it('rejects old marker formats while recognising the heading format', () => {
+    const parsed = parseIdeas(
+      `abc\n${PROOF_LINE}\n${OLD_BACKTICK_LINE}\n<!-- ideahub:deadbeef date=2026-11-05 -->\n`
+    );
     expect(parsed.markers).toHaveLength(1);
     expect(parsed.hasUnsealedContent).toBe(true);
     expect(normalizeContent(parsed.unsealedText)).toBe(
-      '<!-- ideahub:deadbeef date=2026-11-05 -->'
+      `${OLD_BACKTICK_LINE}\n<!-- ideahub:deadbeef date=2026-11-05 -->`
     );
   });
 });
 
 describe('appendMarkerLine', () => {
-  it('inserts a leading newline when the content does not end with one', () => {
-    expect(appendMarkerLine('abc', PROOF_LINE)).toBe(`abc\n${PROOF_LINE}\n`);
+  it('adds a newline and a blank line when the previous line is content', () => {
+    expect(appendMarkerLine('abc', PROOF_LINE)).toBe(`abc\n\n${PROOF_LINE}\n`);
   });
 
-  it('does not add a leading newline when the content already ends with one', () => {
-    expect(appendMarkerLine('abc\n', PROOF_LINE)).toBe(`abc\n${PROOF_LINE}\n`);
+  it('adds a blank line even when the content already ends with a newline', () => {
+    expect(appendMarkerLine('abc\n', PROOF_LINE)).toBe(`abc\n\n${PROOF_LINE}\n`);
+  });
+
+  it('does not add a second blank line when one is already present', () => {
+    expect(appendMarkerLine('abc\n\n', PROOF_LINE)).toBe(`abc\n\n${PROOF_LINE}\n`);
   });
 
   it('keeps CRLF files in CRLF', () => {
-    expect(appendMarkerLine('abc\r\n', PUBLISHED_LINE)).toBe(`abc\r\n${PUBLISHED_LINE}\r\n`);
+    expect(appendMarkerLine('abc\r\n', PUBLISHED_LINE)).toBe(
+      `abc\r\n\r\n${PUBLISHED_LINE}\r\n`
+    );
     expect(appendMarkerLine('abc\r\ndef', PUBLISHED_LINE)).toBe(
-      `abc\r\ndef\r\n${PUBLISHED_LINE}\r\n`
+      `abc\r\ndef\r\n\r\n${PUBLISHED_LINE}\r\n`
     );
   });
 

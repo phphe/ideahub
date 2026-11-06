@@ -113,4 +113,17 @@ describe('inner repository state', { timeout: 20000 }, () => {
       reason: REMOTE_DIR_NON_EMPTY_ERROR
     });
   });
+
+  it('refuses to publish when the inner repository already has uncommitted changes', async () => {
+    const { remotePath } = await makeRoot();
+    await initRepository(remotePath);
+    await commitEmpty(remotePath);
+    await fs.writeFile(path.join(remotePath, 'draft.md'), 'user work');
+
+    const sync = await syncInnerRepository(remotePath, 'main');
+    expect(sync.ok).toBe(false);
+    if (!sync.ok) {
+      expect(sync.error).toContain('未提交');
+    }
+  });
 });

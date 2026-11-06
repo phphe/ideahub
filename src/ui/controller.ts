@@ -15,7 +15,8 @@ import {
 } from '../core/release-target';
 import { validateRemoteRepository } from '../core/remote-setup';
 import { parseRemoteUrl } from '../core/remote-url';
-import { decideRemoteSetup, describeReleaseImmutability } from '../core/immutability';
+import { decideRemoteSetup, describeImmutabilityCheck, describeReleaseImmutability } from '../core/immutability';
+import type { RemoteSettingsInfo } from './html';
 import { cloneRemoteRepository, inspectRemoteTarget, removeLocalClone } from '../core/clone';
 import {
   runRemoteSetupFlow,
@@ -42,7 +43,9 @@ import {
   checkInnerRepositoryHead,
   commitAndPushInnerRepository,
   copyProjectIntoInnerRepository,
+  readInnerRepositoryHead,
   remoteProjectUrl,
+  restoreInnerRepository,
   scanProjectDirectory,
   syncInnerRepository
 } from '../core/publish';
@@ -316,6 +319,74 @@ export class IdeahubController {
       return { ok: false, message: result.error };
     }
     return { ok: true, message: `远程创意仓库已克隆（分支 ${result.branch}）。` };
+  }
+
+  public async getRemoteSettingsInfo(): Promise<RemoteSettingsInfo> {
+    const state = this.currentState;
+    if (state.kind !== 'local') {
+      return {
+        url: '',
+        owner: null,
+        repo: null,
+        host: null,
+        branch: null,
+        visibility: '未知',
+        immutability: '未知',
+        error: '当前没有打开的本地创意仓库。'
+      };
+    }
+    if (!state.remote) {
+      return {
+        url: '',
+        owner: null,
+        repo: null,
+        host: null,
+        branch: null,
+        visibility: '未知',
+        immutability: '未知',
+        error: '尚未配置远程创意仓库。'
+      };
+    }
+
+    const remote = state.remote;
+    const parsed = parseRemoteUrl(remote.url);
+    const base: RemoteSettingsInfo = {
+      url: remote.url,
+      owner: remote.owner,
+      repo: remote.repo,
+      host: parsed.ok ? parsed.value.host : null,
+      branch: remote.branch,
+      visibility: '未知',
+      immutability: '未知',
+      error: null
+    };
+
+    const token = await getGitHubToken(false);
+    if (!token) {
+      return { ...base, immutability: '未知（未登录 GitHub，无法通过 API 检查）' };
+    }
+
+    const client = new GitHubClient(async () => token);
+    try {
+      const repository = await client.getRepository(remote.owner, remote.repo);
+      if (!repository) {
+        return { ...base, error: '无法读取远程仓库信息（仓库不存在或没有访问权限）。' };
+      }
+      const immutability = await client.getImmutableReleasesStatus(
+        remote.owner,
+        remote.repo,
+        parsed.ok ? parsed.value.host : undefined
+      );
+      return {
+        ...base,
+        branch: repository.defaultBranch || remote.branch,
+        visibility: repository.isPrivate ? '私有（不符合要求，必须为公开仓库）' : '公开',
+        immutability: describeImmutabilityCheck(immutability)
+      };
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      return { ...base, error: `无法读取远程仓库信息：${reason}` };
+    }
   }
 
   public async createProject(): Promise<OpResult> {
@@ -768,6 +839,14 @@ export class IdeahubController {
           return { ok: false, message: sync.error };
         }
 
+        const beforeHead = await readInnerRepositoryHead(innerPath);
+        if (!beforeHead.ok) {
+          this.log(
+            `publish: inner repository HEAD read failed: ${beforeHead.error}\n${beforeHead.detail}`
+          );
+          return { ok: false, message: beforeHead.error };
+        }
+
         progress.report({ message: '写入发布标记…' });
         const publishedTime = formatMarkerTime(new Date());
         const publishedMarker = formatMarkerLine('published', publishedTime);
@@ -802,7 +881,16 @@ export class IdeahubController {
           token
         });
         if (!push.ok) {
-          return { ok: false, message: `${push.error}${localMarkerNote}` };
+          const rollback = await restoreInnerRepository(innerPath, beforeHead.head, project);
+          this.log(
+            `publish: ${push.stage} failed: ${push.error}\nrollback: ${
+              rollback.ok ? 'ok' : rollback.error
+            }`
+          );
+          const rollbackNote = rollback.ok
+            ? '\n已复原本地 remote，远端未变更。'
+            : `\n回滚本地 remote 失败：${rollback.error}`;
+          return { ok: false, message: `${push.error}${rollbackNote}${localMarkerNote}` };
         }
 
         const url = remoteProjectUrl(remote.owner, remote.repo, remote.branch, project);

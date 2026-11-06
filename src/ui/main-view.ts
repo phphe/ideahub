@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import type { WorkspaceState } from '../core/status';
 import { IdeahubController, type OpResult } from './controller';
-import { renderMainHtml } from './html';
+import { renderMainHtml, renderSettingsHtml, type RemoteSettingsInfo } from './html';
 import { isSilentSuccess, routeMessage, type RouteHandlers, type WebviewMessage } from './route';
 
 function describeError(error: unknown): string {
@@ -15,6 +15,7 @@ export class MainViewProvider implements vscode.WebviewViewProvider {
   public static readonly viewType = 'ideahub.main';
 
   private view?: vscode.WebviewView;
+  private settingsInfo: RemoteSettingsInfo | null = null;
 
   constructor(
     private readonly controller: IdeahubController,
@@ -59,7 +60,21 @@ export class MainViewProvider implements vscode.WebviewViewProvider {
       state = { kind: 'error' as const, message: `状态检测失败：${reason}` };
     }
     this.log(`state detected: ${state.kind}${'root' in state ? ` (${state.root})` : ''}`);
+    if (this.settingsInfo) {
+      this.settingsInfo = await this.controller.getRemoteSettingsInfo();
+      this.view.webview.html = renderSettingsHtml(this.settingsInfo);
+      return;
+    }
     this.view.webview.html = renderMainHtml(state);
+  }
+
+  private async openSettings(): Promise<void> {
+    if (!this.view) {
+      return;
+    }
+    this.log('settings: opened');
+    this.settingsInfo = await this.controller.getRemoteSettingsInfo();
+    this.view.webview.html = renderSettingsHtml(this.settingsInfo);
   }
 
   private async handleMessage(message: WebviewMessage): Promise<void> {
@@ -78,6 +93,16 @@ export class MainViewProvider implements vscode.WebviewViewProvider {
   }
 
   private async dispatchMessage(message: WebviewMessage): Promise<void> {
+    if (message.type === 'openSettings') {
+      await this.openSettings();
+      return;
+    }
+    if (message.type === 'closeSettings') {
+      this.settingsInfo = null;
+      await this.refresh();
+      return;
+    }
+
     if (message.type === 'uiError') {
       const reason = message.message || '未知的前端错误';
       this.log(`webview script error: ${reason}`);
