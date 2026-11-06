@@ -23,29 +23,31 @@ describe('computeProofHash', () => {
 });
 
 const TIME = '2026-11-06 18:33:28 (UTC+08:00)';
-const PROOF_LINE = `Proof: ${TIME} [ideahub]`;
-const PUBLISHED_LINE = `Published: ${TIME} [ideahub]`;
+const PROOF_TEXT = `Proof: ${TIME} [ideahub]`;
+const PUBLISHED_TEXT = `Published: ${TIME} [ideahub]`;
+const PROOF_LINE = `\`${PROOF_TEXT}\``;
+const PUBLISHED_LINE = `\`${PUBLISHED_TEXT}\``;
 
 describe('formatMarkerLine', () => {
-  it('formats both marker kinds with a space before [ideahub]', () => {
+  it('wraps both marker kinds in backticks with a space before [ideahub]', () => {
     expect(formatMarkerLine('proof', TIME)).toBe(PROOF_LINE);
     expect(formatMarkerLine('published', TIME)).toBe(PUBLISHED_LINE);
+    expect(formatMarkerLine('proof', TIME)).toBe(`\`${PROOF_TEXT}\``);
   });
 });
 
 describe('parseMarkerLine', () => {
-  it('matches even when the marker is not at the start of the line', () => {
-    expect(parseMarkerLine(`prefix ${PROOF_LINE}`)).toMatchObject({
-      kind: 'proof',
-      time: TIME
-    });
-  });
-
-  it('allows surrounding whitespace and extracts the time text', () => {
+  it('matches a backtick-wrapped marker with surrounding whitespace', () => {
     expect(parseMarkerLine(`  ${PUBLISHED_LINE}  `)).toMatchObject({
       kind: 'published',
       time: TIME
     });
+  });
+
+  it('does not recognise markers without backticks', () => {
+    expect(parseMarkerLine(PROOF_TEXT)).toBeNull();
+    expect(parseMarkerLine(`prefix ${PROOF_LINE}`)).toBeNull();
+    expect(parseMarkerLine(`${PROOF_LINE} suffix`)).toBeNull();
   });
 
   it('returns null for the legacy hidden marker format', () => {
@@ -53,7 +55,7 @@ describe('parseMarkerLine', () => {
   });
 
   it('returns null for lines without the trailing [ideahub] tag', () => {
-    expect(parseMarkerLine('Proof: 2026-11-06 18:33:28 (UTC+08:00)')).toBeNull();
+    expect(parseMarkerLine(`\`Proof: 2026-11-06 18:33:28 (UTC+08:00)\``)).toBeNull();
   });
 });
 
@@ -104,6 +106,23 @@ describe('parseIdeas', () => {
     expect(parseIdeas(`创意\n${PROOF_LINE}\n${PUBLISHED_LINE}\n`).canPublish).toBe(false);
     expect(parseIdeas('创意\n').canPublish).toBe(false);
     expect(parseIdeas('').canPublish).toBe(false);
+  });
+
+  it('treats markers without backticks as ordinary content', () => {
+    const text = `创意\n${PROOF_TEXT}\n`;
+    const parsed = parseIdeas(text);
+    expect(parsed.markers).toHaveLength(0);
+    expect(parsed.hasUnsealedContent).toBe(true);
+    expect(parsed.canPublish).toBe(false);
+    expect(normalizeContent(parsed.unsealedText)).toBe(`创意\n${PROOF_TEXT}`);
+  });
+
+  it('does not reset the proof boundary for an unquoted marker', () => {
+    const text = `旧内容\n${PROOF_LINE}\n新增内容\n${PROOF_TEXT}\n`;
+    const parsed = parseIdeas(text);
+    expect(parsed.proofMarkers).toHaveLength(1);
+    expect(parsed.hasUnsealedContent).toBe(true);
+    expect(normalizeContent(parsed.unsealedText)).toBe(`新增内容\n${PROOF_TEXT}`);
   });
 
   it('recognises markers with surrounding whitespace but rejects the old format', () => {

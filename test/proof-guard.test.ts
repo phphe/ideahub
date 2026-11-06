@@ -206,7 +206,7 @@ describe('markProject guard and release payload', { timeout: 20000 }, () => {
   });
 
   it('treats an existing release for the same hash as idempotent and does not create a new one', async () => {
-    const { root, controller } = await createProject(`旧内容\n${'Proof: 2026-11-01 10:00:00 (UTC+08:00) [ideahub]'}\n新内容\n`);
+    const { root, controller } = await createProject(`旧内容\n\`Proof: 2026-11-01 10:00:00 (UTC+08:00) [ideahub]\`\n新内容\n`);
     existingReleaseMock.mockReturnValue(
       Promise.resolve({ publishedAt: '2026-11-06T10:33:28Z', immutable: true })
     );

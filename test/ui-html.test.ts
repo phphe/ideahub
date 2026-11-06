@@ -25,10 +25,19 @@ describe('renderMainHtml', () => {
     expect(html).toContain('正在处理');
   });
 
-  it('shows a notice with escaped content', () => {
-    const html = renderMainHtml({ kind: 'no-folder' }, { kind: 'error', text: '<bad> & error' });
-    expect(html).toContain('class="notice error"');
-    expect(html).toContain('&lt;bad&gt; &amp; error');
+  it('does not render any notice container or banner', () => {
+    const states: WorkspaceState[] = [
+      { kind: 'no-folder' },
+      { kind: 'empty-folder', root: 'C:/empty' },
+      { kind: 'error', message: '<bad> & error' }
+    ];
+
+    for (const state of states) {
+      const html = renderMainHtml(state);
+      expect(html).not.toContain('id="notice"');
+      expect(html).not.toContain('class="notice');
+      expect(html).not.toContain('role="alert"');
+    }
   });
 });
 
@@ -97,8 +106,10 @@ describe('renderMainHtml project list', () => {
     expect(html).not.toContain('>可发布</span>');
   });
 
-  it('renders the proof and publish buttons with tooltips', () => {
+  it('renders the proof and publish buttons with secondary styling and tooltips', () => {
     const html = renderMainHtml(state);
+    expect(html).toContain('class="secondary" data-action="mark"');
+    expect(html).toContain('class="secondary" data-action="publish"');
     expect(html).toContain('title="发布新增内容的时间证明"');
     expect(html).toContain('>证明</button>');
     expect(html).toContain('title="发布创意原文"');
@@ -108,5 +119,30 @@ describe('renderMainHtml project list', () => {
   it('does not mention the old rename warning', () => {
     const html = renderMainHtml(state);
     expect(html).not.toContain('已有证明，不建议重命名项目文件夹');
+  });
+
+  it('puts the refresh button on the title row and moves info into its tooltip', () => {
+    const html = renderMainHtml({
+      ...state,
+      remote: {
+        provider: 'github',
+        owner: 'phphe',
+        repo: 'test_1027e9ad9a',
+        url: 'https://github.com/phphe/test_1027e9ad9a',
+        branch: 'main'
+      }
+    });
+
+    expect(html).toContain('<div class="header">');
+    expect(html).toContain('<h1>创意仓库</h1>');
+    expect(html).toContain('.header > button { margin-left: auto; }');
+    expect(html).toMatch(
+      /<button class="secondary" data-action="refresh" title="[^"]*工作区：C:\/repo[^"]*">刷新状态<\/button>/
+    );
+    expect(html).toContain('远程创意仓库：phphe/test_1027e9ad9a（分支 main）');
+
+    // The old info line under the title is gone.
+    expect(html).not.toContain('<p class="muted">C:/repo</p>');
+    expect(html).not.toContain('<p class="muted">远程创意仓库');
   });
 });

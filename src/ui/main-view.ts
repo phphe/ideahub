@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import type { WorkspaceState } from '../core/status';
 import { IdeahubController, type OpResult } from './controller';
-import { renderMainHtml, type ViewNotice } from './html';
+import { renderMainHtml } from './html';
 import { isSilentSuccess, routeMessage, type RouteHandlers, type WebviewMessage } from './route';
 
 function describeError(error: unknown): string {
@@ -15,7 +15,6 @@ export class MainViewProvider implements vscode.WebviewViewProvider {
   public static readonly viewType = 'ideahub.main';
 
   private view?: vscode.WebviewView;
-  private notice: ViewNotice | null = null;
 
   constructor(
     private readonly controller: IdeahubController,
@@ -60,7 +59,7 @@ export class MainViewProvider implements vscode.WebviewViewProvider {
       state = { kind: 'error' as const, message: `状态检测失败：${reason}` };
     }
     this.log(`state detected: ${state.kind}${'root' in state ? ` (${state.root})` : ''}`);
-    this.view.webview.html = renderMainHtml(state, this.notice);
+    this.view.webview.html = renderMainHtml(state);
   }
 
   private async handleMessage(message: WebviewMessage): Promise<void> {
@@ -69,7 +68,7 @@ export class MainViewProvider implements vscode.WebviewViewProvider {
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
       this.log(`message handling failed (${message.type ?? 'unknown'}): ${describeError(error)}`);
-      this.notice = { kind: 'error', text: `操作失败：${reason}` };
+      void vscode.window.showErrorMessage(`操作失败：${reason}`);
       try {
         await this.refresh();
       } catch (refreshError) {
@@ -82,14 +81,13 @@ export class MainViewProvider implements vscode.WebviewViewProvider {
     if (message.type === 'uiError') {
       const reason = message.message || '未知的前端错误';
       this.log(`webview script error: ${reason}`);
-      this.notice = { kind: 'error', text: `界面脚本出错：${reason}` };
+      void vscode.window.showErrorMessage(`界面脚本出错：${reason}`);
       await this.refresh();
       return;
     }
 
     const handlers: RouteHandlers = {
       refresh: async () => {
-        this.notice = null;
         await this.refresh();
       },
       initialize: () => this.controller.initialize(),
@@ -131,7 +129,6 @@ export class MainViewProvider implements vscode.WebviewViewProvider {
       return;
     }
     if (!result.ok) {
-      this.notice = { kind: 'error', text: result.message };
       void vscode.window.showErrorMessage(result.message);
       await this.refresh();
       return;
@@ -139,7 +136,6 @@ export class MainViewProvider implements vscode.WebviewViewProvider {
     if (isSilentSuccess(name)) {
       return;
     }
-    this.notice = { kind: 'info', text: result.message };
     void vscode.window.showInformationMessage(result.message);
     await this.refresh();
   }

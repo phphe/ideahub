@@ -47,7 +47,7 @@ vi.mock('vscode', () => {
   };
 });
 
-const PROOF = 'Proof: 2026-11-06 18:33:28 (UTC+08:00) [ideahub]';
+const PROOF = '`Proof: 2026-11-06 18:33:28 (UTC+08:00) [ideahub]`';
 const REMOTE = {
   provider: 'github' as const,
   owner: 'owner',

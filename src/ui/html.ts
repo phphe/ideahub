@@ -10,32 +10,15 @@ function escapeHtml(value: string): string {
     .replace(/'/g, '&#39;');
 }
 
-export interface ViewNotice {
-  kind: 'info' | 'error';
-  text: string;
-}
-
-function renderNotice(notice: ViewNotice | null | undefined): string {
-  if (!notice) {
-    return '';
-  }
-  const kind = notice.kind === 'error' ? 'error' : 'info';
-  return `<div id="notice" class="notice ${kind}" role="alert">${escapeHtml(notice.text)}</div>`;
-}
-
 function renderScript(nonce: string): string {
   return `<script nonce="${nonce}">
     const vscode = acquireVsCodeApi();
     const statusEl = document.getElementById('status');
-    const noticeEl = document.getElementById('notice');
 
     function setBusy(text) {
       if (statusEl) {
         statusEl.textContent = text;
         statusEl.hidden = false;
-      }
-      if (noticeEl) {
-        noticeEl.hidden = true;
       }
       document.querySelectorAll('button').forEach(function (button) {
         button.disabled = true;
@@ -101,20 +84,15 @@ const STYLES = `
   .card.warn { border-left: 3px solid var(--vscode-editorWarning-foreground); }
   .card.error { border-left: 3px solid var(--vscode-errorForeground); }
   .card .title { font-weight: 600; margin-bottom: 4px; }
-  .notice {
-    border: 1px solid var(--vscode-panel-border);
-    border-left: 3px solid var(--vscode-textLink-foreground);
-    border-radius: 6px;
-    padding: 8px 10px;
-    margin: 0 0 10px;
-    white-space: pre-wrap;
-    word-break: break-word;
-    background: var(--vscode-editorWidget-background);
+  .header {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 4px;
   }
-  .notice.error {
-    border-left-color: var(--vscode-errorForeground);
-    color: var(--vscode-errorForeground);
-  }
+  .header h1 { margin: 0; flex: 0 0 auto; }
+  .header > button { margin-left: auto; }
   .status { margin: 0 0 8px; opacity: 0.85; font-style: italic; }
   .actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
   button {
@@ -261,6 +239,23 @@ function renderBadges(project: ProjectSummary): string {
     .join('');
 }
 
+function refreshTooltip(
+  state: Extract<WorkspaceState, { kind: 'local' }>
+): string {
+  const parts = [`工作区：${state.root}`];
+  if (state.remote) {
+    parts.push(
+      `远程创意仓库：${state.remote.owner}/${state.remote.repo}（分支 ${state.remote.branch}）`
+    );
+  } else {
+    parts.push('远程创意仓库：未配置');
+  }
+  if (state.remoteStatus && !state.remoteStatus.available && state.remoteStatus.error) {
+    parts.push(`远程状态暂不可用：${state.remoteStatus.error}`);
+  }
+  return parts.join(' | ');
+}
+
 function renderLocal(
   state: Extract<WorkspaceState, { kind: 'local' }>
 ): string {
@@ -274,16 +269,6 @@ function renderLocal(
       </div>`;
     })
     .join('');
-
-  const remoteInfo = state.remote
-    ? `<p class="muted">远程创意仓库：<code>${escapeHtml(state.remote.owner)}/${escapeHtml(
-        state.remote.repo
-      )}</code>（分支 <code>${escapeHtml(state.remote.branch)}</code>）</p>`
-    : '';
-  const remoteNote =
-    state.remoteStatus && !state.remoteStatus.available && state.remoteStatus.error
-      ? `<p class="muted">远程状态暂不可用：${escapeHtml(state.remoteStatus.error)}</p>`
-      : '';
 
   const projects = hasIssues
     ? ''
@@ -303,7 +288,7 @@ function renderLocal(
                 ${renderBadges(project)}
               </div>
               <div class="project-actions">
-                <button data-action="mark" data-project="${escapeHtml(
+                <button class="secondary" data-action="mark" data-project="${escapeHtml(
                   project.name
                 )}" title="发布新增内容的时间证明">证明</button>
                 <button class="secondary" data-action="publish" data-project="${escapeHtml(
@@ -315,22 +300,18 @@ function renderLocal(
           .join('')}</ul>`;
 
   return `
-    <h1>创意仓库</h1>
-    <p class="muted">${escapeHtml(state.root)}</p>
-    ${remoteInfo}
-    ${remoteNote}
-    <div class="actions">
-      <button class="secondary" data-action="refresh">刷新状态</button>
+    <div class="header">
+      <h1>创意仓库</h1>
+      <button class="secondary" data-action="refresh" title="${escapeHtml(
+        refreshTooltip(state)
+      )}">刷新状态</button>
     </div>
     ${hasIssues ? `<h2>需要完成的配置</h2>${issues}` : `<h2>项目</h2>
       <div class="actions"><button data-action="createProject">新建项目</button></div>
       ${projects}`}`;
 }
 
-export function renderMainHtml(
-  state: WorkspaceState,
-  notice?: ViewNotice | null
-): string {
+export function renderMainHtml(state: WorkspaceState): string {
   const nonce = crypto.randomBytes(16).toString('base64');
   return `<!DOCTYPE html>
 <html lang="zh-CN">
@@ -342,7 +323,6 @@ export function renderMainHtml(
 <style>${STYLES}</style>
 </head>
 <body>
-${renderNotice(notice)}
 <div id="status" class="status" role="status" aria-live="polite" hidden></div>
 ${renderMain(state)}
 ${renderScript(nonce)}

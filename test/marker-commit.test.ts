@@ -12,8 +12,10 @@ import {
 import { appendMarkerLine } from '../src/core/ideas';
 
 const TIME = '2026-11-06 18:33:28 (UTC+08:00)';
-const PROOF_LINE = `Proof: ${TIME} [ideahub]`;
-const PUBLISHED_LINE = `Published: ${TIME} [ideahub]`;
+const PROOF_TEXT = `Proof: ${TIME} [ideahub]`;
+const PUBLISHED_TEXT = `Published: ${TIME} [ideahub]`;
+const PROOF_LINE = `\`${PROOF_TEXT}\``;
+const PUBLISHED_LINE = `\`${PUBLISHED_TEXT}\``;
 const BASE = '第一行\n\n第二行\n';
 const roots: string[] = [];
 

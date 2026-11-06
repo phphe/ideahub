@@ -65,7 +65,7 @@ describe('copyProjectIntoInnerRepository', () => {
   it('carries the Published marker written before the copy into the snapshot', async () => {
     const project = await tempDir('ideahub-copy-published-');
     const localIdeas = path.join(project, 'ideas.md');
-    const marker = 'Published: 2026-11-06 18:33:28 (UTC+08:00) [ideahub]';
+    const marker = '`Published: 2026-11-06 18:33:28 (UTC+08:00) [ideahub]`';
     await fs.writeFile(localIdeas, appendMarkerLine('创意原文\n', marker), 'utf8');
 
     const inner = await tempDir('ideahub-copy-published-dst-');

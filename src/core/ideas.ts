@@ -3,11 +3,11 @@ import { createHash } from 'node:crypto';
 export type MarkerKind = 'proof' | 'published';
 
 /**
- * Section 7.1: a marker line needs a `Proof:` / `Published:` label and ends
- * with `[ideahub]`. Matching is intentionally not anchored to the line start
- * and allows surrounding whitespace.
+ * Section 7.1: a marker line must be fully wrapped in backticks, e.g.
+ * `` `Proof: ... [ideahub]` ``. Only whitespace may surround the backticks.
+ * Lines without backticks are ordinary content and are not recognised.
  */
-export const MARKER_PATTERN = /(Proof|Published):\s*(.+?)\s*\[ideahub\]\s*$/;
+export const MARKER_PATTERN = /^\s*`(Proof|Published):\s*(.+?)\s*\[ideahub\]`\s*$/;
 
 export interface ParsedMarker {
   kind: MarkerKind;
@@ -32,7 +32,7 @@ export interface ParsedIdeas {
 }
 
 export function formatMarkerLine(kind: MarkerKind, timeText: string): string {
-  return `${kind === 'proof' ? 'Proof' : 'Published'}: ${timeText} [ideahub]`;
+  return `\`${kind === 'proof' ? 'Proof' : 'Published'}: ${timeText} [ideahub]\``;
 }
 
 export function markerLabel(kind: MarkerKind): string {
