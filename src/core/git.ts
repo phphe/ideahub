@@ -4,6 +4,8 @@ export interface GitResult {
   code: number;
   stdout: string;
   stderr: string;
+  /** True when the `git` executable itself could not be found. */
+  missing?: boolean;
 }
 
 export interface GitOptions {
@@ -38,11 +40,14 @@ export function runGit(cwd: string, args: string[], options: GitOptions = {}): P
         }
       },
       (error, stdout, stderr) => {
-        const code = error ? ((error as NodeJS.ErrnoException & { code?: number }).code ?? 1) : 0;
+        const errno = error as NodeJS.ErrnoException | null;
+        const missing = errno?.code === 'ENOENT';
+        const code = error ? (typeof errno?.code === 'number' ? errno.code : 1) : 0;
         resolve({
-          code: typeof code === 'number' ? code : 1,
+          code,
           stdout: stdout.toString(),
-          stderr: stderr.toString()
+          stderr: stderr.toString(),
+          missing
         });
       }
     );

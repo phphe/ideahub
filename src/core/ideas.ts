@@ -1,5 +1,9 @@
-import { createHash } from 'node:crypto';
 import { findFrontMatter } from './front-matter';
+import {
+  canonicalFingerprintJson,
+  normalizeProofText,
+  sha256Hex
+} from './fingerprint';
 
 export type MarkerKind = 'proof' | 'published';
 
@@ -104,11 +108,12 @@ export function parseIdeas(text: string): ParsedIdeas {
 }
 
 /**
- * Section 7.3: SHA-256 over the project name and the normalised content
- * sealed by a proof marker. The result is the release tag suffix.
+ * Section 7.3: content fingerprint without referenced files, used by the
+ * project list where the filesystem/git context is not available. Proof and
+ * publish use `buildFingerprint` with the full file map.
  */
 export function computeProofHash(project: string, content: string): string {
-  return createHash('sha256').update(`${project}\n${normalizeContent(content)}`).digest('hex');
+  return sha256Hex(canonicalFingerprintJson(project, normalizeProofText(content), {}));
 }
 
 /**

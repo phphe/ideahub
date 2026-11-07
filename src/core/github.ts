@@ -275,6 +275,27 @@ export class GitHubClient {
     return (raw ?? []).map(releaseFromRaw);
   }
 
+  /**
+   * Section 7.6: paginate the whole release list before comparing proof tags,
+   * instead of requesting each tag individually.
+   */
+  async listAllReleases(owner: string, repo: string): Promise<GitHubReleaseInfo[]> {
+    const base = `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/releases`;
+    const all: GitHubReleaseInfo[] = [];
+    for (let page = 1; page <= 100; page += 1) {
+      const raw = await this.request<RawRelease[]>(
+        'GET',
+        `${base}?per_page=100&page=${page}`
+      );
+      const items = (raw ?? []).map(releaseFromRaw).filter((item) => item.tagName.length > 0);
+      all.push(...items);
+      if (items.length < 100) {
+        break;
+      }
+    }
+    return all;
+  }
+
   async hasContent(owner: string, repo: string, contentPath: string): Promise<boolean> {
     const raw = await this.request<unknown>(
       'GET',
