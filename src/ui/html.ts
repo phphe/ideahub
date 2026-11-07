@@ -674,32 +674,16 @@ export function renderProjectBadges(project: ProjectSummary): string {
 
 export const PROJECT_FILTER_THRESHOLD = 10;
 
-function sortTier(project: ProjectSummary): number {
-  if (project.hasNewContent) {
-    return 0;
-  }
-  if (project.canPublish) {
-    return 1;
-  }
-  return 2;
-}
-
 /**
- * Section 8.7: pending work first, then recently active projects. The order is
- * computed once per render from memory only, so badge patches never reorder
- * the list.
+ * Section 8.7: most recently modified `ideas.md` first, then by name. Status
+ * badges and tag filters never affect the order, so filtering keeps the same
+ * relative order within the matched set. Computed once per render from memory.
  */
 export function sortProjects(projects: ProjectSummary[]): ProjectSummary[] {
   return projects.slice().sort((a, b) => {
-    const tiers = sortTier(a) - sortTier(b);
-    if (tiers !== 0) {
-      return tiers;
-    }
-    if (sortTier(a) === 2) {
-      const recency = (b.updatedAt ?? 0) - (a.updatedAt ?? 0);
-      if (recency !== 0) {
-        return recency;
-      }
+    const recency = (b.updatedAt ?? 0) - (a.updatedAt ?? 0);
+    if (recency !== 0) {
+      return recency;
     }
     return a.name.toLowerCase().localeCompare(b.name.toLowerCase());
   });

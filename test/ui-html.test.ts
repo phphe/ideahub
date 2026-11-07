@@ -234,26 +234,36 @@ describe('project ordering, filter and status chips', () => {
     };
   }
 
-  it('orders pending work first, then publishable, then by recency and name', () => {
+  it('orders projects by ideas.md mtime descending, then by name', () => {
     const projects = [
-      project('zeta', { updatedAt: 500 }),
+      project('zeta', { updatedAt: 500, hasNewContent: true }),
       project('alpha', { updatedAt: 100 }),
-      project('beta', { updatedAt: 300 }),
+      project('beta', { updatedAt: 300, canPublish: true }),
       project('publishable', { canPublish: true, updatedAt: 1 }),
-      project('pending', { hasNewContent: true, updatedAt: 2 })
+      project('pending', { hasNewContent: true, updatedAt: 2 }),
+      project('tagged', { tags: ['游戏'], updatedAt: 400 })
     ];
 
     const sorted = sortProjects(projects).map((entry) => entry.name);
-    expect(sorted).toEqual(['pending', 'publishable', 'zeta', 'beta', 'alpha']);
+    expect(sorted).toEqual(['zeta', 'tagged', 'beta', 'alpha', 'pending', 'publishable']);
     // The input array is never mutated, and the order is deterministic.
     expect(projects.map((entry) => entry.name)).toEqual([
       'zeta',
       'alpha',
       'beta',
       'publishable',
-      'pending'
+      'pending',
+      'tagged'
     ]);
     expect(sortProjects(projects).map((entry) => entry.name)).toEqual(sorted);
+  });
+
+  it('ignores status badges and tags when ordering', () => {
+    const projects = [
+      project('fresh', { hasNewContent: true, updatedAt: 100, tags: ['游戏'] }),
+      project('stale', { updatedAt: 200, tags: ['写作'] })
+    ];
+    expect(sortProjects(projects).map((entry) => entry.name)).toEqual(['stale', 'fresh']);
   });
 
   it('breaks the recency tie with a case-insensitive name order', () => {
@@ -333,7 +343,7 @@ describe('project ordering, filter and status chips', () => {
     );
   });
 
-  it('renders projects in the sorted order', () => {
+  it('renders projects by mtime descending regardless of status', () => {
     const html = renderMainHtml(
       localState([
         project('old', { updatedAt: 100 }),
@@ -342,11 +352,11 @@ describe('project ordering, filter and status chips', () => {
       ])
     );
 
-    expect(html.indexOf('data-project-item="pending"')).toBeLessThan(
-      html.indexOf('data-project-item="new"')
-    );
     expect(html.indexOf('data-project-item="new"')).toBeLessThan(
       html.indexOf('data-project-item="old"')
+    );
+    expect(html.indexOf('data-project-item="old"')).toBeLessThan(
+      html.indexOf('data-project-item="pending"')
     );
   });
 });

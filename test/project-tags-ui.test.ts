@@ -484,6 +484,23 @@ describe('project tags webview behaviour', () => {
     expect(harness.menu.hidden).toBe(true);
   });
 
+  it('keeps the mtime order inside a tag-filtered result set', () => {
+    const projects = [
+      project('OldTagged', { tags: ['游戏'], updatedAt: 100 }),
+      project('NewTagged', { tags: ['游戏'], updatedAt: 300 }),
+      project('NewestOther', { tags: ['写作'], updatedAt: 500 }),
+      ...Array.from({ length: 9 }, (_value, index) =>
+        project(`Filler${index}`, { updatedAt: 0 })
+      )
+    ];
+    const harness = run(renderMainHtml(localState(projects)));
+    harness.clickTag(harness.tags.find((chip) => chip.dataset.tag === '游戏')!);
+
+    expect(
+      harness.items.filter((item) => !item.hidden).map((item) => item.dataset.projectItem)
+    ).toEqual(['NewTagged', 'OldTagged']);
+  });
+
   it('flips the menu upward and left so it is never clipped', () => {
     const harness = run(renderMainHtml(localState(taggedProjects())));
     harness.menu.rect = { width: 160, height: 80 };

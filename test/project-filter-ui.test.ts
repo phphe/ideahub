@@ -321,6 +321,23 @@ describe('project filter webview behaviour', () => {
     expect(restored.input.value).toBe('game');
   });
 
+  it('keeps the mtime order within filtered results', () => {
+    const projects = [
+      project('GameOld', { updatedAt: 100 }),
+      project('OtherNew', { updatedAt: 500 }),
+      project('GameNew', { updatedAt: 300 }),
+      ...Array.from({ length: 9 }, (_value, index) =>
+        project(`Filler${index}`, { updatedAt: 0 })
+      )
+    ];
+    const harness = run(renderMainHtml(localState(projects)));
+
+    harness.input_('game');
+    expect(
+      harness.items.filter((item) => !item.hidden).map((item) => item.dataset.projectItem)
+    ).toEqual(['GameNew', 'GameOld']);
+  });
+
   it('keeps filtering correct when only one project badges are patched', () => {
     const harness = run(renderMainHtml(localState(twelveProjects())));
     harness.clickChip(harness.chips.find((chip) => chip.dataset.chip === 'new')!);
