@@ -44,8 +44,11 @@ function stripQuotes(value: string): string {
   if (trimmed.length >= 2) {
     const first = trimmed[0];
     const last = trimmed[trimmed.length - 1];
-    if ((first === '"' && last === '"') || (first === "'" && last === "'")) {
-      return trimmed.slice(1, -1);
+    if (first === '"' && last === '"') {
+      return trimmed.slice(1, -1).replace(/\\(["\\])/g, '$1');
+    }
+    if (first === "'" && last === "'") {
+      return trimmed.slice(1, -1).replace(/''/g, "'");
     }
   }
   return trimmed;
@@ -169,10 +172,13 @@ export function parseTagInput(input: string): string[] {
 }
 
 function formatScalar(value: string): string {
-  if (/^[^\s,[\]{}:#'"\\&*!|>%@`]+$/u.test(value)) {
-    return value;
-  }
   return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+}
+
+function inlineTags(tags: string[]): string {
+  return tags.length > 0
+    ? `tags: [${tags.map(formatScalar).join(', ')}]`
+    : 'tags: []';
 }
 
 /** Separates a trailing `# comment` from a value, ignoring quoted hashes. */
@@ -206,10 +212,6 @@ function splitComment(value: string): { value: string; comment: string } {
   return { value, comment: '' };
 }
 
-function keyLine(comment: string): string {
-  return comment ? `tags: ${comment}` : 'tags:';
-}
-
 /**
  * Section 6.9: rewrites only the `tags` section, so other keys, comments,
  * indentation and key order stay byte-for-byte untouched. A file without
@@ -226,12 +228,7 @@ export function updateTags(text: string, tags: string[]): string {
     }
     const bom = text.startsWith('\uFEFF') ? '\uFEFF' : '';
     const body = bom ? text.slice(1) : text;
-    const block = [
-      '---',
-      keyLine(''),
-      ...nextTags.map((tag) => `  - ${formatScalar(tag)}`),
-      '---'
-    ];
+    const block = ['---', inlineTags(nextTags), '---'];
     const prefix = block.join(eol) + eol;
     return `${bom}${prefix}${body.length > 0 ? eol : ''}${body}`;
   }
@@ -249,12 +246,7 @@ export function updateTags(text: string, tags: string[]): string {
     if (nextTags.length === 0) {
       return text;
     }
-    lines.splice(
-      range.endLine,
-      0,
-      keyLine(''),
-      ...nextTags.map((tag) => `  - ${formatScalar(tag)}`)
-    );
+    lines.splice(range.endLine, 0, inlineTags(nextTags));
     return lines.join(eol);
   }
 
@@ -262,50 +254,18 @@ export function updateTags(text: string, tags: string[]): string {
   if (!keyMatch) {
     return text;
   }
-  const { value, comment } = splitComment(keyMatch[1]);
-  const inline = value.trim().startsWith('[');
+  const { comment } = splitComment(keyMatch[1]);
 
+  // Section 6.9: an existing block list is condensed into one inline array.
   let blockEnd = keyIndex;
-  if (!inline) {
-    for (let index = keyIndex + 1; index < range.endLine; index += 1) {
-      if (!/^\s*-(?:\s|$)/.test(lines[index])) {
-        break;
-      }
-      blockEnd = index;
+  for (let index = keyIndex + 1; index < range.endLine; index += 1) {
+    if (!/^\s*-(?:\s|$)/.test(lines[index])) {
+      break;
     }
-  }
-
-  let itemIndent = '  ';
-  const itemComments = new Map<string, string>();
-  for (let index = keyIndex + 1; index <= blockEnd; index += 1) {
-    const match = /^(\s*)-(?:\s*)(.*)$/.exec(lines[index]);
-    if (!match) {
-      continue;
-    }
-    if (index === keyIndex + 1) {
-      itemIndent = match[1] || itemIndent;
-    }
-    const item = splitComment(match[2]);
-    const tag = stripQuotes(item.value).toLowerCase();
-    if (tag && item.comment) {
-      itemComments.set(tag, ` ${item.comment}`);
-    }
+    blockEnd = index;
   }
 
   const suffix = comment ? ` ${comment}` : '';
-  let replacement: string[];
-  if (nextTags.length === 0) {
-    replacement = [`tags: []${suffix}`];
-  } else if (inline) {
-    replacement = [`tags: [${nextTags.map(formatScalar).join(', ')}]${suffix}`];
-  } else {
-    replacement = [
-      `tags:${suffix}`,
-      ...nextTags.map(
-        (tag) => `${itemIndent}- ${formatScalar(tag)}${itemComments.get(tag.toLowerCase()) ?? ''}`
-      )
-    ];
-  }
-  lines.splice(keyIndex, blockEnd - keyIndex + 1, ...replacement);
+  lines.splice(keyIndex, blockEnd - keyIndex + 1, `${inlineTags(nextTags)}${suffix}`);
   return lines.join(eol);
 }

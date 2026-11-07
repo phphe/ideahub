@@ -140,9 +140,13 @@ describe('editProjectTags', () => {
     expect(
       await fs.readFile(path.join(root, 'Demo', 'ideas.md'), 'utf8')
     ).toBe(
-      ['---', 'title: 演示', 'tags:', '  - 写作', '  - 新标签', '  - 游戏', '---', '正文'].join(
-        '\n'
-      )
+      [
+        '---',
+        'title: 演示',
+        'tags: ["写作", "新标签", "游戏"]',
+        '---',
+        '正文'
+      ].join('\n')
     );
     expect(invalidate).toHaveBeenCalledWith('Demo');
   });
@@ -162,7 +166,7 @@ describe('editProjectTags', () => {
     inputBoxMock.mockResolvedValueOnce('游戏');
     await (controller as ControllerLike).editProjectTags('Demo');
     expect(await fs.readFile(path.join(root, 'Demo', 'ideas.md'), 'utf8')).toBe(
-      '---\ntags:\n  - 游戏\n---\n\n正文\n'
+      '---\ntags: ["游戏"]\n---\n\n正文\n'
     );
 
     inputBoxMock.mockResolvedValueOnce('');

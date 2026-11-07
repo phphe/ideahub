@@ -16,10 +16,16 @@ describe('parseTags', () => {
   it('reads an inline list, including quoted scalars', () => {
     expect(parseTags('---\ntags: [游戏, "写 作"]\n---\n')).toEqual(['游戏', '写 作']);
     expect(parseTags("---\ntags: ['游戏', \"写作\"]\n---\n")).toEqual(['游戏', '写作']);
+    expect(parseTags('---\ntags: []\n---\n')).toEqual([]);
   });
 
-  it('keeps commas inside quoted items', () => {
-    expect(parseTags('---\ntags: ["a,b", c]\n---\n')).toEqual(['a,b', 'c']);
+  it('keeps commas and colons inside quoted items', () => {
+    expect(parseTags('---\ntags: ["a,b", "c: d", e]\n---\n')).toEqual([
+      'a,b',
+      'c: d',
+      'e'
+    ]);
+    expect(parseTags('---\ntags: ["a\\"b"]\n---\n')).toEqual(['a"b']);
   });
 
   it('returns no tags when front matter is missing or malformed', () => {
@@ -70,23 +76,20 @@ describe('updateTags', () => {
     '# 这一行是用户注释',
     'tags:',
     '  - 游戏',
-    '  - 写作 # 保留的注释',
+    '  - 写作 # 条目注释',
     'author: 我',
     '---',
     '正文'
   ].join('\n');
 
-  it('rewrites only the tags section and keeps every other line', () => {
+  it('rewrites a block list into an inline array and keeps other lines', () => {
     const updated = updateTags(original, ['写作', '游戏', '新标签']);
     expect(updated).toBe(
       [
         '---',
         'title: 我的项目',
         '# 这一行是用户注释',
-        'tags:',
-        '  - 写作 # 保留的注释',
-        '  - 游戏',
-        '  - 新标签',
+        'tags: ["写作", "游戏", "新标签"]',
         'author: 我',
         '---',
         '正文'
@@ -94,9 +97,9 @@ describe('updateTags', () => {
     );
   });
 
-  it('keeps the inline style and its trailing comment', () => {
-    expect(updateTags('---\ntags: [a, b] # 注释\n---\n', ['c'])).toBe(
-      '---\ntags: [c] # 注释\n---\n'
+  it('writes quoted Chinese tags and keeps the key comment', () => {
+    expect(updateTags('---\ntags: [a, b] # 注释\n---\n', ['游戏', '软件'])).toBe(
+      '---\ntags: ["游戏", "软件"] # 注释\n---\n'
     );
   });
 
@@ -116,13 +119,13 @@ describe('updateTags', () => {
 
   it('adds a tags key to existing front matter without touching other keys', () => {
     expect(updateTags('---\ntitle: x\n---\n正文\n', ['游戏'])).toBe(
-      '---\ntitle: x\ntags:\n  - 游戏\n---\n正文\n'
+      '---\ntitle: x\ntags: ["游戏"]\n---\n正文\n'
     );
   });
 
   it('inserts front matter after the BOM and follows CRLF', () => {
     expect(updateTags('\uFEFF# 标题\r\n正文\r\n', ['游戏', '写作'])).toBe(
-      '\uFEFF---\r\ntags:\r\n  - 游戏\r\n  - 写作\r\n---\r\n\r\n# 标题\r\n正文\r\n'
+      '\uFEFF---\r\ntags: ["游戏", "写作"]\r\n---\r\n\r\n# 标题\r\n正文\r\n'
     );
   });
 
@@ -131,12 +134,20 @@ describe('updateTags', () => {
     expect(updateTags('', [])).toBe('');
   });
 
-  it('creates a front matter block for an empty file', () => {
-    expect(updateTags('', ['游戏'])).toBe('---\ntags:\n  - 游戏\n---\n');
+  it('creates an inline front matter block for an empty file', () => {
+    expect(updateTags('', ['游戏'])).toBe('---\ntags: ["游戏"]\n---\n');
   });
 
-  it('quotes values that would otherwise change the YAML structure', () => {
-    expect(updateTags('', ['a, b'])).toBe('---\ntags:\n  - "a, b"\n---\n');
-    expect(parseTags(updateTags('', ['a, b']))).toEqual(['a, b']);
+  it('round-trips values with commas, colons and quotes', () => {
+    for (const tags of [
+      ['a, b'],
+      ['a: b'],
+      ['游戏', '软件'],
+      ['a"b']
+    ]) {
+      expect(parseTags(updateTags('', tags))).toEqual(tags);
+    }
+    expect(updateTags('', ['a, b'])).toBe('---\ntags: ["a, b"]\n---\n');
+    expect(parseTags(updateTags('', []))).toEqual([]);
   });
 });
