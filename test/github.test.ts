@@ -116,3 +116,33 @@ describe('GitHubClient.createRelease', () => {
     ).rejects.toThrow(/already_exists/);
   });
 });
+
+describe('GitHubClient.listAllReleases', () => {
+  it('pages through the release list until a short page arrives', async () => {
+    const firstPage = Array.from({ length: 100 }, (_value, index) => ({
+      tag_name: `ideahub-${index}`,
+      published_at: '2026-11-01T00:00:00Z',
+      immutable: true
+    }));
+    const secondPage = [
+      { tag_name: 'ideahub-last', published_at: '2026-11-02T00:00:00Z', immutable: true }
+    ];
+    const urls: string[] = [];
+    const fetchMock = vi.fn(async (input: string) => {
+      urls.push(String(input));
+      return jsonResponse(200, urls.length === 1 ? firstPage : secondPage);
+    });
+    const client = new GitHubClient(
+      async () => 'token',
+      fetchMock as unknown as typeof fetch
+    );
+
+    const releases = await client.listAllReleases('owner', 'repo');
+
+    expect(releases).toHaveLength(101);
+    expect(releases[100].tagName).toBe('ideahub-last');
+    expect(urls).toHaveLength(2);
+    expect(urls[0]).toContain('per_page=100&page=1');
+    expect(urls[1]).toContain('per_page=100&page=2');
+  });
+});

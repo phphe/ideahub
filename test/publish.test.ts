@@ -47,7 +47,7 @@ describe('scanProjectDirectory', () => {
 });
 
 describe('copyProjectIntoInnerRepository', () => {
-  it('replaces an existing target and copies nested files', async () => {
+  it('replaces an existing target, copies nested files and omits ideas.md', async () => {
     const project = await tempDir('ideahub-copy-src-');
     await fs.writeFile(path.join(project, 'ideas.md'), 'new', 'utf8');
     await fs.mkdir(path.join(project, 'assets'), { recursive: true });
@@ -58,26 +58,31 @@ describe('copyProjectIntoInnerRepository', () => {
     await fs.mkdir(target, { recursive: true });
     await fs.writeFile(path.join(target, 'old.txt'), 'old', 'utf8');
 
-    const result = await copyProjectIntoInnerRepository(inner, 'MyGame', project);
+    const result = await copyProjectIntoInnerRepository(inner, 'MyGame', project, 'proof file');
     expect(result.ok).toBe(true);
     await expect(fs.access(path.join(target, 'old.txt'))).rejects.toThrow();
-    expect(await fs.readFile(path.join(target, 'ideas.md'), 'utf8')).toBe('new');
+    await expect(fs.access(path.join(target, 'ideas.md'))).rejects.toThrow();
+    expect(await fs.readFile(path.join(target, 'README.md'), 'utf8')).toBe('proof file');
     expect(await fs.readFile(path.join(target, 'assets', 'a.txt'), 'utf8')).toBe('a');
   });
 
-  it('carries the Published marker written before the copy into the snapshot', async () => {
-    const project = await tempDir('ideahub-copy-published-');
-    const localIdeas = path.join(project, 'ideas.md');
+  it('overwrites an existing README.md silently', async () => {
+    const project = await tempDir('ideahub-copy-readme-');
     const marker = '###### `Published: 2026-11-06 18:33:28 (UTC+08:00) [ideahub]`';
-    await fs.writeFile(localIdeas, appendMarkerLine('创意原文\n', marker), 'utf8');
+    await fs.writeFile(
+      path.join(project, 'ideas.md'),
+      appendMarkerLine('创意原文\n', marker),
+      'utf8'
+    );
+    await fs.writeFile(path.join(project, 'README.md'), 'user readme', 'utf8');
 
-    const inner = await tempDir('ideahub-copy-published-dst-');
-    const result = await copyProjectIntoInnerRepository(inner, 'MyGame', project);
+    const inner = await tempDir('ideahub-copy-readme-dst-');
+    const proofFile = `---\nversion: "0"\n---\n\n${marker}\n\n创意原文\n`;
+    const result = await copyProjectIntoInnerRepository(inner, 'MyGame', project, proofFile);
     expect(result.ok).toBe(true);
 
-    const published = await fs.readFile(path.join(inner, 'MyGame', 'ideas.md'), 'utf8');
-    expect(published).toContain('创意原文');
-    expect(published).toContain(marker);
+    expect(await fs.readFile(path.join(inner, 'MyGame', 'README.md'), 'utf8')).toBe(proofFile);
+    await expect(fs.access(path.join(inner, 'MyGame', 'ideas.md'))).rejects.toThrow();
   });
 });
 
@@ -111,7 +116,7 @@ describe('restoreInnerRepository', { timeout: 30000 }, () => {
     await fs.writeFile(path.join(project, 'ideas.md'), 'published', 'utf8');
     await fs.writeFile(path.join(project, 'extra.txt'), 'new', 'utf8');
 
-    expect((await copyProjectIntoInnerRepository(inner, 'MyGame', project)).ok).toBe(true);
+    expect((await copyProjectIntoInnerRepository(inner, 'MyGame', project, 'proof')).ok).toBe(true);
 
     // A malformed refspec makes git reject the push locally, so the test never
     // touches the network while still failing at the real push stage.

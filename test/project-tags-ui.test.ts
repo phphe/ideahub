@@ -450,8 +450,11 @@ describe('project tags webview behaviour', () => {
     ).toBe(false);
   });
 
-  it('opens the context menu, routes both actions and closes it', () => {
-    const harness = run(renderMainHtml(localState(taggedProjects())));
+  it('opens the context menu, routes all three actions and closes it', () => {
+    const html = renderMainHtml(localState(taggedProjects()));
+    expect(html).toContain('data-menu-action="copyUrl"');
+    expect(html).toContain('复制项目地址');
+    const harness = run(html);
 
     harness.contextmenu('GameOne', 20, 20);
     expect(harness.menu.hidden).toBe(false);
@@ -465,6 +468,11 @@ describe('project tags webview behaviour', () => {
     harness.contextmenu('GameTwo', 30, 30);
     harness.clickMenu('editTags');
     expect(harness.messages).toContainEqual({ type: 'editTags', project: 'GameTwo' });
+    expect(harness.menu.hidden).toBe(true);
+
+    harness.contextmenu('GameTwo', 40, 40);
+    harness.clickMenu('copyUrl');
+    expect(harness.messages).toContainEqual({ type: 'copyUrl', project: 'GameTwo' });
     expect(harness.menu.hidden).toBe(true);
   });
 

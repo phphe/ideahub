@@ -6,7 +6,10 @@ import { runGit } from '../src/core/git';
 import type { WorkspaceState } from '../src/core/status';
 import { IdeahubController } from '../src/ui/controller';
 
-const { inputBoxMock } = vi.hoisted(() => ({ inputBoxMock: vi.fn() }));
+const { inputBoxMock, clipboardMock } = vi.hoisted(() => ({
+  inputBoxMock: vi.fn(),
+  clipboardMock: vi.fn()
+}));
 
 vi.mock('vscode', async () => {
   const fs = await import('node:fs/promises');
@@ -75,7 +78,7 @@ vi.mock('vscode', async () => {
     Position,
     WorkspaceEdit,
     ProgressLocation: { Notification: 1 },
-    env: { language: 'zh-cn' }
+    env: { language: 'zh-cn', clipboard: { writeText: clipboardMock } }
   };
 });
 
@@ -112,6 +115,7 @@ async function createProject(content: string): Promise<{ root: string; controlle
 
 afterEach(async () => {
   inputBoxMock.mockReset();
+  clipboardMock.mockReset();
   await Promise.all(
     roots.splice(0).map((root) =>
       fs.rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 })
@@ -191,5 +195,39 @@ describe('editProjectTags', () => {
     expect(text.split(/\r?\n/).filter((line) => line.startsWith('###### '))).toHaveLength(1);
     const subject = (await runGit(root, ['log', '-1', '--format=%s'])).stdout.trim();
     expect(subject).toBe('base');
+  });
+});
+
+describe('copyProjectUrl', () => {
+  type CopyLike = { copyProjectUrl: (project: string) => Promise<EditResult> };
+
+  it('copies the branch from config and URL-encodes the project name', async () => {
+    const { controller } = await createProject('正文');
+    const state = (
+      controller as unknown as {
+        currentState: Extract<WorkspaceState, { kind: 'local' }>;
+      }
+    ).currentState;
+    state.remote = {
+      provider: 'github',
+      owner: 'owner',
+      repo: 'repo',
+      url: 'https://github.com/owner/repo',
+      branch: 'feature/x'
+    };
+
+    const result = await (controller as unknown as CopyLike).copyProjectUrl('My Game');
+
+    expect(result.ok).toBe(true);
+    expect(clipboardMock).toHaveBeenCalledWith(
+      'https://github.com/owner/repo/tree/feature%2Fx/My%20Game'
+    );
+  });
+
+  it('does not touch the clipboard when no remote is configured', async () => {
+    const { controller } = await createProject('正文');
+    const result = await (controller as unknown as CopyLike).copyProjectUrl('Demo');
+    expect(result.ok).toBe(false);
+    expect(clipboardMock).not.toHaveBeenCalled();
   });
 });

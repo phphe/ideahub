@@ -16,6 +16,7 @@ function createHandlers(): RouteHandlers {
     cloneRemote: vi.fn(ok),
     openProject: vi.fn(ok),
     editTags: vi.fn(ok),
+    copyUrl: vi.fn(ok),
     markProject: vi.fn(ok),
     publishProject: vi.fn(ok)
   };
@@ -115,6 +116,21 @@ describe('routeMessage', () => {
     expect(handlers.editTags).toHaveBeenCalledWith('Demo');
     expect(routeMessage({ type: 'editTags' }, handlers).kind).toBe('unknown');
     expect(isSilentSuccess('editTags')).toBe(false);
+  });
+
+  it('routes copyUrl to the controller and treats it as a silent success', async () => {
+    const handlers = createHandlers();
+    const route = routeMessage({ type: 'copyUrl', project: 'My Game' }, handlers);
+
+    expect(route.kind).toBe('operation');
+    if (route.kind !== 'operation') {
+      throw new Error('expected copyUrl to be routed as an operation');
+    }
+    expect(route.name).toBe('copyUrl');
+    await route.run();
+    expect(handlers.copyUrl).toHaveBeenCalledWith('My Game');
+    expect(routeMessage({ type: 'copyUrl' }, handlers).kind).toBe('unknown');
+    expect(isSilentSuccess('copyUrl')).toBe(true);
   });
 
   it('ignores unknown message types and project actions without a project name', () => {
