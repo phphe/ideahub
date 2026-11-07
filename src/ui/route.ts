@@ -20,6 +20,7 @@ export interface RouteHandlers {
   cloneRemote(reclone: boolean): Promise<OpResult>;
   openProject(project: string): Promise<OpResult>;
   editTags(project: string): Promise<OpResult>;
+  copyUrl(project: string): Promise<OpResult>;
   markProject(project: string): Promise<OpResult>;
   publishProject(project: string): Promise<OpResult>;
 }
@@ -30,7 +31,7 @@ export type MessageRoute =
   | { kind: 'unknown' };
 
 export function isSilentSuccess(operationName: string): boolean {
-  return operationName === 'open';
+  return operationName === 'open' || operationName === 'copyUrl';
 }
 
 export function routeMessage(message: WebviewMessage, handlers: RouteHandlers): MessageRoute {
@@ -79,6 +80,13 @@ export function routeMessage(message: WebviewMessage, handlers: RouteHandlers): 
         return { kind: 'unknown' };
       }
       return { kind: 'operation', name: 'editTags', run: () => handlers.editTags(project) };
+    }
+    case 'copyUrl': {
+      const project = message.project;
+      if (!project) {
+        return { kind: 'unknown' };
+      }
+      return { kind: 'operation', name: 'copyUrl', run: () => handlers.copyUrl(project) };
     }
     case 'mark': {
       const project = message.project;

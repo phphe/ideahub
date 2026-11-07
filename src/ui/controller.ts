@@ -38,11 +38,21 @@ import {
 } from '../core/remote-setup-flow';
 import {
   appendMarkerLine,
-  computeProofHash,
   formatMarkerLine,
   parseIdeas
 } from '../core/ideas';
 import { parseTagInput, parseTags, updateTags } from '../core/front-matter';
+import { buildFingerprint } from '../core/fingerprint';
+import {
+  extractProofBlocks,
+  renderProofFile,
+  type ProofFileBlock
+} from '../core/proof-file';
+import {
+  describeMissingProofReleases,
+  findMissingProofReleases,
+  type ProofCheckTarget
+} from '../core/proof-check';
 import { ProjectOperationGuard } from '../core/operation-guard';
 import { ProjectParseCache } from '../core/project-cache';
 import {
@@ -628,6 +638,33 @@ export class IdeahubController {
   }
 
   /**
+   * Section 8.7: copies the project URL in the remote repository. The branch
+   * comes from config; the project name is URL-encoded. A 404 before publishing
+   * is expected and intentionally not warned about.
+   */
+  public async copyProjectUrl(project: string): Promise<OpResult> {
+    const state = this.currentState;
+    if (state.kind !== 'local' || !state.remote) {
+      return { ok: false, message: '请先完成远程仓库配置。' };
+    }
+    const url = remoteProjectUrl(
+      state.remote.owner,
+      state.remote.repo,
+      state.remote.branch,
+      project
+    );
+    try {
+      await vscode.env.clipboard.writeText(url);
+    } catch (error) {
+      return {
+        ok: false,
+        message: `复制项目地址失败：${error instanceof Error ? error.message : String(error)}`
+      };
+    }
+    return { ok: true, message: `已复制项目地址：${url}` };
+  }
+
+  /**
    * Section 6.9: edits the `tags` section only. Front matter is metadata, so
    * this never touches markers, never commits and never pushes.
    */
@@ -767,9 +804,18 @@ export class IdeahubController {
 
     this.log(`mark: release branch config: release_branch=${RELEASE_BRANCH} source=build`);
 
-    // Section 7.3 / 7.4: the tag is the SHA-256 of the project name and the
-    // content sealed by this proof marker.
-    const contentHash = computeProofHash(project, parsed.tailAfterLastMarker);
+    // Section 7.3: fingerprint the sealed text plus referenced project files.
+    const fingerprint = await buildFingerprint({
+      project,
+      text: parsed.tailAfterLastMarker,
+      projectDir: path.join(state.root, project),
+      repoRoot: state.root
+    });
+    if (!fingerprint.ok) {
+      this.log(`mark: fingerprint aborted: ${fingerprint.code}: ${fingerprint.message}`);
+      return { ok: false, message: fingerprint.message };
+    }
+    const contentHash = fingerprint.hash;
     const proofTime = new Date();
     const proofTimeText = formatMarkerTime(proofTime);
     const markerLine = formatMarkerLine('proof', proofTimeText);
@@ -921,9 +967,15 @@ export class IdeahubController {
 
     const time = release.release?.publishedAt ? `，发布时间 ${release.release.publishedAt}` : '';
     const immutability = describeReleaseImmutability(release.release?.immutable);
+    // Section 7.7: external links never abort, but the proof does not cover
+    // their content; report the unique count.
+    const externalNote =
+      fingerprint.externalLinks.length > 0
+        ? `\n检测到 ${fingerprint.externalLinks.length} 个外部链接（去重）；本证明不保证这些外部链接指向的内容。`
+        : '';
     return {
       ok: true,
-      message: `${release.created ? '证明已生成' : '证明已存在，已补写本地标记'}：\n${tag}${time}\n${immutability}${commitNote}`
+      message: `${release.created ? '证明已生成' : '证明已存在，已补写本地标记'}：\n${tag}${time}\n${immutability}${commitNote}${externalNote}`
     };
   }
 
@@ -1046,11 +1098,13 @@ export class IdeahubController {
     const target = path.join(remoteRepoPath(state.root), project);
     const targetExists = await exists(target);
 
+    // Section 8.10: ideas.md is not published; README.md is generated instead.
+    const visibleFiles = scan.files.filter((file) => file !== 'ideas.md');
     const fileList =
-      scan.files.length === 0
-        ? '（项目目录中没有文件）'
-        : scan.files.join('\n');
-    const detail = `将公开的文件夹：${project}\n文件清单：\n${fileList}${
+      visibleFiles.length === 0
+        ? '（项目目录中没有其他文件）'
+        : visibleFiles.join('\n');
+    const detail = `将公开的文件夹：${project}\n文件清单（ideas.md 不会发布，将生成 README.md）：\n${fileList}${
       targetExists ? '\n\n远程创意仓库已存在同名目录，本次发布将覆盖该目录。' : ''
     }`;
 
@@ -1083,6 +1137,48 @@ export class IdeahubController {
       { location: vscode.ProgressLocation.Notification, title: '正在发布项目…' },
       async (progress) => {
         const remote = state.remote!;
+
+        // Section 7.6: recompute every proof fingerprint and compare its tag
+        // with the paginated remote release list before any write or copy.
+        progress.report({ message: '校验已有证明…' });
+        const checkTargets: ProofCheckTarget[] = [];
+        for (const block of extractProofBlocks(currentText)) {
+          const blockFingerprint = await buildFingerprint({
+            project,
+            text: block.rawText,
+            projectDir,
+            repoRoot: state.root
+          });
+          if (!blockFingerprint.ok) {
+            this.log(
+              `publish: fingerprint aborted at ${block.time ?? '(unknown)'}: ${blockFingerprint.code}: ${blockFingerprint.message}`
+            );
+            return { ok: false, message: blockFingerprint.message };
+          }
+          checkTargets.push({
+            time: block.time,
+            tag: buildReleaseTag(blockFingerprint.hash).tag
+          });
+        }
+
+        const client = new GitHubClient(async () => token);
+        let releases;
+        try {
+          releases = await client.listAllReleases(remote.owner, remote.repo);
+        } catch (error) {
+          const detail = error instanceof Error ? error.message : String(error);
+          this.log(`publish: list releases failed: ${detail}`);
+          return { ok: false, message: `无法读取远程仓库的 Release 列表：${detail}` };
+        }
+        const missing = findMissingProofReleases(checkTargets, releases);
+        if (missing.length > 0) {
+          this.log(
+            `publish: blocked by missing releases:\n${missing
+              .map((item) => item.time ?? '(unknown)')
+              .join('\n')}`
+          );
+          return { ok: false, message: describeMissingProofReleases(missing) };
+        }
 
         progress.report({ message: '同步远程创意仓库…' });
         const sync = await syncInnerRepository(innerPath, remote.branch);
@@ -1123,8 +1219,55 @@ export class IdeahubController {
         );
         const localMarkerNote = `\n本地 Published 标记已写入。${commitNote}`;
 
+        // Section 7.8: generate the English proof file from the updated
+        // ideas.md; the published copy contains README.md instead of ideas.md.
+        progress.report({ message: '生成证明文件…' });
+        let updatedText: string;
+        try {
+          updatedText = await fs.readFile(path.join(projectDir, 'ideas.md'), 'utf8');
+        } catch (error) {
+          return {
+            ok: false,
+            message: `发布已停止：无法读取写入标记后的 ideas.md（${
+              error instanceof Error ? error.message : String(error)
+            }）。${localMarkerNote}`
+          };
+        }
+        const proofFileBlocks: ProofFileBlock[] = [];
+        for (const block of extractProofBlocks(updatedText)) {
+          const blockFingerprint = await buildFingerprint({
+            project,
+            text: block.rawText,
+            projectDir,
+            repoRoot: state.root
+          });
+          if (!blockFingerprint.ok) {
+            return { ok: false, message: `${blockFingerprint.message}${localMarkerNote}` };
+          }
+          proofFileBlocks.push({
+            time: block.time,
+            markerLine: block.markerLine,
+            text: blockFingerprint.text,
+            files: blockFingerprint.files,
+            externalLinks: blockFingerprint.externalLinks
+          });
+        }
+        const proofFile = renderProofFile(project, proofFileBlocks);
+        const externalLinkCount = new Set(
+          proofFileBlocks.flatMap((block) => block.externalLinks)
+        ).size;
+        const externalNote =
+          externalLinkCount > 0
+            ? `\n检测到 ${externalLinkCount} 个外部链接（去重）；本证明不保证这些外部链接指向的内容。`
+            : '';
+
         progress.report({ message: '复制项目文件…' });
-        const copy = await copyProjectIntoInnerRepository(innerPath, project, projectDir);
+        const copy = await copyProjectIntoInnerRepository(
+          innerPath,
+          project,
+          projectDir,
+          proofFile
+        );
         if (!copy.ok) {
           return { ok: false, message: `${copy.error}${localMarkerNote}` };
         }
@@ -1152,7 +1295,7 @@ export class IdeahubController {
         const url = remoteProjectUrl(remote.owner, remote.repo, remote.branch, project);
         return {
           ok: true,
-          message: `${push.pushed ? '发布成功' : '项目已是最新状态，无需推送'}。\n远程项目地址：${url}${localMarkerNote}`
+          message: `${push.pushed ? '发布成功' : '项目已是最新状态，无需推送'}。\n远程项目地址：${url}${localMarkerNote}${externalNote}`
         };
       }
     );

@@ -379,10 +379,8 @@ function renderScript(nonce: string): string {
         const project = menuProject;
         const action = menuItem.dataset.menuAction;
         closeMenu();
-        vscode.postMessage({
-          type: action === 'open' ? 'open' : 'editTags',
-          project: project
-        });
+        const type = action === 'open' ? 'open' : action === 'editTags' ? 'editTags' : 'copyUrl';
+        vscode.postMessage({ type: type, project: project });
         return;
       }
       // Any click outside the menu closes it before the regular handling.
@@ -858,6 +856,7 @@ function renderLocal(
     : `<div class="project-menu" id="project-menu" hidden>
         <button data-menu-action="open">打开</button>
         <button data-menu-action="editTags">编辑标签</button>
+        <button data-menu-action="copyUrl">复制项目地址</button>
       </div>`;
 
   return `
