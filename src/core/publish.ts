@@ -129,10 +129,16 @@ export async function syncInnerRepository(
   return { ok: true };
 }
 
+/**
+ * Section 8.10 / 7.8: copy the project for publishing without `ideas.md`;
+ * the generated proof file is written as `README.md` (overwriting any
+ * existing one, deliberately and silently).
+ */
 export async function copyProjectIntoInnerRepository(
   remotePath: string,
   projectName: string,
-  sourceDir: string
+  sourceDir: string,
+  proofFile: string
 ): Promise<{ ok: true; target: string } | { ok: false; error: string }> {
   const target = path.join(remotePath, projectName);
   try {
@@ -151,7 +157,13 @@ export async function copyProjectIntoInnerRepository(
     if (targetExists && !(await isSymlink(target))) {
       await fs.rm(target, { recursive: true, force: true });
     }
-    await fs.cp(sourceDir, target, { recursive: true, errorOnExist: false });
+    await fs.cp(sourceDir, target, {
+      recursive: true,
+      errorOnExist: false,
+      filter: (source) =>
+        !(path.dirname(source) === sourceDir && path.basename(source) === 'ideas.md')
+    });
+    await fs.writeFile(path.join(target, 'README.md'), proofFile, 'utf8');
     return { ok: true, target };
   } catch (error) {
     return { ok: false, error: `复制项目到内层仓库失败：${describeError(error)}` };
