@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import esbuild from 'esbuild';
 import releaseConfig from './scripts/release-config.js';
 
-const { resolveReleaseBranch } = releaseConfig;
+const { resolveReleaseBranch, resolveProofFileVersion, resolveProofFileHeader } = releaseConfig;
 
 async function copyCodicons() {
   await mkdir('media', { recursive: true });
@@ -23,15 +23,36 @@ function readOptional(file) {
   }
 }
 
-const resolution = resolveReleaseBranch({
-  envText: readOptional('.env'),
-  configText: readOptional('ideahub.config.json')
-});
+const envText = readOptional('.env');
+const configText = readOptional('ideahub.config.json');
+
+const resolution = resolveReleaseBranch({ envText, configText });
 for (const warning of resolution.warnings) {
   console.warn(`[ideahub] release config warning: ${warning}`);
 }
+
+const versionResolution = resolveProofFileVersion({ envText, configText });
+for (const warning of versionResolution.warnings) {
+  console.warn(`[ideahub] proof file version warning: ${warning}`);
+}
+
+const headerResolution = resolveProofFileHeader({ envText, configText });
+for (const warning of headerResolution.warnings) {
+  console.warn(`[ideahub] proof file header warning: ${warning}`);
+}
+
 console.log(
   `[ideahub] releaseBranch=${resolution.branch} (source=${resolution.source}, injected at build time)`
+);
+console.log(
+  `[ideahub] proofFileVersion=${JSON.stringify(versionResolution.version)} (source=${
+    versionResolution.source
+  }, injected at build time)`
+);
+console.log(
+  `[ideahub] proofFileHeader=${JSON.stringify(headerResolution.header)} (source=${
+    headerResolution.source
+  }, injected at build time)`
 );
 
 const watch = process.argv.includes('--watch');
@@ -49,7 +70,9 @@ const options = {
   sourcemap: true,
   logLevel: 'info',
   define: {
-    'process.env.IDEAHUB_RELEASE_BRANCH': JSON.stringify(resolution.branch)
+    'process.env.IDEAHUB_RELEASE_BRANCH': JSON.stringify(resolution.branch),
+    'process.env.IDEAHUB_PROOF_FILE_VERSION': JSON.stringify(versionResolution.version),
+    'process.env.IDEAHUB_PROOF_FILE_HEADER': JSON.stringify(headerResolution.header)
   }
 };
 

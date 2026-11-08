@@ -1,6 +1,10 @@
 const DEFAULT_RELEASE_BRANCH = 'main';
+const DEFAULT_PROOF_FILE_VERSION = '0';
+const DEFAULT_PROOF_FILE_HEADER = '';
 const RELEASE_CONFIG_FILE = 'ideahub.config.json';
 const RELEASE_BRANCH_ENV_KEY = 'IDEAHUB_RELEASE_BRANCH';
+const PROOF_FILE_VERSION_ENV_KEY = 'IDEAHUB_PROOF_FILE_VERSION';
+const PROOF_FILE_HEADER_ENV_KEY = 'IDEAHUB_PROOF_FILE_HEADER';
 const MAX_REF_LENGTH = 120;
 const INVALID_REF_CHARS = new Set([' ', '~', '^', ':', '?', '*', '[', '\\']);
 
@@ -160,11 +164,126 @@ function resolveReleaseBranch({ envText = null, configText = null } = {}) {
   return { branch, source: 'file', warnings };
 }
 
+const CONFIG_ERROR_MESSAGES = {
+  missing: `未找到 ${RELEASE_CONFIG_FILE}`,
+  'invalid-json': `${RELEASE_CONFIG_FILE} 不是有效的 JSON`,
+  'not-object': `${RELEASE_CONFIG_FILE} 顶层必须是对象`
+};
+
+function readConfigObject(configText) {
+  if (typeof configText !== 'string') {
+    return { ok: false, reason: 'missing' };
+  }
+  let parsed;
+  try {
+    parsed = JSON.parse(configText);
+  } catch {
+    return { ok: false, reason: 'invalid-json' };
+  }
+  if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    return { ok: false, reason: 'not-object' };
+  }
+  return { ok: true, value: parsed };
+}
+
+/**
+ * Section 6.7: `proofFileVersion` resolves from `.env` > `ideahub.config.json`
+ * > `"0"`. Missing, non-string or empty values warn and fall back separately.
+ */
+function resolveProofFileVersion({ envText = null, configText = null } = {}) {
+  const warnings = [];
+
+  if (typeof envText === 'string') {
+    const envValue = parseEnvValue(envText, PROOF_FILE_VERSION_ENV_KEY);
+    if (envValue !== null) {
+      const version = envValue.trim();
+      if (version.length === 0) {
+        warnings.push(`.env 中的 ${PROOF_FILE_VERSION_ENV_KEY} 为空，已忽略该来源。`);
+      } else {
+        return { version, source: 'env', warnings };
+      }
+    }
+  }
+
+  const fallback = (message) => {
+    warnings.push(
+      `${message}，使用默认 proofFileVersion=${DEFAULT_PROOF_FILE_VERSION}。`
+    );
+    return { version: DEFAULT_PROOF_FILE_VERSION, source: 'default', warnings };
+  };
+
+  const parsed = readConfigObject(configText);
+  if (!parsed.ok) {
+    return fallback(CONFIG_ERROR_MESSAGES[parsed.reason]);
+  }
+
+  const value = parsed.value.proofFileVersion;
+  if (value === undefined || value === null) {
+    return fallback(`${RELEASE_CONFIG_FILE} 缺少 proofFileVersion`);
+  }
+  if (typeof value !== 'string') {
+    return fallback(`${RELEASE_CONFIG_FILE} 的 proofFileVersion 必须是字符串`);
+  }
+  const version = value.trim();
+  if (version.length === 0) {
+    return fallback(`${RELEASE_CONFIG_FILE} 的 proofFileVersion 为空`);
+  }
+  return { version, source: 'file', warnings };
+}
+
+/**
+ * Section 6.7: `proofFileHeader` resolves from `.env` >
+ * `ideahub.config.json` > empty string. Missing, non-string or empty values
+ * warn and fall back to an omitted header paragraph.
+ */
+function resolveProofFileHeader({ envText = null, configText = null } = {}) {
+  const warnings = [];
+
+  if (typeof envText === 'string') {
+    const envValue = parseEnvValue(envText, PROOF_FILE_HEADER_ENV_KEY);
+    if (envValue !== null) {
+      if (envValue.trim().length === 0) {
+        warnings.push(`.env 中的 ${PROOF_FILE_HEADER_ENV_KEY} 为空，已忽略该来源。`);
+      } else {
+        return { header: envValue, source: 'env', warnings };
+      }
+    }
+  }
+
+  const fallback = (message) => {
+    warnings.push(`${message}，证明文件不写头部说明。`);
+    return { header: DEFAULT_PROOF_FILE_HEADER, source: 'default', warnings };
+  };
+
+  const parsed = readConfigObject(configText);
+  if (!parsed.ok) {
+    return fallback(CONFIG_ERROR_MESSAGES[parsed.reason]);
+  }
+
+  const value = parsed.value.proofFileHeader;
+  if (value === undefined || value === null) {
+    return fallback(`${RELEASE_CONFIG_FILE} 缺少 proofFileHeader`);
+  }
+  if (typeof value !== 'string') {
+    return fallback(`${RELEASE_CONFIG_FILE} 的 proofFileHeader 必须是字符串`);
+  }
+  if (value.trim().length === 0) {
+    return fallback(`${RELEASE_CONFIG_FILE} 的 proofFileHeader 为空`);
+  }
+  return { header: value, source: 'file', warnings };
+}
+
 module.exports = {
   DEFAULT_RELEASE_BRANCH,
+  DEFAULT_PROOF_FILE_VERSION,
+  DEFAULT_PROOF_FILE_HEADER,
   RELEASE_CONFIG_FILE,
   RELEASE_BRANCH_ENV_KEY,
+  PROOF_FILE_VERSION_ENV_KEY,
+  PROOF_FILE_HEADER_ENV_KEY,
   validateBranchName,
   parseEnvValue,
-  resolveReleaseBranch
+  resolveReleaseBranch,
+  resolveProofFileVersion,
+  resolveProofFileHeader
 };
