@@ -3,6 +3,7 @@ node_modules/
 dist/
 coverage/
 out/
+.turbo/
 *.tsbuildinfo
 *.vsix
 # 构建时从 @vscode/codicons 复制，随 VSIX 打包
