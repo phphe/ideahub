@@ -327,12 +327,12 @@ remote/
 export default {
   releaseBranch: 'main',
   proofFileVersion: '0',
-  proofFileHeader: `This file is the IdeaHub proof file for this project.
-It was generated from the author's ideas.md when the project was published
-and lists every recorded proof in chronological order.
-
-Verify it with \`npx ideahub check <project-url>\` before trusting any proof.
-If the command does not pass, the content may have been modified.`
+  proofFileHeader: `> This file is the IdeaHub proof file for this project.
+> It was generated from the author's ideas.md when the project was published
+> and lists every recorded proof in chronological order.
+>
+> Verify it with \`npx ideahub check <project-url>\` before trusting any proof.
+> If the command does not pass, the content may have been modified.`
 };
 ```
 
@@ -340,7 +340,7 @@ If the command does not pass, the content may have been modified.`
 
 - `releaseBranch`：创建证明 Release 时用作 `target_commitish` 的 release 分支名（见 5.5、8.9），默认 `main`。
 - `proofFileVersion`：生成的证明文件 Front Matter 中 `version` 的值，**字符串**，默认 `"0"`。不读取插件版本号、不在代码里硬编码（见 7.8）。
-- `proofFileHeader`：生成的证明文件头部说明文案，**字符串**，默认空字符串。多行文案用**模板字符串**书写，不再用 `\n` 拼接。生成时把其中所有 `<project-url>` 替换为该项目的真实远程地址；缺失、非字符串或空字符串时不写头部说明，并在构建期告警。
+- `proofFileHeader`：生成的证明文件头部说明文案，**字符串**，默认空字符串。多行文案用**模板字符串**书写，不再用 `\n` 拼接，并按 Markdown 引用块书写（每行以 `> ` 开头，空行写成单独的 `>`）。生成时把其中所有 `<project-url>` 替换为该项目的真实远程地址；缺失、非字符串或空字符串时不写头部说明，并在构建期告警。统计信息列表每行也以 `> ` 开头，与头部说明保持同一个引用块；单独一行 `---` 分隔线保持在引用块之外（不加 `> `）。
 - 读取优先级：`.env`（`IDEAHUB_RELEASE_BRANCH`、`IDEAHUB_PROOF_FILE_VERSION`、`IDEAHUB_PROOF_FILE_HEADER`，本地临时覆盖用；已在 `.gitignore` / `.vscodeignore`，不提交、不打包进 vsix）> `config.mjs` 的 `default` 导出 > 内置默认（`main` / `"0"` / 空）。
 - 该文件在**构建期**由构建脚本用动态 `import()` 加载，取 `default` 导出，再通过 esbuild `define` 把解析结果注入为常量。构建产物中只有最终值，不包含配置文件；运行时**不会**从用户机器读取 `.env` 或任何外部配置文件。
 - 逐字段校验并在构建期告警回落：模块加载抛错、`default` 缺失或不是对象、字段缺失、字段类型不对、字段为空，都视为该字段非法，分别回落到该字段的默认值；构建继续，扩展也不能崩溃。
@@ -510,9 +510,9 @@ version: "0"
 
 - 文档结构依次为：
   1. YAML Front Matter；
-  2. `proofFileHeader` 指定的头部说明，生成时把其中所有 `<project-url>` 替换为该项目的真实远程地址（该配置缺失或为空时省略此段）；
-  3. 统计信息列表：`Time span`（最早到最晚证明）、`Proofs`（证明数量）、`Referenced files`（被引用文件数量，去重）、`External links (unique)`（外部链接数量，去重）；
-  4. 单独一行 `---` 作为分隔；
+  2. `proofFileHeader` 指定的头部说明，生成时把其中所有 `<project-url>` 替换为该项目的真实远程地址（该配置缺失或为空时省略此段）。头部说明按 Markdown 引用块书写（每行以 `> ` 开头，空行写成单独的 `>`）；
+  3. 统计信息列表：`Time span`（最早到最晚证明）、`Proofs`（证明数量）、`Referenced files`（被引用文件数量，去重）、`External links (unique)`（外部链接数量，去重）。**每一行都以 `> ` 开头**，与头部说明处于同一个引用块；追加统计行时不得插入普通空行打断引用块（确需空行分隔时用单独的 `>` 一行）；
+  4. 单独一行 `---` 作为分隔，**不加 `> `**，位于引用块之外；
   5. 证明块。
 - 头部说明不再由扩展写死；扩展不得在 7.8 的结构之外自行添加警告或标题段落。校验提示、可信性警告由 `proofFileHeader` 文案自身承担（`<project-url>` 替换后即可直接使用）。
 - 证明块处理：
@@ -903,7 +903,7 @@ https://github.com/<远程仓库用户>/<远程仓库名字>/tree/<远程仓库�
 - 证明与发布在操作完成前按钮 disabled，且控制器按项目忽略重复请求；秒内连点只产生一次标记与一次 Release（发布只发生一次复制/推送）。
 - 发布序列为：前置检查 → 两次确认 → 发布前校验 → 拉取远程 → 写入并可选本地提交 `Published:` 标记 → 生成证明文件 → 复制项目文件夹 → 提交并推送内层仓库 → 展示远程项目链接。
 - 发布前校验对每个证明块重算指纹并分页列出远程 releases 比对 tag；任一块不通过即阻止发布，列出时间戳原文（如 `2026-11-07 09:54:51 (UTC+08:00)`），不区分“证明被改”与“没有 release”，且不写入 `Published:`、不提交、不复制、不推送。
-- 校验通过后生成 `README.md`：Front Matter 只含 `version`，值取自 6.7 的 `proofFileVersion`（缺失或非法时回落到默认 `"0"`）；头部说明取自 `proofFileHeader` 并把所有 `<project-url>` 替换为该项目的真实远程地址（缺失、非字符串或空字符串时省略该段）；其后接英文统计列表（时间跨度、证明数量、引用文件数量去重、外部链接数量去重），再接单独一行 `---` 分隔；证明块去两端空白保留块内空行、按证明时间升序、`Proof:` 标记前移至块首并写成 `## `、不写入 `Published:` 标记行。
+- 校验通过后生成 `README.md`：Front Matter 只含 `version`，值取自 6.7 的 `proofFileVersion`（缺失或非法时回落到默认 `"0"`）；头部说明取自 `proofFileHeader` 并把所有 `<project-url>` 替换为该项目的真实远程地址（缺失、非字符串或空字符串时省略该段）；其后接英文统计列表（时间跨度、证明数量、引用文件数量去重、外部链接数量去重），统计每行以 `> ` 开头并与头部说明保持同一引用块、中间不插普通空行，再接单独一行不加前缀的 `---` 分隔；证明块去两端空白保留块内空行、按证明时间升序、`Proof:` 标记前移至块首并写成 `## `、不写入 `Published:` 标记行。
 - 发布副本**不含 `ideas.md`**；`README.md` 写入项目根目录并覆盖已有同名文件，不提示。
 - 发布后链接可访问，格式为 `https://github.com/<owner>/<repo>/tree/<branch>/<项目名>`。
 - 发布过程仅在本地 `ideas.md` 末尾追加 `Published:` 标记行，不修改已有 `Proof:` 标记；除该单行本地提交外不触碰本地仓库。
