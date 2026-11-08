@@ -98,8 +98,10 @@ export interface ProofFileOptions {
 /**
  * Section 7.8: proof file content. Front matter carries the configured
  * version; the configured header copy (with `<project-url>` replaced by the
- * project's real remote URL) is followed by the stats list and a `---`
- * separator. Proof markers use 2 `#` here; `Published:` lines never appear.
+ * project's real remote URL) is followed by the stats list, whose lines are
+ * `> ` quoted to stay inside the header's quote block. A `---` separator
+ * outside the quote block follows. Proof markers use 2 `#` here; `Published:`
+ * lines never appear.
  */
 export function renderProofFile(
   blocks: ProofFileBlock[],
@@ -133,14 +135,16 @@ export function renderProofFile(
     .join(projectUrl)
     .trim();
   if (header.length > 0) {
-    parts.push(header, '');
+    // No blank line here: `join('\n')` supplies the missing newline and keeps
+    // the header's quote block uninterrupted before the quoted stats.
+    parts.push(header);
   }
 
   parts.push(
-    `- Time span: \`${span}\``,
-    `- Proofs: ${ordered.length}`,
-    `- Referenced files: ${fileSet.size}`,
-    `- External links (unique): ${externalSet.size}`,
+    `> - Time span: \`${span}\``,
+    `> - Proofs: ${ordered.length}`,
+    `> - Referenced files: ${fileSet.size}`,
+    `> - External links (unique): ${externalSet.size}`,
     '',
     '---',
     ''
