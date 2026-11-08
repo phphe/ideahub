@@ -41,6 +41,7 @@ describe('extractProofBlocks', () => {
 
     expect(blocks[0].markerLine).toBe(PROOF_EARLY);
     expect(blocks[0].markerLine.startsWith('###### ')).toBe(true);
+    expect(blocks[0].markerLine).not.toContain('🔏');
   });
 });
 
@@ -98,7 +99,7 @@ describe('renderProofFile', () => {
     expect(separatorLines).toHaveLength(3);
     expect(proofFile).not.toContain('> ---');
     expect(proofFile).toContain(
-      '> - External links (unique): 2\n\n---\n\n## `Proof: 2026-11-01 10:00:00 (UTC+08:00) [ideahub]`'
+      '> - External links (unique): 2\n\n---\n\n## 🔏 `Proof: 2026-11-01 10:00:00 (UTC+08:00) [ideahub]`'
     );
   });
 
@@ -124,7 +125,7 @@ describe('renderProofFile', () => {
     }
   });
 
-  it('writes 2 # markers that the proof-file parser recognizes and drops Published', () => {
+  it('writes 🔏 2 # markers that the proof-file parser recognizes and drops Published', () => {
     const proofFile = renderProofFile(blocks, PROJECT_URL, { header: 'Proofs below.' });
 
     expect(proofFile).not.toContain('######');
@@ -133,15 +134,19 @@ describe('renderProofFile', () => {
 
     const markerLines = proofFile
       .split('\n')
-      .filter((line) => line.startsWith('## `Proof:'));
+      .filter((line) => line.startsWith('## '));
     expect(markerLines).toHaveLength(2);
     for (const line of markerLines) {
+      expect(line.startsWith('## 🔏 `Proof:')).toBe(true);
       expect(PROOF_FILE_MARKER_PATTERN.test(line)).toBe(true);
     }
+    expect(
+      proofFile.split('\n').some((line) => line.startsWith('## `Proof:'))
+    ).toBe(false);
 
     // Ascending order and markers moved to the head of each block.
-    const early = proofFile.indexOf('## `Proof: 2026-11-01 10:00:00 (UTC+08:00) [ideahub]`');
-    const late = proofFile.indexOf('## `Proof: 2026-11-07 09:54:51 (UTC+08:00) [ideahub]`');
+    const early = proofFile.indexOf('## 🔏 `Proof: 2026-11-01 10:00:00 (UTC+08:00) [ideahub]`');
+    const late = proofFile.indexOf('## 🔏 `Proof: 2026-11-07 09:54:51 (UTC+08:00) [ideahub]`');
     expect(early).toBeLessThan(late);
     expect(early).toBeLessThan(proofFile.indexOf('第一段'));
     expect(late).toBeLessThan(proofFile.indexOf('🔏![图]'));
@@ -149,10 +154,16 @@ describe('renderProofFile', () => {
     expect(proofFile).toContain('🔏![图](./b.png)');
   });
 
-  it('does not recognize ideas.md 6 # markers on the proof-file side', () => {
+  it('only recognizes proof-file markers that carry 🔏', () => {
     expect(PROOF_FILE_MARKER_PATTERN.test(PROOF_EARLY)).toBe(false);
+    expect(
+      PROOF_FILE_MARKER_PATTERN.test(
+        '## `Proof: 2026-11-01 10:00:00 (UTC+08:00) [ideahub]`'
+      )
+    ).toBe(false);
+
     const match = PROOF_FILE_MARKER_PATTERN.exec(
-      '## `Proof: 2026-11-01 10:00:00 (UTC+08:00) [ideahub]`'
+      '## 🔏 `Proof: 2026-11-01 10:00:00 (UTC+08:00) [ideahub]`'
     );
     expect(match?.[1]).toBe('2026-11-01 10:00:00 (UTC+08:00)');
   });
