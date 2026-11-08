@@ -1,5 +1,5 @@
 import * as crypto from 'node:crypto';
-import type { ProjectSummary, WorkspaceState } from '../core/status';
+import type { ProjectSummary, WorkspaceState } from '@ideahub/core';
 
 export interface RemoteSettingsInfo {
   url: string;

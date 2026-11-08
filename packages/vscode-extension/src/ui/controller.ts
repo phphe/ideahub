@@ -8,53 +8,53 @@ import {
   type ProjectRemoteStatus,
   type RemoteStatus,
   type WorkspaceState
-} from '../core/status';
+} from '@ideahub/core';
 import {
   hasGitDirectory,
   hasReadmeFile,
   initializeLocalRepository,
   ensureLocalGitRepository
-} from '../core/init';
-import { installPrePushHook } from '../core/hook';
-import { configPath, remoteRepoPath, writeConfig } from '../core/config';
-import { GitHubApiError, GitHubClient } from '../core/github';
-import { RELEASE_BRANCH } from '../core/release-config';
+} from '@ideahub/core';
+import { installPrePushHook } from '@ideahub/core';
+import { configPath, remoteRepoPath, writeConfig } from '@ideahub/core';
+import { GitHubApiError, GitHubClient } from '@ideahub/core';
+import { RELEASE_BRANCH } from '@ideahub/core';
 import {
   buildReleaseTag,
   ensureReleaseTarget,
   lookupRemoteBranch,
   validateTagName
-} from '../core/release-target';
-import { ensureReleaseBranchExists } from '../core/release-branch';
-import { validateRemoteRepository } from '../core/remote-setup';
-import { parseRemoteUrl } from '../core/remote-url';
-import { decideRemoteSetup, describeImmutabilityCheck, describeReleaseImmutability } from '../core/immutability';
+} from '@ideahub/core';
+import { ensureReleaseBranchExists } from '@ideahub/core';
+import { validateRemoteRepository } from '@ideahub/core';
+import { parseRemoteUrl } from '@ideahub/core';
+import { decideRemoteSetup, describeImmutabilityCheck, describeReleaseImmutability } from '@ideahub/core';
 import type { RemoteSettingsInfo } from './html';
-import { cloneRemoteRepository, inspectRemoteTarget, removeLocalClone } from '../core/clone';
+import { cloneRemoteRepository, inspectRemoteTarget, removeLocalClone } from '@ideahub/core';
 import {
   runRemoteSetupFlow,
   type RemoteSetupFlowResult,
   type RemoteSetupStep
-} from '../core/remote-setup-flow';
+} from '@ideahub/core';
 import {
   appendMarkerLine,
   formatMarkerLine,
   parseIdeas
-} from '../core/ideas';
-import { parseTagInput, parseTags, updateTags } from '../core/front-matter';
-import { buildFingerprint } from '../core/fingerprint';
+} from '@ideahub/core';
+import { parseTagInput, parseTags, updateTags } from '@ideahub/core';
+import { buildFingerprint } from '@ideahub/core';
 import {
   extractProofBlocks,
   renderProofFile,
   type ProofFileBlock
-} from '../core/proof-file';
+} from '@ideahub/core';
 import {
   describeMissingProofReleases,
   findMissingProofReleases,
   type ProofCheckTarget
-} from '../core/proof-check';
-import { ProjectOperationGuard } from '../core/operation-guard';
-import { ProjectParseCache } from '../core/project-cache';
+} from '@ideahub/core';
+import { ProjectOperationGuard } from '@ideahub/core';
+import { ProjectParseCache } from '@ideahub/core';
 import {
   commitMarkerLine,
   commitSingleFile,
@@ -63,9 +63,9 @@ import {
   DEFAULT_PUBLISH_COMMIT_MESSAGE,
   resolveCommitMessage,
   type MarkerCommitResult
-} from '../core/marker-commit';
-import { formatMarkerTime } from '../core/proof-time';
-import { createProject as createProjectOnDisk, validateProjectName } from '../core/projects';
+} from '@ideahub/core';
+import { formatMarkerTime } from '@ideahub/core';
+import { createProject as createProjectOnDisk, validateProjectName } from '@ideahub/core';
 import {
   checkInnerRepositoryHead,
   commitAndPushInnerRepository,
@@ -75,7 +75,7 @@ import {
   restoreInnerRepository,
   scanProjectDirectory,
   syncInnerRepository
-} from '../core/publish';
+} from '@ideahub/core';
 import { getGitHubToken } from './auth';
 
 export interface OpResult {

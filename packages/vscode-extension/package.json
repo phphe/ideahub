@@ -1,0 +1,93 @@
+{
+  "name": "ideahub",
+  "displayName": "创意仓库 / IdeaHub",
+  "description": "Your Ideas. Your History. Your Proof.",
+  "version": "0.1.0",
+  "publisher": "ideahub-dev",
+  "license": "UNLICENSED",
+  "private": true,
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "main": "./dist/extension.js",
+  "activationEvents": [
+    "onView:ideahub.main"
+  ],
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "ideahub",
+          "title": "创意仓库",
+          "icon": "icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "ideahub": [
+        {
+          "type": "webview",
+          "id": "ideahub.main",
+          "name": "创意仓库"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "ideahub.refresh",
+        "title": "创意仓库: 刷新状态"
+      },
+      {
+        "command": "ideahub.openMain",
+        "title": "创意仓库: 打开主界面"
+      }
+    ],
+    "configuration": {
+      "title": "创意仓库",
+      "properties": {
+        "ideahub.proof.autoCommit": {
+          "type": "boolean",
+          "default": true,
+          "description": "插入证明或发布标记后自动提交该行到本地 git（不会推送）。"
+        },
+        "ideahub.proof.commitMessage": {
+          "type": "string",
+          "default": "ideahub: record proof",
+          "description": "证明标记自动提交信息模板，支持 {project}、{time} 占位符；未知占位符原样保留，空值回落默认值。"
+        },
+        "ideahub.publish.commitMessage": {
+          "type": "string",
+          "default": "ideahub: mark published",
+          "description": "发布标记自动提交信息模板，支持 {project}、{time} 占位符；未知占位符原样保留，空值回落默认值。"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "pnpm run build",
+    "build": "node esbuild.mjs",
+    "watch": "node esbuild.mjs --watch",
+    "compile": "tsc --noEmit",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src test",
+    "test": "vitest run",
+    "package": "npx @vscode/vsce package --no-dependencies --allow-missing-repository"
+  },
+  "dependencies": {
+    "@ideahub/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.1",
+    "@types/node": "^24.10.1",
+    "@types/vscode": "^1.85.0",
+    "@vscode/codicons": "0.0.46-24",
+    "esbuild": "^0.25.12",
+    "eslint": "^9.39.1",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.46.4",
+    "vitest": "^3.2.4"
+  }
+}

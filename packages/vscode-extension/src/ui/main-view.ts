@@ -1,6 +1,6 @@
 import * as path from 'node:path';
 import * as vscode from 'vscode';
-import type { WorkspaceState } from '../core/status';
+import type { WorkspaceState } from '@ideahub/core';
 import { IdeahubController, type OpResult } from './controller';
 import {
   DEFAULT_WEBVIEW_ASSETS,

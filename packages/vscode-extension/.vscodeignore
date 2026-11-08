@@ -1,0 +1,25 @@
+.vscode/**
+.vscode-test/**
+.turbo/**
+src/**
+test/**
+node_modules/**
+out/**
+*.ts
+**/*.map
+tsconfig.json
+eslint.config.mjs
+esbuild.mjs
+vitest.config.ts
+requirement.md
+.screenshots/**
+*.vsix
+
+# Never package local secrets or developer-only config files
+.env
+.env.*
+config.mjs
+scripts/**
+.gitignore
+pnpm-lock.yaml
+pnpm-workspace.yaml
