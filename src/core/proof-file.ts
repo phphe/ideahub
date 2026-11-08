@@ -4,11 +4,13 @@ import { parseMarkerTime } from './proof-time';
 import { PROOF_FILE_HEADER, PROOF_FILE_VERSION } from './release-config';
 
 /**
- * Section 7.8: markers inside the generated proof file use 2 `#`, while
- * `ideas.md` markers stay at 6 `#` (see `MARKER_PATTERN`). The checker side
- * reads proof files with this pattern only.
+ * Section 7.8: proof-file markers use 2 `#` and must be prefixed with `🔏`.
+ * Parsing accepts only this form; markers without `🔏` are not recognized and
+ * there is no fallback or backfill. `ideas.md` markers stay at 6 `#` without
+ * `🔏` (see `MARKER_PATTERN`).
  */
-export const PROOF_FILE_MARKER_PATTERN = /^## `Proof:\s*(.+?)\s*\[ideahub\]`[ \t]*$/;
+export const PROOF_FILE_MARKER_PATTERN =
+  /^## 🔏\s*`Proof:\s*(.+?)\s*\[ideahub\]`[ \t]*$/;
 
 export interface ProofBlockSource {
   time: string | null;
@@ -165,9 +167,9 @@ export function renderProofFile(
   return parts.join('\n');
 }
 
-/** Section 7.8: proof-file markers are 2 `#`; `ideas.md` keeps 6 `#`. */
+/** Section 7.8: proof-file markers are `## 🔏 `; `ideas.md` keeps `###### `. */
 function toProofFileMarker(markerLine: string): string {
-  return markerLine.replace(/^###### /, '## ');
+  return markerLine.replace(/^###### /, '## 🔏 ');
 }
 
 /** Trims the block ends while preserving blank lines inside the block. */
