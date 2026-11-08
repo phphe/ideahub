@@ -20,7 +20,7 @@ describe('createProject', () => {
     expect(result.content).toBe(ideasTemplate('My Game'));
 
     const text = await fs.readFile(path.join(root, 'My Game', IDEAS_FILE), 'utf8');
-    expect(text).toBe('# My Game\n');
+    expect(text).toBe('### My Game\n');
     expect(await listProjects(root)).toEqual(['My Game']);
 
     await fs.rm(root, { recursive: true, force: true });

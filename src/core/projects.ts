@@ -13,10 +13,10 @@ function describeError(error: unknown): string {
 
 /**
  * The requirement does not define an ideas.md template, so the minimal legal
- * content is a single top-level heading using the project name.
+ * content is a single level-3 heading using the project name.
  */
 export function ideasTemplate(projectName: string): string {
-  return `# ${projectName}\n`;
+  return `### ${projectName}\n`;
 }
 
 export async function listProjects(root: string): Promise<string[]> {
