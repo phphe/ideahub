@@ -17,7 +17,7 @@ requirement.md
 # Never package local secrets or developer-only config files
 .env
 .env.*
-ideahub.config.json
+config.mjs
 scripts/**
 .gitignore
 pnpm-lock.yaml

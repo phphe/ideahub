@@ -1,7 +1,7 @@
 /**
  * Developer-only release configuration.
  *
- * Values are resolved at build time from `.env` > `ideahub.config.json` >
+ * Values are resolved at build time from `.env` > `config.mjs` >
  * built-in defaults, then injected by esbuild's `define`. Runtime code never
  * reads `.env` or any config file from the user's workspace.
  */

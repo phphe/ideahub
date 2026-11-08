@@ -3,7 +3,12 @@ import { readFileSync } from 'node:fs';
 import esbuild from 'esbuild';
 import releaseConfig from './scripts/release-config.js';
 
-const { resolveReleaseBranch, resolveProofFileVersion, resolveProofFileHeader } = releaseConfig;
+const {
+  loadDeveloperConfig,
+  resolveReleaseBranch,
+  resolveProofFileVersion,
+  resolveProofFileHeader
+} = releaseConfig;
 
 async function copyCodicons() {
   await mkdir('media', { recursive: true });
@@ -24,19 +29,19 @@ function readOptional(file) {
 }
 
 const envText = readOptional('.env');
-const configText = readOptional('ideahub.config.json');
+const config = await loadDeveloperConfig();
 
-const resolution = resolveReleaseBranch({ envText, configText });
+const resolution = resolveReleaseBranch({ envText, config });
 for (const warning of resolution.warnings) {
   console.warn(`[ideahub] release config warning: ${warning}`);
 }
 
-const versionResolution = resolveProofFileVersion({ envText, configText });
+const versionResolution = resolveProofFileVersion({ envText, config });
 for (const warning of versionResolution.warnings) {
   console.warn(`[ideahub] proof file version warning: ${warning}`);
 }
 
-const headerResolution = resolveProofFileHeader({ envText, configText });
+const headerResolution = resolveProofFileHeader({ envText, config });
 for (const warning of headerResolution.warnings) {
   console.warn(`[ideahub] proof file header warning: ${warning}`);
 }

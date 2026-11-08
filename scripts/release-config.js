@@ -1,7 +1,10 @@
+const { pathToFileURL } = require('node:url');
+const { resolve } = require('node:path');
+
 const DEFAULT_RELEASE_BRANCH = 'main';
 const DEFAULT_PROOF_FILE_VERSION = '0';
 const DEFAULT_PROOF_FILE_HEADER = '';
-const RELEASE_CONFIG_FILE = 'ideahub.config.json';
+const DEVELOPER_CONFIG_FILE = 'config.mjs';
 const RELEASE_BRANCH_ENV_KEY = 'IDEAHUB_RELEASE_BRANCH';
 const PROOF_FILE_VERSION_ENV_KEY = 'IDEAHUB_PROOF_FILE_VERSION';
 const PROOF_FILE_HEADER_ENV_KEY = 'IDEAHUB_PROOF_FILE_HEADER';
@@ -92,11 +95,65 @@ function parseEnvValue(envText, key) {
   return null;
 }
 
+let importCounter = 0;
+
 /**
- * Pure build-time resolver. Callers pass file contents explicitly; nothing is
- * read from an end user's workspace at runtime.
+ * Section 6.7: load the developer config as an ES module and take the
+ * `default` export. The returned result is a plain object so the resolvers
+ * stay pure and unit-testable. A cache-busting query keeps repeated loads in
+ * the same process fresh.
  */
-function resolveReleaseBranch({ envText = null, configText = null } = {}) {
+async function loadDeveloperConfig(filePath = DEVELOPER_CONFIG_FILE) {
+  importCounter += 1;
+  const absolute = resolve(filePath);
+  let loaded;
+  try {
+    loaded = await import(`${pathToFileURL(absolute).href}?v=${importCounter}`);
+  } catch (error) {
+    const code = error && error.code;
+    if (code === 'ERR_MODULE_NOT_FOUND' || code === 'ENOENT') {
+      return { ok: false, reason: 'missing' };
+    }
+    return {
+      ok: false,
+      reason: 'load-failed',
+      detail: error instanceof Error ? error.message : String(error)
+    };
+  }
+
+  const value = loaded && loaded.default;
+  if (value === undefined) {
+    return { ok: false, reason: 'default-missing' };
+  }
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+    return { ok: false, reason: 'default-not-object' };
+  }
+  return { ok: true, value };
+}
+
+function describeConfigFailure(config) {
+  const reason = config && config.reason;
+  switch (reason) {
+    case 'missing':
+      return `未找到 ${DEVELOPER_CONFIG_FILE}`;
+    case 'load-failed':
+      return `加载 ${DEVELOPER_CONFIG_FILE} 失败${
+        config.detail ? `：${config.detail}` : ''
+      }`;
+    case 'default-missing':
+      return `${DEVELOPER_CONFIG_FILE} 缺少 default 导出`;
+    case 'default-not-object':
+      return `${DEVELOPER_CONFIG_FILE} 的 default 必须是对象`;
+    default:
+      return `未找到 ${DEVELOPER_CONFIG_FILE}`;
+  }
+}
+
+/**
+ * Pure build-time resolver. Callers pass `.env` content and the loaded config
+ * result explicitly; nothing is read from an end user's workspace at runtime.
+ */
+function resolveReleaseBranch({ envText = null, config = null } = {}) {
   const warnings = [];
 
   if (typeof envText === 'string') {
@@ -115,39 +172,23 @@ function resolveReleaseBranch({ envText = null, configText = null } = {}) {
     }
   }
 
-  if (typeof configText !== 'string') {
+  if (!config || config.ok !== true) {
     warnings.push(
-      `未找到 ${RELEASE_CONFIG_FILE}，使用默认 releaseBranch=${DEFAULT_RELEASE_BRANCH}。`
+      `${describeConfigFailure(config)}，使用默认 releaseBranch=${DEFAULT_RELEASE_BRANCH}。`
     );
     return { branch: DEFAULT_RELEASE_BRANCH, source: 'default', warnings };
   }
 
-  let parsed;
-  try {
-    parsed = JSON.parse(configText);
-  } catch {
-    warnings.push(
-      `${RELEASE_CONFIG_FILE} 不是有效的 JSON，使用默认 releaseBranch=${DEFAULT_RELEASE_BRANCH}。`
-    );
-    return { branch: DEFAULT_RELEASE_BRANCH, source: 'default', warnings };
-  }
-  if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
-    warnings.push(
-      `${RELEASE_CONFIG_FILE} 顶层必须是对象，使用默认 releaseBranch=${DEFAULT_RELEASE_BRANCH}。`
-    );
-    return { branch: DEFAULT_RELEASE_BRANCH, source: 'default', warnings };
-  }
-
-  const value = parsed.releaseBranch;
+  const value = config.value.releaseBranch;
   if (value === undefined || value === null) {
     warnings.push(
-      `${RELEASE_CONFIG_FILE} 缺少 releaseBranch，使用默认 releaseBranch=${DEFAULT_RELEASE_BRANCH}。`
+      `${DEVELOPER_CONFIG_FILE} 缺少 releaseBranch，使用默认 releaseBranch=${DEFAULT_RELEASE_BRANCH}。`
     );
     return { branch: DEFAULT_RELEASE_BRANCH, source: 'default', warnings };
   }
   if (typeof value !== 'string') {
     warnings.push(
-      `${RELEASE_CONFIG_FILE} 的 releaseBranch 必须是字符串，使用默认 releaseBranch=${DEFAULT_RELEASE_BRANCH}。`
+      `${DEVELOPER_CONFIG_FILE} 的 releaseBranch 必须是字符串，使用默认 releaseBranch=${DEFAULT_RELEASE_BRANCH}。`
     );
     return { branch: DEFAULT_RELEASE_BRANCH, source: 'default', warnings };
   }
@@ -156,7 +197,7 @@ function resolveReleaseBranch({ envText = null, configText = null } = {}) {
   const error = validateBranchName(branch);
   if (error) {
     warnings.push(
-      `${RELEASE_CONFIG_FILE} 的 releaseBranch 无效：${error}，使用默认 releaseBranch=${DEFAULT_RELEASE_BRANCH}。`
+      `${DEVELOPER_CONFIG_FILE} 的 releaseBranch 无效：${error}，使用默认 releaseBranch=${DEFAULT_RELEASE_BRANCH}。`
     );
     return { branch: DEFAULT_RELEASE_BRANCH, source: 'default', warnings };
   }
@@ -164,33 +205,11 @@ function resolveReleaseBranch({ envText = null, configText = null } = {}) {
   return { branch, source: 'file', warnings };
 }
 
-const CONFIG_ERROR_MESSAGES = {
-  missing: `未找到 ${RELEASE_CONFIG_FILE}`,
-  'invalid-json': `${RELEASE_CONFIG_FILE} 不是有效的 JSON`,
-  'not-object': `${RELEASE_CONFIG_FILE} 顶层必须是对象`
-};
-
-function readConfigObject(configText) {
-  if (typeof configText !== 'string') {
-    return { ok: false, reason: 'missing' };
-  }
-  let parsed;
-  try {
-    parsed = JSON.parse(configText);
-  } catch {
-    return { ok: false, reason: 'invalid-json' };
-  }
-  if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
-    return { ok: false, reason: 'not-object' };
-  }
-  return { ok: true, value: parsed };
-}
-
 /**
- * Section 6.7: `proofFileVersion` resolves from `.env` > `ideahub.config.json`
+ * Section 6.7: `proofFileVersion` resolves from `.env` > `config.mjs`
  * > `"0"`. Missing, non-string or empty values warn and fall back separately.
  */
-function resolveProofFileVersion({ envText = null, configText = null } = {}) {
+function resolveProofFileVersion({ envText = null, config = null } = {}) {
   const warnings = [];
 
   if (typeof envText === 'string') {
@@ -212,31 +231,30 @@ function resolveProofFileVersion({ envText = null, configText = null } = {}) {
     return { version: DEFAULT_PROOF_FILE_VERSION, source: 'default', warnings };
   };
 
-  const parsed = readConfigObject(configText);
-  if (!parsed.ok) {
-    return fallback(CONFIG_ERROR_MESSAGES[parsed.reason]);
+  if (!config || config.ok !== true) {
+    return fallback(describeConfigFailure(config));
   }
 
-  const value = parsed.value.proofFileVersion;
+  const value = config.value.proofFileVersion;
   if (value === undefined || value === null) {
-    return fallback(`${RELEASE_CONFIG_FILE} 缺少 proofFileVersion`);
+    return fallback(`${DEVELOPER_CONFIG_FILE} 缺少 proofFileVersion`);
   }
   if (typeof value !== 'string') {
-    return fallback(`${RELEASE_CONFIG_FILE} 的 proofFileVersion 必须是字符串`);
+    return fallback(`${DEVELOPER_CONFIG_FILE} 的 proofFileVersion 必须是字符串`);
   }
   const version = value.trim();
   if (version.length === 0) {
-    return fallback(`${RELEASE_CONFIG_FILE} 的 proofFileVersion 为空`);
+    return fallback(`${DEVELOPER_CONFIG_FILE} 的 proofFileVersion 为空`);
   }
   return { version, source: 'file', warnings };
 }
 
 /**
- * Section 6.7: `proofFileHeader` resolves from `.env` >
- * `ideahub.config.json` > empty string. Missing, non-string or empty values
- * warn and fall back to an omitted header paragraph.
+ * Section 6.7: `proofFileHeader` resolves from `.env` > `config.mjs`
+ * > empty string. Missing, non-string or empty values warn and fall back to an
+ * omitted header paragraph.
  */
-function resolveProofFileHeader({ envText = null, configText = null } = {}) {
+function resolveProofFileHeader({ envText = null, config = null } = {}) {
   const warnings = [];
 
   if (typeof envText === 'string') {
@@ -255,20 +273,19 @@ function resolveProofFileHeader({ envText = null, configText = null } = {}) {
     return { header: DEFAULT_PROOF_FILE_HEADER, source: 'default', warnings };
   };
 
-  const parsed = readConfigObject(configText);
-  if (!parsed.ok) {
-    return fallback(CONFIG_ERROR_MESSAGES[parsed.reason]);
+  if (!config || config.ok !== true) {
+    return fallback(describeConfigFailure(config));
   }
 
-  const value = parsed.value.proofFileHeader;
+  const value = config.value.proofFileHeader;
   if (value === undefined || value === null) {
-    return fallback(`${RELEASE_CONFIG_FILE} 缺少 proofFileHeader`);
+    return fallback(`${DEVELOPER_CONFIG_FILE} 缺少 proofFileHeader`);
   }
   if (typeof value !== 'string') {
-    return fallback(`${RELEASE_CONFIG_FILE} 的 proofFileHeader 必须是字符串`);
+    return fallback(`${DEVELOPER_CONFIG_FILE} 的 proofFileHeader 必须是字符串`);
   }
   if (value.trim().length === 0) {
-    return fallback(`${RELEASE_CONFIG_FILE} 的 proofFileHeader 为空`);
+    return fallback(`${DEVELOPER_CONFIG_FILE} 的 proofFileHeader 为空`);
   }
   return { header: value, source: 'file', warnings };
 }
@@ -277,12 +294,13 @@ module.exports = {
   DEFAULT_RELEASE_BRANCH,
   DEFAULT_PROOF_FILE_VERSION,
   DEFAULT_PROOF_FILE_HEADER,
-  RELEASE_CONFIG_FILE,
+  DEVELOPER_CONFIG_FILE,
   RELEASE_BRANCH_ENV_KEY,
   PROOF_FILE_VERSION_ENV_KEY,
   PROOF_FILE_HEADER_ENV_KEY,
   validateBranchName,
   parseEnvValue,
+  loadDeveloperConfig,
   resolveReleaseBranch,
   resolveProofFileVersion,
   resolveProofFileHeader
