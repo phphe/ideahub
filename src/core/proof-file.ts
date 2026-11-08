@@ -1,22 +1,29 @@
 import { findFrontMatter } from './front-matter';
 import { MARKER_PATTERN } from './ideas';
 import { parseMarkerTime } from './proof-time';
+import { PROOF_FILE_HEADER, PROOF_FILE_VERSION } from './release-config';
+
+/**
+ * Section 7.8: markers inside the generated proof file use 2 `#`, while
+ * `ideas.md` markers stay at 6 `#` (see `MARKER_PATTERN`). The checker side
+ * reads proof files with this pattern only.
+ */
+export const PROOF_FILE_MARKER_PATTERN = /^## `Proof:\s*(.+?)\s*\[ideahub\]`[ \t]*$/;
 
 export interface ProofBlockSource {
   time: string | null;
   /** Original `###### \`Proof: ... [ideahub]\`` line. */
   markerLine: string;
-  /** Text sealed by this proof marker (written before it), plus trailing metadata. */
+  /** Text sealed by this proof marker (written before it). */
   rawText: string;
 }
 
 /**
  * Section 7.8: split `ideas.md` into proof blocks, ignoring front matter.
  * A proof marker seals the text *before* it (7.1), so each block's raw text is
- * the buffer accumulated since the previous proof marker. Trailing content
- * after the last proof marker (the `Published:` metadata written by publish)
- * is attached to the last block; it never affects the hash because 7.2
- * excludes `Published:` lines.
+ * the buffer accumulated since the previous proof marker. `Published:` marker
+ * lines are metadata: they never reach the proof file and never affect the
+ * hash (7.2 already excluded them).
  */
 export function extractProofBlocks(text: string): ProofBlockSource[] {
   const lines = text.split(/\r?\n/);
@@ -39,9 +46,9 @@ export function extractProofBlocks(text: string): ProofBlockSource[] {
       buffer = [];
       continue;
     }
-    // `Published:` markers stay in the buffer: metadata excluded from the
-    // hash but required in the proof file.
-    buffer.push(lines[index]);
+    // `Published:` markers are metadata: they stay in `ideas.md` but are never
+    // copied into the proof file.
+    continue;
   }
 
   if (blocks.length > 0 && buffer.length > 0) {
@@ -53,15 +60,6 @@ export function extractProofBlocks(text: string): ProofBlockSource[] {
     markerLine: block.markerLine,
     rawText: block.lines.join('\n')
   }));
-}
-
-export interface ProofFileBlock {
-  time: string | null;
-  markerLine: string;
-  /** Text with `🔏` already inserted, blank lines preserved. */
-  text: string;
-  files: Record<string, string>;
-  externalLinks: string[];
 }
 
 /** Section 7.8: ascending proof time; ties keep the original order. */
@@ -79,11 +77,38 @@ export function sortProofBlocks<T extends { time: string | null }>(blocks: T[]):
     .map((entry) => entry.block);
 }
 
+export interface ProofFileBlock {
+  time: string | null;
+  markerLine: string;
+  /** Text with `🔏` already inserted, blank lines preserved. */
+  text: string;
+  files: Record<string, string>;
+  externalLinks: string[];
+}
+
 /**
- * Section 7.8: proof file content. All copy added by the extension is
- * English; front matter only contains `version: "0"`.
+ * Section 7.8: developer-configurable proof file version and header copy.
+ * Defaults come from 6.7 (`proofFileVersion` / `proofFileHeader`).
  */
-export function renderProofFile(project: string, blocks: ProofFileBlock[]): string {
+export interface ProofFileOptions {
+  version?: string;
+  header?: string;
+}
+
+/**
+ * Section 7.8: proof file content. Front matter carries the configured
+ * version; the configured header copy (with `<project-url>` replaced by the
+ * project's real remote URL) is followed by the stats list and a `---`
+ * separator. Proof markers use 2 `#` here; `Published:` lines never appear.
+ */
+export function renderProofFile(
+  blocks: ProofFileBlock[],
+  projectUrl: string,
+  options: ProofFileOptions = {}
+): string {
+  const version = options.version ?? PROOF_FILE_VERSION;
+  const configuredHeader = options.header ?? PROOF_FILE_HEADER;
+
   const ordered = sortProofBlocks(blocks);
   const fileSet = new Set<string>();
   const externalSet = new Set<string>();
@@ -100,39 +125,46 @@ export function renderProofFile(project: string, blocks: ProofFileBlock[]): stri
   const last = ordered[ordered.length - 1]?.time ?? 'Unknown';
   const span = ordered.length === 0 ? 'No proofs recorded' : `${first} → ${last}`;
 
-  const header = [
-    '---',
-    'version: "0"',
-    '---',
-    '',
-    `# Ideas Proof — ${project}`,
-    '',
-    `This file is the IdeaHub proof file for the project \`${project}\`. It was generated from the author's \`ideas.md\` when the project was published and lists every recorded proof in chronological order. Each block keeps the original proof marker, the sealed text and the referenced project files so the history can be verified later. Links and images that point to files inside this project are prefixed with ${EMOJI_LIST_MARK}.`,
-    '',
+  const parts: string[] = ['---', `version: ${JSON.stringify(version)}`, '---', ''];
+
+  const header = configuredHeader
+    .replace(/\r\n?/g, '\n')
+    .split('<project-url>')
+    .join(projectUrl)
+    .trim();
+  if (header.length > 0) {
+    parts.push(header, '');
+  }
+
+  parts.push(
     `- Time span: \`${span}\``,
     `- Proofs: ${ordered.length}`,
     `- Referenced files: ${fileSet.size}`,
     `- External links (unique): ${externalSet.size}`,
     '',
-    '> **Do not trust this file directly.** A proof file can be edited after it is published. Only treat a proof as valid when this command verifies the whole file against the immutable releases:',
-    '>',
-    '> `npx ideahub check <project-url>`',
-    '>',
-    '> If the command does not pass, the content may have been modified.',
+    '---',
     ''
-  ].join('\n');
+  );
 
   const body = ordered
     .map((block) => {
+      const markerLine = toProofFileMarker(block.markerLine);
       const text = trimBlock(block.text);
-      return text.length > 0 ? `${block.markerLine}\n\n${text}` : block.markerLine;
+      return text.length > 0 ? `${markerLine}\n\n${text}` : markerLine;
     })
     .join('\n\n');
 
-  return `${header}\n${body}\n`;
+  if (body.length > 0) {
+    parts.push(body, '');
+  }
+
+  return parts.join('\n');
 }
 
-const EMOJI_LIST_MARK = '🔏';
+/** Section 7.8: proof-file markers are 2 `#`; `ideas.md` keeps 6 `#`. */
+function toProofFileMarker(markerLine: string): string {
+  return markerLine.replace(/^###### /, '## ');
+}
 
 /** Trims the block ends while preserving blank lines inside the block. */
 function trimBlock(text: string): string {

@@ -1252,7 +1252,8 @@ export class IdeahubController {
             externalLinks: blockFingerprint.externalLinks
           });
         }
-        const proofFile = renderProofFile(project, proofFileBlocks);
+        const projectUrl = remoteProjectUrl(remote.owner, remote.repo, remote.branch, project);
+        const proofFile = renderProofFile(proofFileBlocks, projectUrl);
         const externalLinkCount = new Set(
           proofFileBlocks.flatMap((block) => block.externalLinks)
         ).size;
@@ -1292,10 +1293,9 @@ export class IdeahubController {
           return { ok: false, message: `${push.error}${rollbackNote}${localMarkerNote}` };
         }
 
-        const url = remoteProjectUrl(remote.owner, remote.repo, remote.branch, project);
         return {
           ok: true,
-          message: `${push.pushed ? '发布成功' : '项目已是最新状态，无需推送'}。\n远程项目地址：${url}${localMarkerNote}${externalNote}`
+          message: `${push.pushed ? '发布成功' : '项目已是最新状态，无需推送'}。\n远程项目地址：${projectUrl}${localMarkerNote}${externalNote}`
         };
       }
     );
