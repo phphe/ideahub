@@ -315,31 +315,36 @@ remote/
 9. hook 内部**不得**输出、记录或写入任何凭据信息。
 10. 内层仓库 `.ideahub/remote/.git/hooks/` **不**安装该拦截逻辑（否则“发布”无法执行）。
 
-### 6.7 `ideahub.config.json`（扩展级开发者配置）
+### 6.7 `config.mjs`（扩展级开发者配置）
 
-该文件位于**扩展工程源码根目录**，纳入扩展源码仓库的版本控制，只放非敏感配置，**不得**包含 Token、Private Key、Client Secret 或任何凭据。
+该文件位于**扩展工程源码根目录**（文件名就是 `config.mjs`，不加前缀），纳入扩展源码仓库的版本控制，只放非敏感配置，**不得**包含 Token、Private Key、Client Secret 或任何凭据。
 
 它是**开发者配置，不开放给最终用户**：不会生成到用户的创意仓库，不随扩展分发，用户既看不到也改不了。
 
 暂定结构：
 
-```json
-{
-  "releaseBranch": "main",
-  "proofFileVersion": "0",
-  "proofFileHeader": "This file is the IdeaHub proof file for this project. Verify it with `npx ideahub check <project-url>` before trusting any proof. If the command does not pass, the content may have been modified."
-}
+```js
+export default {
+  releaseBranch: 'main',
+  proofFileVersion: '0',
+  proofFileHeader: `This file is the IdeaHub proof file for this project.
+It was generated from the author's ideas.md when the project was published
+and lists every recorded proof in chronological order.
+
+Verify it with \`npx ideahub check <project-url>\` before trusting any proof.
+If the command does not pass, the content may have been modified.`
+};
 ```
 
 说明：
 
 - `releaseBranch`：创建证明 Release 时用作 `target_commitish` 的 release 分支名（见 5.5、8.9），默认 `main`。
 - `proofFileVersion`：生成的证明文件 Front Matter 中 `version` 的值，**字符串**，默认 `"0"`。不读取插件版本号、不在代码里硬编码（见 7.8）。
-- `proofFileHeader`：生成的证明文件头部说明文案，**字符串**（可含 `\n` 多行），默认空字符串。生成时把其中所有 `<project-url>` 替换为该项目的真实远程地址；缺失、非字符串或空字符串时不写头部说明，并在构建期告警。
-- 读取优先级：`.env`（`IDEAHUB_RELEASE_BRANCH`、`IDEAHUB_PROOF_FILE_VERSION`、`IDEAHUB_PROOF_FILE_HEADER`，本地临时覆盖用；已在 `.gitignore` / `.vscodeignore`，不提交、不打包进 vsix）> `ideahub.config.json` > 内置默认（`main` / `"0"` / 空）。
-- 该文件在**构建期**由构建脚本解析，再通过 esbuild `define` 把结果注入为常量。构建产物中只有最终值，不包含配置文件；运行时**不会**从用户机器读取 `.env` 或任何外部配置文件。
-- 文件缺失、字段缺失、字段为空或格式非法、JSON 解析失败时，构建期给出可读告警并分别回落到该字段的默认值，构建继续，扩展也不能崩溃。
-- `.env`、`.env.*`、`ideahub.config.json` 均不得打包进 vsix。
+- `proofFileHeader`：生成的证明文件头部说明文案，**字符串**，默认空字符串。多行文案用**模板字符串**书写，不再用 `\n` 拼接。生成时把其中所有 `<project-url>` 替换为该项目的真实远程地址；缺失、非字符串或空字符串时不写头部说明，并在构建期告警。
+- 读取优先级：`.env`（`IDEAHUB_RELEASE_BRANCH`、`IDEAHUB_PROOF_FILE_VERSION`、`IDEAHUB_PROOF_FILE_HEADER`，本地临时覆盖用；已在 `.gitignore` / `.vscodeignore`，不提交、不打包进 vsix）> `config.mjs` 的 `default` 导出 > 内置默认（`main` / `"0"` / 空）。
+- 该文件在**构建期**由构建脚本用动态 `import()` 加载，取 `default` 导出，再通过 esbuild `define` 把解析结果注入为常量。构建产物中只有最终值，不包含配置文件；运行时**不会**从用户机器读取 `.env` 或任何外部配置文件。
+- 逐字段校验并在构建期告警回落：模块加载抛错、`default` 缺失或不是对象、字段缺失、字段类型不对、字段为空，都视为该字段非法，分别回落到该字段的默认值；构建继续，扩展也不能崩溃。
+- `.env`、`.env.*`、`config.mjs` 均不得打包进 vsix。
 
 ### 6.8 用户设置
 
@@ -907,7 +912,8 @@ https://github.com/<远程仓库用户>/<远程仓库名字>/tree/<远程仓库�
 
 ### 11.4 开发者配置（构建期）
 
-- `proofFileVersion` 读取优先级为 `.env`（`IDEAHUB_PROOF_FILE_VERSION`）> `ideahub.config.json` > 默认 `"0"`；非法值（类型错误、空字符串或 JSON 解析失败）在构建期告警并回落到默认值，构建不中断。
-- `proofFileHeader` 读取优先级为 `.env`（`IDEAHUB_PROOF_FILE_HEADER`）> `ideahub.config.json` > 默认空字符串；非字符串或非法值在构建期告警并回落到空字符串，此时证明文件不写头部说明段落。
+- `config.mjs` 以 `export default {...}` 提供 `releaseBranch`、`proofFileVersion`、`proofFileHeader`；构建脚本用动态 `import()` 读取 `default` 导出，多行头部文案用模板字符串书写。
+- `releaseBranch`、`proofFileVersion`、`proofFileHeader` 的读取优先级均为 `.env`（`IDEAHUB_RELEASE_BRANCH` / `IDEAHUB_PROOF_FILE_VERSION` / `IDEAHUB_PROOF_FILE_HEADER`）> `config.mjs` > 内置默认（`main` / `"0"` / 空）；`.env` 覆盖对三个字段都生效。
+- 模块加载抛错、`default` 缺失或不是对象、字段缺失、类型错误、空字符串或空值时，构建期告警并逐字段回落到默认值，构建不中断。
 - 证明文件 `version` 只来自上述配置，不读取插件版本号，也不在代码里硬编码。
-- `.env`、`.env.*`、`ideahub.config.json` 不进入 vsix；构建产物中只有解析后的最终值。
+- `.env`、`.env.*`、`config.mjs` 不进入 vsix；构建产物中只有解析后的最终值。
