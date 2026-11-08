@@ -317,7 +317,7 @@ remote/
 
 ### 6.7 `config.mjs`（扩展级开发者配置）
 
-该文件位于**扩展工程源码根目录**（文件名就是 `config.mjs`，不加前缀），纳入扩展源码仓库的版本控制，只放非敏感配置，**不得**包含 Token、Private Key、Client Secret 或任何凭据。
+该文件位于**扩展包源码根目录** `packages/vscode-extension/config.mjs`（文件名就是 `config.mjs`，不加前缀），纳入源码仓库的版本控制，只放非敏感配置，**不得**包含 Token、Private Key、Client Secret 或任何凭据。
 
 它是**开发者配置，不开放给最终用户**：不会生成到用户的创意仓库，不随扩展分发，用户既看不到也改不了。
 
@@ -918,3 +918,53 @@ https://github.com/<远程仓库用户>/<远程仓库名字>/tree/<远程仓库�
 - 模块加载抛错、`default` 缺失或不是对象、字段缺失、类型错误、空字符串或空值时，构建期告警并逐字段回落到默认值，构建不中断。
 - 证明文件 `version` 只来自上述配置，不读取插件版本号，也不在代码里硬编码。
 - `.env`、`.env.*`、`config.mjs` 不进入 vsix；构建产物中只有解析后的最终值。
+- 迁移到 monorepo 后，`config.mjs` 与 `.env` 的读取位置为扩展包 `packages/vscode-extension`（见 12.3），优先级与回落逻辑不变。
+
+---
+
+## 十二、工程结构（Turborepo Monorepo）
+
+### 12.1 仓库形态
+
+- 源码仓库为 **pnpm workspace + Turborepo** 的单仓多包（monorepo）；根目录只放工作区配置、共享 lint 规范与文档，不承载业务源码。
+- 包目录：
+
+```text
+packages/
+├── core/                 # @ideahub/core：纯逻辑库，不发布
+├── vscode-extension/     # ideahub：VS Code 扩展（发布为 VSIX）
+└── cli/                  # @ideahub/cli：占位目录，本期不实现
+```
+
+- `packages/core`、`packages/vscode-extension` 均 `private: true`，不发布到 npm。
+- `packages/cli` 只保留占位目录与说明文件，不包含可运行实现。
+
+### 12.2 packages/core
+
+- 纯逻辑，**不得 import `vscode`**；不得依赖 VS Code API、webview 等运行时。
+- 包含内容指纹、引用文件 Blob SHA-1、证明块切分、证明文件生成与解析、时间处理、Git/GitHub 客户端、Release 查询与校验、项目与配置读写等全部非 UI 逻辑。
+- 通过包名 `@ideahub/core` 被扩展引用；扩展以 `workspace:*` 依赖并在构建时从源码打包，**不依赖预构建产物**。
+- 提供统一入口 `packages/core/src/index.ts` 汇总导出，供包外使用；包内模块仍用相对路径互相引用。
+
+### 12.3 packages/vscode-extension
+
+- 只保留 VS Code 相关部分：扩展入口、命令注册、webview UI、状态检测、watcher、认证与设置读写等。
+- `package.json` 即扩展清单（`name` 仍为 `ideahub`，`main` 指向 `dist/extension.js`），并声明 `private: true`。
+- `config.mjs`（开发者配置，见 6.7）位于本包根目录；构建脚本从本包运行时读取该文件与 `.env`，`.env` 覆盖与逐字段回落逻辑不变。
+- `.vscodeignore` 位于本包根目录；`config.mjs`、`.env`、`.env.*`、`scripts/**`、源码与测试不得进入 VSIX。
+- VSIX 产物生成在本包目录下：`packages/vscode-extension/ideahub-<version>.vsix`。
+
+### 12.4 工作区配置
+
+- 根 `pnpm-workspace.yaml` 声明 `packages/*`。
+- 根 `package.json` 提供“一条命令跑全部”的工作区脚本：`build`、`typecheck`、`lint`、`test`、`package`，内部通过 Turborepo 执行各包同名脚本。
+- `turbo.json` 使用 Turborepo 2.x 的 `tasks` 字段，至少覆盖上述五个任务；`build` 的产物声明为各包的 `dist/**` 与 `media/**`；包间依赖由 Turborepo 根据 `workspace:*` 依赖自动识别，被依赖包先执行。
+- 各包拥有独立的 `tsconfig.json` 与 `vitest.config.ts`；根目录不承载业务源码的编译配置。
+- 根 `eslint.config.mjs` 为共享 lint 配置。
+
+### 12.5 迁移与验收
+
+- 使用 `git mv` 迁移文件，保留历史；不删除后重建。
+- 测试按包拆分：纯逻辑测试归 `packages/core/test`，依赖 VS Code/UI 的测试归 `packages/vscode-extension/test`；迁移后测试数量不得减少。
+- 迁移不改变任何现有功能行为和用户可见文案。
+- 根目录 `pnpm install`、`pnpm build`、`pnpm typecheck`、`pnpm lint`、`pnpm test`、`pnpm package` 全部通过；打包后的 VSIX 内容清单与迁移前一致（除路径外），且不含 `config.mjs`。
