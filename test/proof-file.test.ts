@@ -62,36 +62,63 @@ describe('renderProofFile', () => {
     }
   ];
 
-  it('writes the configured version, header with <project-url> replaced, stats and ---', () => {
+  it('writes the configured version, quoted header, quoted stats and --- outside the block', () => {
     const proofFile = renderProofFile(blocks, PROJECT_URL, {
       version: '1',
-      header: 'Read the original at <project-url>.\n\nVerify with `npx ideahub check <project-url>`.'
+      header: '> Read the original at <project-url>.\n>\n> Verify with `npx ideahub check <project-url>`.'
     });
 
     expect(proofFile.startsWith('---\nversion: "1"\n---\n')).toBe(true);
     expect(proofFile).not.toContain('<project-url>');
-    expect(proofFile).toContain(`Read the original at ${PROJECT_URL}.`);
-    expect(proofFile).toContain(`Verify with \`npx ideahub check ${PROJECT_URL}\`.`);
+    expect(proofFile).toContain(`> Read the original at ${PROJECT_URL}.`);
+    expect(proofFile).toContain(`> Verify with \`npx ideahub check ${PROJECT_URL}\`.`);
     expect(proofFile).toContain(
-      '- Time span: `2026-11-01 10:00:00 (UTC+08:00) → 2026-11-07 09:54:51 (UTC+08:00)`'
+      '> - Time span: `2026-11-01 10:00:00 (UTC+08:00) → 2026-11-07 09:54:51 (UTC+08:00)`'
     );
-    expect(proofFile).toContain('- Proofs: 2');
-    expect(proofFile).toContain('- Referenced files: 2');
-    expect(proofFile).toContain('- External links (unique): 2');
+    expect(proofFile).toContain('> - Proofs: 2');
+    expect(proofFile).toContain('> - Referenced files: 2');
+    expect(proofFile).toContain('> - External links (unique): 2');
+
+    // Header and stats stay inside one quote block without a plain blank line.
+    const quotedStats = proofFile
+      .split('\n')
+      .filter((line) => /^> - (Time span|Proofs|Referenced files|External links)/.test(line));
+    expect(quotedStats).toHaveLength(4);
+    expect(
+      proofFile.indexOf(
+        `> Verify with \`npx ideahub check ${PROJECT_URL}\`.\n> - Time span:`
+      )
+    ).toBeGreaterThanOrEqual(0);
+    expect(proofFile).not.toContain('`.\n\n> - Time span:');
 
     // Front matter opens/closes with `---`, plus the standalone separator after
-    // the stats list.
-    const separatorCount = proofFile.split('\n').filter((line) => line === '---').length;
-    expect(separatorCount).toBe(3);
+    // the stats list. The separator carries no quote prefix.
+    const separatorLines = proofFile.split('\n').filter((line) => line.includes('---'));
+    expect(separatorLines.every((line) => line === '---')).toBe(true);
+    expect(separatorLines).toHaveLength(3);
+    expect(proofFile).not.toContain('> ---');
     expect(proofFile).toContain(
-      '- External links (unique): 2\n\n---\n\n## `Proof: 2026-11-01 10:00:00 (UTC+08:00) [ideahub]`'
+      '> - External links (unique): 2\n\n---\n\n## `Proof: 2026-11-01 10:00:00 (UTC+08:00) [ideahub]`'
     );
+  });
+
+  it('keeps the quote block contiguous whether or not the header ends with a newline', () => {
+    const withoutNewline = renderProofFile(blocks, PROJECT_URL, {
+      header: '> Read <project-url>.'
+    });
+    const withNewline = renderProofFile(blocks, PROJECT_URL, {
+      header: '> Read <project-url>.\n'
+    });
+
+    expect(withoutNewline).toContain(`> Read ${PROJECT_URL}.\n> - Time span:`);
+    expect(withNewline).toContain(`> Read ${PROJECT_URL}.\n> - Time span:`);
+    expect(withoutNewline).not.toContain(`> Read ${PROJECT_URL}.\n\n> - Time span:`);
   });
 
   it('omits the header when it is missing, empty or blank', () => {
     for (const options of [undefined, {}, { header: '' }, { header: '   \n ' }]) {
       const proofFile = renderProofFile(blocks, PROJECT_URL, options);
-      expect(proofFile.startsWith('---\nversion: "0"\n---\n\n- Time span:')).toBe(true);
+      expect(proofFile.startsWith('---\nversion: "0"\n---\n\n> - Time span:')).toBe(true);
       expect(proofFile).not.toContain('This file is the IdeaHub proof file');
       expect(proofFile).not.toContain('Do not trust this file directly');
     }
