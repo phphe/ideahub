@@ -7,7 +7,8 @@ const {
   loadDeveloperConfig,
   resolveReleaseBranch,
   resolveProofFileVersion,
-  resolveProofFileHeader
+  resolveProofFileHeader,
+  findStandaloneSeparatorLine
 } = releaseConfig;
 
 async function copyCodicons() {
@@ -44,6 +45,18 @@ for (const warning of versionResolution.warnings) {
 const headerResolution = resolveProofFileHeader({ envText, config });
 for (const warning of headerResolution.warnings) {
   console.warn(`[ideahub] proof file header warning: ${warning}`);
+}
+
+// Section 7.8: a standalone `---` in the header would collide with the proof
+// file's own separator, leaving the checker unable to find where the header
+// ends. Fail the build instead of emitting an ambiguous proof file.
+const separatorLine = findStandaloneSeparatorLine(headerResolution.header);
+if (separatorLine !== null) {
+  console.error(
+    `[ideahub] proof file header must not contain a standalone "---" line (found at line ${separatorLine}); ` +
+      'it collides with the proof file separator. Quote it as "> ---" if it is meant as a horizontal rule.'
+  );
+  process.exit(1);
 }
 
 console.log(

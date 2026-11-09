@@ -290,6 +290,28 @@ function resolveProofFileHeader({ envText = null, config = null } = {}) {
   return { header: value, source: 'file', warnings };
 }
 
+/**
+ * Section 7.8: the proof file uses a standalone `---` line as the separator
+ * before the proof blocks, and the header copy is written above it. A
+ * standalone `---` inside the header would make that boundary ambiguous for
+ * the checker, so the build rejects it. Quoted `> ---` lines are not
+ * separators and stay allowed.
+ *
+ * Returns the 1-based line number of the first offending line, or `null`.
+ */
+function findStandaloneSeparatorLine(header) {
+  if (typeof header !== 'string') {
+    return null;
+  }
+  const lines = header.split(/\r?\n/);
+  for (let index = 0; index < lines.length; index += 1) {
+    if (lines[index].trim() === '---') {
+      return index + 1;
+    }
+  }
+  return null;
+}
+
 module.exports = {
   DEFAULT_RELEASE_BRANCH,
   DEFAULT_PROOF_FILE_VERSION,
@@ -303,5 +325,6 @@ module.exports = {
   loadDeveloperConfig,
   resolveReleaseBranch,
   resolveProofFileVersion,
-  resolveProofFileHeader
+  resolveProofFileHeader,
+  findStandaloneSeparatorLine
 };

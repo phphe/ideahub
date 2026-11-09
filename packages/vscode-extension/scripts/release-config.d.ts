@@ -55,3 +55,4 @@ export function resolveProofFileHeader(input?: {
   envText?: string | null;
   config?: DeveloperConfigResult | null;
 }): ProofFileHeaderResolution;
+export function findStandaloneSeparatorLine(header: string): number | null;
