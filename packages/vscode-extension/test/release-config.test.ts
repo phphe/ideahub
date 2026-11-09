@@ -17,6 +17,8 @@ const {
   resolveReleaseBranch,
   resolveProofFileVersion,
   resolveProofFileHeader,
+  resolveOAuthClientId,
+  OAUTH_CLIENT_ID_ENV_KEY,
   findStandaloneSeparatorLine
 } = releaseConfig;
 
@@ -167,6 +169,33 @@ describe('build-time release config resolution', () => {
     const wrongType = resolveReleaseBranch({ config: configOf({ releaseBranch: 42 }) });
     expect(wrongType.branch).toBe(DEFAULT_RELEASE_BRANCH);
     expect(wrongType.warnings.join('\n')).toContain('必须是字符串');
+  });
+});
+
+describe('build-time oauthClientId resolution', () => {
+  it('treats an empty placeholder as legal and silent', () => {
+    const result = resolveOAuthClientId({ config: configOf({ oauthClientId: '' }) });
+
+    expect(result.clientId).toBe('');
+    expect(result.source).toBe('file');
+    expect(result.warnings).toEqual([]);
+  });
+
+  it('prefers the env override and ignores an empty env value', () => {
+    const overridden = resolveOAuthClientId({
+      envText: `${OAUTH_CLIENT_ID_ENV_KEY}=Iv1.abc\n`,
+      config: configOf({ oauthClientId: '' })
+    });
+    expect(overridden.clientId).toBe('Iv1.abc');
+    expect(overridden.source).toBe('env');
+
+    const emptyEnv = resolveOAuthClientId({
+      envText: `${OAUTH_CLIENT_ID_ENV_KEY}=\n`,
+      config: configOf({ oauthClientId: '' })
+    });
+    expect(emptyEnv.clientId).toBe('');
+    expect(emptyEnv.source).toBe('file');
+    expect(emptyEnv.warnings).toEqual([]);
   });
 });
 
