@@ -4,10 +4,12 @@ const { resolve } = require('node:path');
 const DEFAULT_RELEASE_BRANCH = 'main';
 const DEFAULT_PROOF_FILE_VERSION = '0';
 const DEFAULT_PROOF_FILE_HEADER = '';
+const DEFAULT_OAUTH_CLIENT_ID = '';
 const DEVELOPER_CONFIG_FILE = 'config.mjs';
 const RELEASE_BRANCH_ENV_KEY = 'IDEAHUB_RELEASE_BRANCH';
 const PROOF_FILE_VERSION_ENV_KEY = 'IDEAHUB_PROOF_FILE_VERSION';
 const PROOF_FILE_HEADER_ENV_KEY = 'IDEAHUB_PROOF_FILE_HEADER';
+const OAUTH_CLIENT_ID_ENV_KEY = 'IDEAHUB_OAUTH_CLIENT_ID';
 const MAX_REF_LENGTH = 120;
 const INVALID_REF_CHARS = new Set([' ', '~', '^', ':', '?', '*', '[', '\\']);
 
@@ -291,6 +293,43 @@ function resolveProofFileHeader({ envText = null, config = null } = {}) {
 }
 
 /**
+ * Section 6.7: `oauthClientId` resolves from `.env` > `config.mjs` > empty.
+ * Unlike the other fields, an empty value is legal (no OAuth App registered
+ * yet) and never warns; only a non-string value falls back with a warning.
+ */
+function resolveOAuthClientId({ envText = null, config = null } = {}) {
+  const warnings = [];
+
+  if (typeof envText === 'string') {
+    const envValue = parseEnvValue(envText, OAUTH_CLIENT_ID_ENV_KEY);
+    if (envValue !== null) {
+      const clientId = envValue.trim();
+      if (clientId.length > 0) {
+        return { clientId, source: 'env', warnings };
+      }
+    }
+  }
+
+  const fallback = (message) => {
+    warnings.push(`${message}，使用空 oauthClientId。`);
+    return { clientId: DEFAULT_OAUTH_CLIENT_ID, source: 'default', warnings };
+  };
+
+  if (!config || config.ok !== true) {
+    return fallback(describeConfigFailure(config));
+  }
+
+  const value = config.value.oauthClientId;
+  if (value === undefined || value === null) {
+    return fallback(`${DEVELOPER_CONFIG_FILE} 缺少 oauthClientId`);
+  }
+  if (typeof value !== 'string') {
+    return fallback(`${DEVELOPER_CONFIG_FILE} 的 oauthClientId 必须是字符串`);
+  }
+  return { clientId: value.trim(), source: 'file', warnings };
+}
+
+/**
  * Section 7.8: the proof file uses a standalone `---` line as the separator
  * before the proof blocks, and the header copy is written above it. A
  * standalone `---` inside the header would make that boundary ambiguous for
@@ -316,15 +355,18 @@ module.exports = {
   DEFAULT_RELEASE_BRANCH,
   DEFAULT_PROOF_FILE_VERSION,
   DEFAULT_PROOF_FILE_HEADER,
+  DEFAULT_OAUTH_CLIENT_ID,
   DEVELOPER_CONFIG_FILE,
   RELEASE_BRANCH_ENV_KEY,
   PROOF_FILE_VERSION_ENV_KEY,
   PROOF_FILE_HEADER_ENV_KEY,
+  OAUTH_CLIENT_ID_ENV_KEY,
   validateBranchName,
   parseEnvValue,
   loadDeveloperConfig,
   resolveReleaseBranch,
   resolveProofFileVersion,
   resolveProofFileHeader,
+  resolveOAuthClientId,
   findStandaloneSeparatorLine
 };

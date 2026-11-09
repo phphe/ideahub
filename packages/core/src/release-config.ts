@@ -12,3 +12,9 @@ export const PROOF_FILE_VERSION: string = process.env.IDEAHUB_PROOF_FILE_VERSION
 
 /** Section 7.8: optional proof file header copy; empty means omitted. */
 export const PROOF_FILE_HEADER: string = process.env.IDEAHUB_PROOF_FILE_HEADER ?? '';
+
+/**
+ * Section 6.7: GitHub OAuth App client id reserved for the CLI `login`
+ * (device flow). Empty is a valid value; the extension never uses it.
+ */
+export const OAUTH_CLIENT_ID: string = process.env.IDEAHUB_OAUTH_CLIENT_ID ?? '';

@@ -8,6 +8,7 @@ const {
   resolveReleaseBranch,
   resolveProofFileVersion,
   resolveProofFileHeader,
+  resolveOAuthClientId,
   findStandaloneSeparatorLine
 } = releaseConfig;
 
@@ -47,6 +48,13 @@ for (const warning of headerResolution.warnings) {
   console.warn(`[ideahub] proof file header warning: ${warning}`);
 }
 
+// Section 6.7: the OAuth client id is reserved for the CLI login flow. An
+// empty value is legal, so it never warns.
+const oauthResolution = resolveOAuthClientId({ envText, config });
+for (const warning of oauthResolution.warnings) {
+  console.warn(`[ideahub] oauth client id warning: ${warning}`);
+}
+
 // Section 7.8: a standalone `---` in the header would collide with the proof
 // file's own separator, leaving the checker unable to find where the header
 // ends. Fail the build instead of emitting an ambiguous proof file.
@@ -72,6 +80,11 @@ console.log(
     headerResolution.source
   }, injected at build time)`
 );
+console.log(
+  `[ideahub] oauthClientId=${JSON.stringify(oauthResolution.clientId)} (source=${
+    oauthResolution.source
+  }, injected at build time)`
+);
 
 const watch = process.argv.includes('--watch');
 
@@ -90,7 +103,8 @@ const options = {
   define: {
     'process.env.IDEAHUB_RELEASE_BRANCH': JSON.stringify(resolution.branch),
     'process.env.IDEAHUB_PROOF_FILE_VERSION': JSON.stringify(versionResolution.version),
-    'process.env.IDEAHUB_PROOF_FILE_HEADER': JSON.stringify(headerResolution.header)
+    'process.env.IDEAHUB_PROOF_FILE_HEADER': JSON.stringify(headerResolution.header),
+    'process.env.IDEAHUB_OAUTH_CLIENT_ID': JSON.stringify(oauthResolution.clientId)
   }
 };
 
