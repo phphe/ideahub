@@ -1104,7 +1104,7 @@ export class IdeahubController {
       visibleFiles.length === 0
         ? '（项目目录中没有其他文件）'
         : visibleFiles.join('\n');
-    const detail = `将公开的文件夹：${project}\n文件清单（ideas.md 不会发布，将生成 README.md）：\n${fileList}${
+    const detail = `将公开的文件夹：${project}\n文件清单：\n${fileList}${
       targetExists ? '\n\n远程创意仓库已存在同名目录，本次发布将覆盖该目录。' : ''
     }`;
 
