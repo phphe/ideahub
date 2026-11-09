@@ -16,7 +16,8 @@ const {
   loadDeveloperConfig,
   resolveReleaseBranch,
   resolveProofFileVersion,
-  resolveProofFileHeader
+  resolveProofFileHeader,
+  findStandaloneSeparatorLine
 } = releaseConfig;
 
 function configOf(value: Record<string, unknown>): DeveloperConfigResult {
@@ -292,6 +293,24 @@ describe('build-time proofFileHeader resolution', () => {
     const empty = resolveProofFileHeader({ config: configOf({ proofFileHeader: '   ' }) });
     expect(empty.header).toBe(DEFAULT_PROOF_FILE_HEADER);
     expect(empty.warnings.join('\n')).toContain('为空');
+  });
+});
+
+describe('build-time proof file separator check', () => {
+  it('accepts headers without a standalone --- line', () => {
+    expect(findStandaloneSeparatorLine('')).toBeNull();
+    expect(findStandaloneSeparatorLine('# Title\n\n> Quote line.')).toBeNull();
+    // Quoted separators stay inside the quote block, so they are allowed.
+    expect(findStandaloneSeparatorLine('> ---\n> after')).toBeNull();
+    expect(findStandaloneSeparatorLine('text\n- - -\n---x')).toBeNull();
+  });
+
+  it('reports the first standalone --- line', () => {
+    expect(findStandaloneSeparatorLine('---\n> body')).toBe(1);
+    expect(findStandaloneSeparatorLine('# Title\n\n> A\n---\n> B')).toBe(4);
+    // Whitespace around the line does not make it safe.
+    expect(findStandaloneSeparatorLine('> A\n   ---   \n> B')).toBe(2);
+    expect(findStandaloneSeparatorLine('# Title\r\n---\r\n> B')).toBe(2);
   });
 });
 
