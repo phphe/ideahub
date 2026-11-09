@@ -329,6 +329,7 @@ remote/
 export default {
   releaseBranch: 'main',
   proofFileVersion: '0',
+  oauthClientId: '',
   proofFileHeader: `> This file is the IdeaHub proof file for this project.
 > It was generated from the author's ideas.md when the project was published
 > and lists every recorded proof in chronological order.
@@ -343,9 +344,10 @@ export default {
 - `releaseBranch`：创建证明 Release 时用作 `target_commitish` 的 release 分支名（见 5.5、8.9），默认 `main`。
 - `proofFileVersion`：生成的证明文件 Front Matter 中 `version` 的值，**字符串**，默认 `"0"`。不读取插件版本号、不在代码里硬编码（见 7.8）。
 - `proofFileHeader`：生成的证明文件头部说明文案，**字符串**，默认空字符串。多行文案用**模板字符串**书写，不再用 `\n` 拼接，并按 Markdown 引用块书写（每行以 `> ` 开头，空行写成单独的 `>`）。生成时把其中所有 `<project-url>` 替换为该项目的真实远程地址；缺失、非字符串或空字符串时不写头部说明，并在构建期告警。统计信息列表每行也以 `> ` 开头，与头部说明保持同一个引用块；单独一行 `---` 分隔线保持在引用块之外（不加 `> `）。头部文案中**不得**包含独立的 `---` 行（引用块内的 `> ---` 不算），否则构建期直接失败，原因见 7.8 与 13.2。
-- 读取优先级：`.env`（`IDEAHUB_RELEASE_BRANCH`、`IDEAHUB_PROOF_FILE_VERSION`、`IDEAHUB_PROOF_FILE_HEADER`，本地临时覆盖用；已在 `.gitignore` / `.vscodeignore`，不提交、不打包进 vsix）> `config.mjs` 的 `default` 导出 > 内置默认（`main` / `"0"` / 空）。
+- `oauthClientId`：GitHub OAuth App 的 client id，**字符串**，默认空字符串。预留给 CLI 的 `ideahub login`（device flow）使用，扩展本身不使用该值；空字符串是**合法值**，不告警、不影响其他字段的解析。client id 是公开标识而非凭据；client secret 不得写入本文件，也不得注入构建产物。
+- 读取优先级：`.env`（`IDEAHUB_RELEASE_BRANCH`、`IDEAHUB_PROOF_FILE_VERSION`、`IDEAHUB_PROOF_FILE_HEADER`、`IDEAHUB_OAUTH_CLIENT_ID`，本地临时覆盖用；已在 `.gitignore` / `.vscodeignore`，不提交、不打包进 vsix）> `config.mjs` 的 `default` 导出 > 内置默认（`main` / `"0"` / 空 / 空）。
 - 该文件在**构建期**由构建脚本用动态 `import()` 加载，取 `default` 导出，再通过 esbuild `define` 把解析结果注入为常量。构建产物中只有最终值，不包含配置文件；运行时**不会**从用户机器读取 `.env` 或任何外部配置文件。
-- 逐字段校验并在构建期告警回落：模块加载抛错、`default` 缺失或不是对象、字段缺失、字段类型不对、字段为空，都视为该字段非法，分别回落到该字段的默认值；构建继续，扩展也不能崩溃。
+- 逐字段校验并在构建期告警回落：模块加载抛错、`default` 缺失或不是对象、字段缺失、字段类型不对、字段为空，都视为该字段非法，分别回落到该字段的默认值；构建继续，扩展也不能崩溃。唯一例外是 `oauthClientId`：空字符串是合法值，不告警。
 - `.env`、`.env.*`、`config.mjs` 均不得打包进 vsix。
 
 ### 6.8 用户设置
@@ -442,6 +444,8 @@ tags: ["游戏", "写作"]
 4. 对每个被引用的项目内文件计算 Git Blob SHA-1，得到 `files: { 相对路径: "blob sha1" }`；路径统一正斜杠、去掉 `./`。
 5. 生成规范 JSON：键顺序固定为 `project`、`text`、`files`；`files` 的键按路径升序；紧凑序列化（无空格）；UTF-8。
 6. 对该 JSON 字符串取 SHA-256，即为证明 hash；Release tag 仍为 `ideahub-<hash>`。
+
+- 行尾与 Git 属性转换**跟随用户系统**：正常化只把 `\r\n` / `\r` 视作换行并统一为 `\n`，不要求用户统一使用 CRLF 或 LF，也不主动改写文件行尾；`.gitattributes` 的 `text`/`eol` 等转换以 Git 在用户系统上的实际结果为准，扩展与 CLI 都不额外强制。被引用文件的 Blob SHA-1 同样取 Git 在该系统上计算的结果。
 
 规范 JSON 示例：
 
@@ -996,6 +1000,7 @@ packages/
 - 测试按包拆分：纯逻辑测试归 `packages/core/test`，依赖 VS Code/UI 的测试归 `packages/vscode-extension/test`；迁移后测试数量不得减少。
 - 迁移不改变任何现有功能行为和用户可见文案。
 - 根目录 `pnpm install`、`pnpm build`、`pnpm typecheck`、`pnpm lint`、`pnpm test`、`pnpm package` 全部通过；打包后的 VSIX 内容清单与迁移前一致（除路径外），且不含 `config.mjs`。
+- `.env` 只保留在扩展包内：根目录不保留 `.env`；`packages/vscode-extension/.env` 默认为空文件，用于存放本地敏感信息，被 `.gitignore` 忽略、也不进入 VSIX。构建读取的就是该位置的 `.env`（见 6.7）。
 
 ---
 
@@ -1064,6 +1069,6 @@ packages/
 ### 13.6 登录与凭据
 
 - Token 来源优先级：`IDEAHUB_TOKEN` → `GITHUB_TOKEN` → `GH_TOKEN` → `gh auth token`（已安装 GitHub CLI 时）→ 本地保存的登录凭据 → 匿名。
-- `ideahub login` 使用 GitHub OAuth device flow，需要开发者注册 OAuth App 提供 client id；未提供 client id 的版本支持手动粘贴 token。
+- `ideahub login` 使用 GitHub OAuth device flow，client id 来自构建期注入的 `oauthClientId`（见 6.7）；client id 为空时该方式不可用，只支持手动粘贴 token。client secret 与 token 均不得进入源码或构建产物。
 - 凭据保存在用户配置目录，文件权限 `0600`；任何输出、日志、错误信息都**不得**回显 token。
 - 登录只影响配额，不改变任何判定规则；匿名与登录状态下对同一份证明的结论必须一致（配额错误除外）。
