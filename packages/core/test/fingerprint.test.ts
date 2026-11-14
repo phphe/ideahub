@@ -125,6 +125,48 @@ describe('buildFingerprint references', () => {
     expect(Object.keys(result.files).sort()).toEqual(['note.md', 'pic.png']);
   });
 
+  it('recognises collapsed, shortcut, srcset and poster references', async () => {
+    const { root, projectDir } = await createRepository({
+      'MyGame/pic.png': 'image',
+      'MyGame/alt.png': 'alt',
+      'MyGame/wide.png': 'wide'
+    });
+    const text = [
+      '![a][]',
+      '![b]',
+      '![c][p]',
+      'text [p] and [doc][p]',
+      '[a]: ./pic.png',
+      '[b]: ./pic.png',
+      '[c]: ./pic.png',
+      '[p]: ./pic.png',
+      '[doc]: ./pic.png',
+      '<picture><source srcset="./wide.png 1x, ./alt.png 2x"></picture>',
+      '<video poster="./pic.png"></video>'
+    ].join('\n');
+
+    const result = await buildFingerprint({
+      project: 'MyGame',
+      text,
+      projectDir,
+      repoRoot: root
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      throw new Error(result.message);
+    }
+    expect(result.text).toContain('🔏![a][]');
+    expect(result.text).toContain('🔏![b]');
+    expect(result.text).toContain('🔏![c][p]');
+    expect(result.text).toContain('text 🔏[p] and 🔏[doc][p]');
+    expect(result.text).toContain('🔏<source srcset=');
+    expect(result.text).toContain('🔏<video poster=');
+    // Definition lines never receive the reserved character.
+    expect(result.text).not.toContain('🔏[a]:');
+    expect(result.text).not.toContain('🔏[p]:');
+    expect(Object.keys(result.files).sort()).toEqual(['alt.png', 'pic.png', 'wide.png']);
+  });
+
   it('matches git hash-object for referenced files', async () => {
     const { root, projectDir } = await createRepository({ 'MyGame/a.png': 'image' });
     const blob = (await runGit(root, ['hash-object', 'MyGame/a.png'])).stdout.trim();

@@ -194,9 +194,16 @@ const INLINE_IMAGE_PATTERN =
 const INLINE_LINK_PATTERN =
   /(?<!!)\[[^\]\n]*\]\(\s*(<[^>\n]*>|[^)\s]+)(?:\s+(?:"[^"\n]*"|'[^'\n]*'|\([^)\n]*\)))?\s*\)/g;
 const REFERENCE_USAGE_PATTERN = /(?<!!)\[([^\]\n]*)\]\[([^\]\n]*)\]/g;
+const IMAGE_REFERENCE_USAGE_PATTERN = /!\[([^\]\n]*)\]\[([^\]\n]*)\]/g;
+/** Shortcut links `[text]`; skips definitions, images and full references. */
+const SHORTCUT_LINK_PATTERN = /(?<![!\][])\[([^\]\n]+)\](?!\(|\[)/g;
+/** Shortcut images `![alt]`; the `[`/`(` lookahead skips full refs and inline. */
+const SHORTCUT_IMAGE_PATTERN = /!\[([^\]\n]+)\](?!\(|\[)/g;
 const REFERENCE_DEFINITION_PATTERN = /^[ \t]{0,3}\[([^\]\n]+)\]:[ \t]*(<[^>\n]+>|[^\s\n]+)/gm;
 const HTML_IMG_PATTERN = /<img\b[^>\n]*>/gi;
 const HTML_A_PATTERN = /<a\b[^>\n]*>/gi;
+const HTML_SOURCE_PATTERN = /<source\b[^>\n]*>/gi;
+const HTML_VIDEO_PATTERN = /<video\b[^>\n]*>/gi;
 
 export function scanReferences(text: string): ReferenceHit[] {
   return scanReferencesInternal(text);
@@ -205,13 +212,19 @@ export function scanReferences(text: string): ReferenceHit[] {
 function scanReferencesInternal(text: string): ReferenceHit[] {
   const hits: ReferenceHit[] = [];
   const definitions = new Map<string, string>();
+  const definitionSpans: Array<{ start: number; end: number }> = [];
 
   for (const match of text.matchAll(REFERENCE_DEFINITION_PATTERN)) {
     const id = match[1].trim().toLowerCase();
     if (id && !definitions.has(id)) {
       definitions.set(id, stripAngle(match[2]));
     }
+    const start = match.index ?? 0;
+    definitionSpans.push({ start, end: start + match[0].length });
   }
+
+  const insideDefinition = (index: number): boolean =>
+    definitionSpans.some((span) => index >= span.start && index < span.end);
 
   for (const match of text.matchAll(INLINE_IMAGE_PATTERN)) {
     hits.push({ index: match.index ?? 0, target: stripAngle(match[1]), isImage: true });
@@ -226,6 +239,33 @@ function scanReferencesInternal(text: string): ReferenceHit[] {
       hits.push({ index: match.index ?? 0, target, isImage: false });
     }
   }
+  for (const match of text.matchAll(IMAGE_REFERENCE_USAGE_PATTERN)) {
+    const label = match[2].trim() || match[1].trim();
+    const target = definitions.get(label.toLowerCase());
+    if (target) {
+      hits.push({ index: match.index ?? 0, target, isImage: true });
+    }
+  }
+  for (const match of text.matchAll(SHORTCUT_LINK_PATTERN)) {
+    const index = match.index ?? 0;
+    if (insideDefinition(index)) {
+      continue;
+    }
+    const target = definitions.get(match[1].trim().toLowerCase());
+    if (target) {
+      hits.push({ index, target, isImage: false });
+    }
+  }
+  for (const match of text.matchAll(SHORTCUT_IMAGE_PATTERN)) {
+    const index = match.index ?? 0;
+    if (insideDefinition(index)) {
+      continue;
+    }
+    const target = definitions.get(match[1].trim().toLowerCase());
+    if (target) {
+      hits.push({ index, target, isImage: true });
+    }
+  }
   for (const match of text.matchAll(HTML_IMG_PATTERN)) {
     const src = extractAttribute(match[0], 'src');
     if (src) {
@@ -238,8 +278,35 @@ function scanReferencesInternal(text: string): ReferenceHit[] {
       hits.push({ index: match.index ?? 0, target: href, isImage: false });
     }
   }
+  for (const match of text.matchAll(HTML_SOURCE_PATTERN)) {
+    const srcset = extractAttribute(match[0], 'srcset');
+    if (!srcset) {
+      continue;
+    }
+    for (const candidate of splitSrcset(srcset)) {
+      hits.push({ index: match.index ?? 0, target: candidate, isImage: true });
+    }
+  }
+  for (const match of text.matchAll(HTML_VIDEO_PATTERN)) {
+    const poster = extractAttribute(match[0], 'poster');
+    if (poster) {
+      hits.push({ index: match.index ?? 0, target: poster, isImage: true });
+    }
+  }
 
   return hits;
+}
+
+/** `srcset="a.png 1x, b.png 2x"` -> `['a.png', 'b.png']`. */
+function splitSrcset(value: string): string[] {
+  const targets: string[] = [];
+  for (const candidate of value.split(',')) {
+    const url = candidate.trim().split(/\s+/)[0];
+    if (url) {
+      targets.push(url);
+    }
+  }
+  return targets;
 }
 
 function stripAngle(value: string): string {
