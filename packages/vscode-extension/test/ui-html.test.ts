@@ -121,7 +121,7 @@ describe('renderMainHtml project list', () => {
   it('renders exactly the four supported badges with titles', () => {
     const html = renderMainHtml(state);
     expect(html).toContain('title="已生成的证明数量">2个证明</span>');
-    expect(html).toContain('title="存在尚未证明的新内容">有新内容</span>');
+    expect(html).toContain('class="badge badge-warning" title="存在尚未证明的新内容">未证明</span>');
     expect(html).toContain('title="已发布的次数">发布3次</span>');
     expect(html).toContain('title="已证明的内容可以发布">可发布</span>');
     expect(html).not.toContain('最近证明');
@@ -129,7 +129,7 @@ describe('renderMainHtml project list', () => {
     expect(html).not.toContain('远程状态不可用');
   });
 
-  it('hides 有新内容, 发布N次 and 可发布 when they do not apply', () => {
+  it('hides 未证明, 发布N次 and 可发布 when they do not apply', () => {
     const emptyState: WorkspaceState = {
       ...state,
       projects: [
@@ -146,7 +146,7 @@ describe('renderMainHtml project list', () => {
     };
     const html = renderMainHtml(emptyState);
     expect(html).toContain('>0个证明</span>');
-    expect(html).not.toContain('>有新内容</span>');
+    expect(html).not.toContain('>未证明</span>');
     expect(html).not.toContain('>发布0次</span>');
     expect(html).not.toContain('>可发布</span>');
   });
@@ -308,7 +308,7 @@ describe('project ordering, filter and status chips', () => {
     );
 
     expect(html).toContain('data-chip="all" aria-pressed="true">全部 3</button>');
-    expect(html).toContain('data-chip="new" aria-pressed="false">有新内容 1</button>');
+    expect(html).toContain('data-chip="new" aria-pressed="false">未证明 1</button>');
     expect(html).toContain('data-chip="publishable" aria-pressed="false">可发布 1</button>');
     expect(html).toContain('data-chip="unpublished" aria-pressed="false">未发布 2</button>');
   });
@@ -318,7 +318,7 @@ describe('project ordering, filter and status chips', () => {
       localState([project('published', { publishedCount: 2 })])
     );
 
-    expect(html).toContain('class="chip is-empty" data-chip="new" aria-pressed="false">有新内容 0</button>');
+    expect(html).toContain('class="chip is-empty chip-warning" data-chip="new" aria-pressed="false">未证明 0</button>');
     expect(html).toContain(
       'class="chip is-empty" data-chip="publishable" aria-pressed="false">可发布 0</button>'
     );

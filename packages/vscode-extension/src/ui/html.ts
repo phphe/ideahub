@@ -534,6 +534,15 @@ const STYLES = `
     color: var(--vscode-button-foreground);
   }
   button.chip.is-empty { opacity: 0.55; }
+  button.chip.chip-warning {
+    background: var(--vscode-inputValidation-warningBackground, rgba(191, 136, 3, 0.18));
+    color: var(--vscode-foreground);
+    border: 1px solid var(--vscode-inputValidation-warningBorder, rgba(191, 136, 3, 0.6));
+  }
+  button.chip.chip-warning.active {
+    background: var(--vscode-inputValidation-warningBorder, #bf8803);
+    color: var(--vscode-foreground);
+  }
   .project-tags { display: flex; flex-wrap: wrap; gap: 4px; }
   .project-tags[hidden] { display: none !important; }
   button.tag-chip { max-width: 100%; overflow-wrap: anywhere; }
@@ -568,6 +577,14 @@ const STYLES = `
     padding: 1px 7px;
     background: var(--vscode-badge-background);
     color: var(--vscode-badge-foreground);
+  }
+  /* Section 8.7: the "未证明" badge uses the theme warning palette so it stays
+     legible in both light and dark themes and stands out from the other badges. */
+  .badge.badge-warning {
+    background: var(--vscode-inputValidation-warningBackground, rgba(191, 136, 3, 0.18));
+    color: var(--vscode-foreground);
+    border: 1px solid var(--vscode-inputValidation-warningBorder, rgba(191, 136, 3, 0.6));
+    font-weight: 600;
   }
   .row { display: flex; gap: 6px; flex-wrap: wrap; }
   code { font-family: var(--vscode-editor-font-family); font-size: 12px; }
@@ -646,6 +663,7 @@ function renderMain(state: WorkspaceState): string {
 interface Badge {
   text: string;
   title?: string;
+  variant?: 'warning';
 }
 
 export function renderProjectBadges(project: ProjectSummary): string {
@@ -653,7 +671,7 @@ export function renderProjectBadges(project: ProjectSummary): string {
     { text: `${project.proofCount}个证明`, title: '已生成的证明数量' }
   ];
   if (project.hasNewContent) {
-    badges.push({ text: '有新内容', title: '存在尚未证明的新内容' });
+    badges.push({ text: '未证明', title: '存在尚未证明的新内容', variant: 'warning' });
   }
   if (project.publishedCount > 0) {
     badges.push({ text: `发布${project.publishedCount}次`, title: '已发布的次数' });
@@ -663,7 +681,7 @@ export function renderProjectBadges(project: ProjectSummary): string {
   }
   return badges
     .map((badge) =>
-      `<span class="badge"${
+      `<span class="badge${badge.variant ? ` badge-${badge.variant}` : ''}"${
         badge.title ? ` title="${escapeHtml(badge.title)}"` : ''
       }>${escapeHtml(badge.text)}</span>`
     )
@@ -691,11 +709,12 @@ function renderChip(
   id: string,
   label: string,
   count: number,
-  active: boolean
+  active: boolean,
+  variant?: 'warning'
 ): string {
   return `<button class="chip${active ? ' active' : ''}${
     count === 0 ? ' is-empty' : ''
-  }" data-chip="${id}" aria-pressed="${active}">${escapeHtml(label)} ${count}</button>`;
+  }${variant ? ` chip-${variant}` : ''}" data-chip="${id}" aria-pressed="${active}">${escapeHtml(label)} ${count}</button>`;
 }
 
 function collectTags(projects: ProjectSummary[]): string[] {
@@ -759,7 +778,7 @@ function renderProjectFilters(
       ${input}
       <div class="project-chips">
         ${renderChip('all', '全部', total, true)}
-        ${renderChip('new', '有新内容', fresh, false)}
+        ${renderChip('new', '未证明', fresh, false, 'warning')}
         ${renderChip('publishable', '可发布', publishable, false)}
         ${renderChip('unpublished', '未发布', unpublished, false)}
       </div>

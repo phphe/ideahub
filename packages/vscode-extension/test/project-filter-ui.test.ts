@@ -345,7 +345,7 @@ describe('project filter webview behaviour', () => {
     harness.send({
       type: 'projectBadges',
       project: 'MyGame',
-      html: '<span class="badge">有新内容</span>',
+      html: '<span class="badge badge-warning">未证明</span>',
       flags: { hasNewContent: true, canPublish: false, publishedCount: 0 }
     });
 

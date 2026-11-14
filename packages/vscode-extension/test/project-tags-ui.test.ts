@@ -128,12 +128,12 @@ interface FakeChip {
 function chipsFrom(html: string): FakeChip[] {
   const chips: FakeChip[] = [];
   const chipPattern =
-    /<button class="chip" data-chip="([^"]+)" aria-pressed="([^"]+)">([^<]*)<\/button>/g;
+    /<button class="(chip[^"]*)" data-chip="([^"]+)" aria-pressed="([^"]+)">([^<]*)<\/button>/g;
   for (const match of html.matchAll(chipPattern)) {
     chips.push({
-      dataset: { chip: match[1] },
-      classList: new FakeClassList('chip'),
-      attributes: { 'aria-pressed': match[2] },
+      dataset: { chip: match[2] },
+      classList: new FakeClassList(match[1]),
+      attributes: { 'aria-pressed': match[3] },
       setAttribute(name, value) {
         this.attributes[name] = value;
       }
@@ -436,7 +436,7 @@ describe('project tags webview behaviour', () => {
     restored.send({
       type: 'projectBadges',
       project: 'GameTwo',
-      html: '<span class="badge">有新内容</span>',
+      html: '<span class="badge badge-warning">未证明</span>',
       flags: {
         hasNewContent: true,
         canPublish: false,
