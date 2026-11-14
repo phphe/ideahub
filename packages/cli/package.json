@@ -1,0 +1,25 @@
+{
+  "name": "@ideahub/cli",
+  "version": "0.1.0",
+  "private": true,
+  "description": "IdeaHub command line checker (check / login).",
+  "bin": {
+    "ideahub": "./dist/index.js"
+  },
+  "main": "./dist/index.js",
+  "scripts": {
+    "build": "node build.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint src test",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@ideahub/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.1",
+    "esbuild": "^0.25.12",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4"
+  }
+}
