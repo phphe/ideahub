@@ -129,10 +129,7 @@ async function fingerprint(input: FingerprintInput): Promise<FingerprintResult> 
 
   const text = insertReservedChar(input.text, spans);
   const normalizedText = normalizeProofText(text);
-  const sortedFiles: Record<string, string> = {};
-  for (const key of Object.keys(files).sort()) {
-    sortedFiles[key] = files[key];
-  }
+  const sortedFiles = sortFileKeys(files);
   const hash = sha256Hex(canonicalFingerprintJson(input.project, normalizedText, sortedFiles));
 
   return {
@@ -174,7 +171,7 @@ function insertReservedChar(
   return result;
 }
 
-interface ReferenceHit {
+export interface ReferenceHit {
   index: number;
   target: string;
   isImage: boolean;
@@ -201,7 +198,11 @@ const REFERENCE_DEFINITION_PATTERN = /^[ \t]{0,3}\[([^\]\n]+)\]:[ \t]*(<[^>\n]+>
 const HTML_IMG_PATTERN = /<img\b[^>\n]*>/gi;
 const HTML_A_PATTERN = /<a\b[^>\n]*>/gi;
 
-function scanReferences(text: string): ReferenceHit[] {
+export function scanReferences(text: string): ReferenceHit[] {
+  return scanReferencesInternal(text);
+}
+
+function scanReferencesInternal(text: string): ReferenceHit[] {
   const hits: ReferenceHit[] = [];
   const definitions = new Map<string, string>();
 
@@ -266,10 +267,18 @@ function isExternalTarget(target: string): boolean {
   return value.startsWith('//') || /^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(value);
 }
 
-async function classifyReference(
-  rawTarget: string,
-  input: FingerprintInput
-): Promise<Classification> {
+export type NormalizedTarget =
+  | { kind: 'skip' }
+  | { kind: 'external' }
+  | { kind: 'internal'; relative: string }
+  | { kind: 'outside' };
+
+/**
+ * Section 7.3 / 13.4: the path part of reference classification, shared by the
+ * extension (local files) and the CLI (remote tree). It never touches the
+ * file system, so both sides normalise `\`, `%`, `./` and `..` identically.
+ */
+export function normalizeReferenceTarget(rawTarget: string): NormalizedTarget {
   const target = rawTarget.trim();
   if (target.length === 0 || target.startsWith('#')) {
     return { kind: 'skip' };
@@ -290,13 +299,114 @@ async function classifyReference(
   }
   const cleaned = withoutFragment.replace(/\\/g, '/');
   if (cleaned.startsWith('/') || /^[a-zA-Z]:\//.test(cleaned)) {
+    return { kind: 'outside' };
+  }
+  const relative = path.posix.normalize(cleaned.replace(/^\.\//, ''));
+  return { kind: 'internal', relative };
+}
+
+export type BlobResolution =
+  | { ok: true; blob: string }
+  | {
+      ok: false;
+      code: 'missing-file' | 'outside-project' | 'outside-repo' | 'directory';
+      message: string;
+    };
+
+/** Section 13.5: the CLI injects this resolver; core owns the algorithm. */
+export type BlobResolver = (relative: string) => Promise<BlobResolution>;
+
+export interface FingerprintWithResolverInput {
+  project: string;
+  /** Final text as stored in the proof file; `🔏` is already present. */
+  text: string;
+  resolveBlob: BlobResolver;
+}
+
+/**
+ * Section 13.5: recompute a proof-file block fingerprint without touching the
+ * local file system. The text is used as-is (no emoji insertion), because the
+ * stored block already carries the reserved characters.
+ */
+export async function computeFingerprintWith(
+  input: FingerprintWithResolverInput
+): Promise<FingerprintResult> {
+  const references = scanReferences(input.text);
+  const files: Record<string, string> = {};
+  const externalLinks = new Set<string>();
+
+  for (const reference of references) {
+    const normalized = normalizeReferenceTarget(reference.target);
+    if (normalized.kind === 'skip') {
+      continue;
+    }
+    if (normalized.kind === 'external') {
+      if (reference.isImage) {
+        return fail(
+          'external-image',
+          `不支持外部图片：${reference.target}。请改为项目内的相对路径图片。`
+        );
+      }
+      externalLinks.add(reference.target);
+      continue;
+    }
+    if (normalized.kind === 'outside') {
+      return fail('outside-repo', `不能引用仓库外的路径：${reference.target}。`);
+    }
+    if (normalized.relative === '..' || normalized.relative.startsWith('../')) {
+      return fail('outside-project', `不能引用项目外文件：${reference.target}。`);
+    }
+    const resolved = await input.resolveBlob(normalized.relative);
+    if (!resolved.ok) {
+      return fail(resolved.code, resolved.message);
+    }
+    files[normalized.relative] = resolved.blob;
+  }
+
+  const normalizedText = normalizeProofText(input.text);
+  const sortedFiles = sortFileKeys(files);
+  const hash = sha256Hex(
+    canonicalFingerprintJson(input.project, normalizedText, sortedFiles)
+  );
+
+  return {
+    ok: true,
+    hash,
+    text: input.text,
+    normalizedText,
+    files: sortedFiles,
+    externalLinks: [...externalLinks].sort()
+  };
+}
+
+function sortFileKeys(files: Record<string, string>): Record<string, string> {
+  const sorted: Record<string, string> = {};
+  for (const key of Object.keys(files).sort()) {
+    sorted[key] = files[key];
+  }
+  return sorted;
+}
+
+async function classifyReference(
+  rawTarget: string,
+  input: FingerprintInput
+): Promise<Classification> {
+  const target = rawTarget.trim();
+  const normalized = normalizeReferenceTarget(rawTarget);
+  if (normalized.kind === 'skip') {
+    return { kind: 'skip' };
+  }
+  if (normalized.kind === 'external') {
+    return { kind: 'external' };
+  }
+  if (normalized.kind === 'outside') {
     return {
       kind: 'error',
       failure: fail('outside-repo', `不能引用仓库外的路径：${target}。`)
     };
   }
 
-  const relative = path.posix.normalize(cleaned.replace(/^\.\//, ''));
+  const relative = normalized.relative;
   const absolute = path.resolve(input.projectDir, relative);
   if (!isInside(input.repoRoot, absolute)) {
     return {
