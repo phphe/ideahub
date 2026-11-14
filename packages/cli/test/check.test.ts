@@ -119,6 +119,28 @@ describe('runCheck', () => {
     expect(result.detail).toContain('o/r@main/proj');
   });
 
+  it('accepts collapsed, shortcut, srcset and poster references', async () => {
+    const block = [
+      '🔏![a][]',
+      '🔏![b]',
+      '🔏![c][p]',
+      '🔏<source srcset="./a.md 1x">',
+      '🔏<video poster="./a.md"></video>',
+      '',
+      '[a]: ./a.md',
+      '[b]: ./a.md',
+      '[c]: ./a.md',
+      '[p]: ./a.md'
+    ].join('\n');
+    const tag = await tagFor('proj', block);
+    const result = await check({
+      readme: proofFile(block),
+      releases: [{ tag_name: tag, published_at: '2026-11-01T02:00:00Z', immutable: true }]
+    });
+
+    expect(result.status).toBe('PASS');
+  });
+
   it('returns FAIL when an internal reference lacks the lock emoji', async () => {
     const result = await check({
       readme: proofFile('[doc](a.md)'),
