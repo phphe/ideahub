@@ -345,6 +345,7 @@ export default {
 - `proofFileVersion`：生成的证明文件 Front Matter 中 `version` 的值，**字符串**，默认 `"0"`。不读取插件版本号、不在代码里硬编码（见 7.8）。
 - `proofFileHeader`：生成的证明文件头部说明文案，**字符串**，默认空字符串。多行文案用**模板字符串**书写，不再用 `\n` 拼接，并按 Markdown 引用块书写（每行以 `> ` 开头，空行写成单独的 `>`）。生成时把其中所有 `<project-url>` 替换为该项目的真实远程地址；缺失、非字符串或空字符串时不写头部说明，并在构建期告警。统计信息列表每行也以 `> ` 开头，与头部说明保持同一个引用块；单独一行 `---` 分隔线保持在引用块之外（不加 `> `）。头部文案中**不得**包含独立的 `---` 行（引用块内的 `> ---` 不算），否则构建期直接失败，原因见 7.8 与 13.2。
 - `oauthClientId`：GitHub OAuth App 的 client id，**字符串**，默认空字符串。预留给 CLI 的 `ideahub login`（device flow）使用，扩展本身不使用该值；空字符串是**合法值**，不告警、不影响其他字段的解析。client id 是公开标识而非凭据；client secret 不得写入本文件，也不得注入构建产物。
+- 扩展与 CLI 是两个独立构建，但都读取**同一份** `packages/vscode-extension/config.mjs` 与该包内的 `.env`，并在各自构建期把 `oauthClientId` 注入产物；因此只需填写一处，两边同时生效，运行时不再读取环境变量。
 - 读取优先级：`.env`（`IDEAHUB_RELEASE_BRANCH`、`IDEAHUB_PROOF_FILE_VERSION`、`IDEAHUB_PROOF_FILE_HEADER`、`IDEAHUB_OAUTH_CLIENT_ID`，本地临时覆盖用；已在 `.gitignore` / `.vscodeignore`，不提交、不打包进 vsix）> `config.mjs` 的 `default` 导出 > 内置默认（`main` / `"0"` / 空 / 空）。
 - 该文件在**构建期**由构建脚本用动态 `import()` 加载，取 `default` 导出，再通过 esbuild `define` 把解析结果注入为常量。构建产物中只有最终值，不包含配置文件；运行时**不会**从用户机器读取 `.env` 或任何外部配置文件。
 - 逐字段校验并在构建期告警回落：模块加载抛错、`default` 缺失或不是对象、字段缺失、字段类型不对、字段为空，都视为该字段非法，分别回落到该字段的默认值；构建继续，扩展也不能崩溃。唯一例外是 `oauthClientId`：空字符串是合法值，不告警。
