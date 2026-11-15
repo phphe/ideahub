@@ -47,17 +47,17 @@ export async function runLogin(
     return {
       code: 2,
       messages: [
-        '未配置 OAuth client id，且当前不是交互式终端。请使用 `ideahub login --token <token>`。'
+        'No OAuth client id is configured and stdin is not an interactive terminal. Use `ideahub login --token <token>`.'
       ]
     };
   }
 
   const readline = createInterface({ input: process.stdin, output: process.stdout });
   try {
-    const answer = await readline.question('请粘贴 GitHub Personal Access Token：');
+    const answer = await readline.question('Paste a GitHub Personal Access Token: ');
     const token = answer.trim();
     if (token.length === 0) {
-      return { code: 2, messages: ['未输入 token。'] };
+      return { code: 2, messages: ['No token was entered.'] };
     }
     return finishLogin(token, fetchImpl);
   } finally {
@@ -80,19 +80,22 @@ function readTokenArgument(args: string[]): string | undefined {
 
 async function finishLogin(token: string, fetchImpl: typeof fetch): Promise<LoginResult> {
   if (!token) {
-    return { code: 2, messages: ['token 为空。'] };
+    return { code: 2, messages: ['The token is empty.'] };
   }
   try {
     const login = await new CliGitHub(token, fetchImpl).getAuthenticatedLogin();
     const file = await saveToken(token);
     return {
       code: 0,
-      messages: [`已登录 GitHub：${login}`, `凭据已保存到 ${file}（权限 0600，内容不回显）。`]
+      messages: [
+        `Logged in to GitHub as ${login}.`,
+        `Credentials saved to ${file} (mode 0600, contents never echoed).`
+      ]
     };
   } catch (error) {
     return {
       code: 2,
-      messages: [`登录失败：${error instanceof Error ? error.message : String(error)}`]
+      messages: [`Login failed: ${error instanceof Error ? error.message : String(error)}`]
     };
   }
 }
@@ -104,7 +107,7 @@ async function deviceFlowLogin(
 ): Promise<LoginResult> {
   // Live output: the flow waits for the user in a browser, so instructions and
   // progress must be printed before/while polling instead of after it returns.
-  report('正在向 GitHub 申请设备授权码…');
+  report('Requesting a GitHub device code…');
   let start: DeviceCodeResponse;
   try {
     start = await postForm<DeviceCodeResponse>(
@@ -115,19 +118,21 @@ async function deviceFlowLogin(
   } catch (error) {
     return {
       code: 2,
-      messages: [`无法发起 device flow：${describeNetworkError(error)}`]
+      messages: [`Could not start the device flow: ${describeNetworkError(error)}`]
     };
   }
 
   if (!start.device_code || !start.user_code || !start.verification_uri) {
     return {
       code: 2,
-      messages: [`无法发起 device flow：${start.error_description ?? start.error ?? '响应缺少字段'}`]
+      messages: [`Could not start the device flow: ${start.error_description ?? start.error ?? 'response is missing fields'}`]
     };
   }
 
-  report(`请在浏览器打开 ${start.verification_uri}，输入代码 ${start.user_code} 完成授权。`);
-  report('等待授权中…（按 Ctrl+C 可取消）');
+  report(
+    `Open ${start.verification_uri} in a browser and enter the code ${start.user_code} to authorize.`
+  );
+  report('Waiting for authorization… (press Ctrl+C to cancel)');
   const intervalMs = Math.max(1, start.interval ?? 5) * 1000;
   const deadline = Date.now() + Math.max(60, start.expires_in ?? 900) * 1000;
 
@@ -147,7 +152,7 @@ async function deviceFlowLogin(
     } catch (error) {
       return {
         code: 2,
-        messages: [`轮询授权状态失败：${describeNetworkError(error)}`]
+        messages: [`Failed to poll the authorization status: ${describeNetworkError(error)}`]
       };
     }
 
@@ -159,7 +164,7 @@ async function deviceFlowLogin(
       continue;
     }
     if (poll.error) {
-      return { code: 2, messages: [`授权失败：${poll.error_description ?? poll.error}`] };
+      return { code: 2, messages: [`Authorization failed: ${poll.error_description ?? poll.error}`] };
     }
 
     const token = (poll as DeviceCodeResponse & { access_token?: string }).access_token;
@@ -169,7 +174,7 @@ async function deviceFlowLogin(
     break;
   }
 
-  return { code: 2, messages: ['授权超时，请重新执行 ideahub login。'] };
+  return { code: 2, messages: ['Authorization timed out; run `ideahub login` again.'] };
 }
 
 /** Section 13.6: never leave the user staring at a silent terminal. */
@@ -178,7 +183,7 @@ function describeNetworkError(error: unknown): string {
     error instanceof Error &&
     (error.name === 'TimeoutError' || error.name === 'AbortError')
   ) {
-    return '请求 GitHub 超时（15 秒）。若当前网络无法访问 github.com，请改用 `ideahub login --token <token>`。';
+    return 'The request to GitHub timed out after 15 seconds. If github.com is unreachable from this network, use `ideahub login --token <token>` instead.';
   }
   return error instanceof Error ? error.message : String(error);
 }

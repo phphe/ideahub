@@ -52,7 +52,7 @@ export function parseProofFile(text: string): ParsedProofFile {
   let version: string | null = null;
   let searchFrom = 0;
   if (!frontMatter) {
-    problems.push({ severity: 'FAIL', message: '证明文件缺少 front matter。' });
+    problems.push({ severity: 'FAIL', message: 'The proof file has no front matter.' });
   } else {
     searchFrom = frontMatter.endLine + 1;
     for (let index = frontMatter.startLine + 1; index < frontMatter.endLine; index += 1) {
@@ -63,7 +63,7 @@ export function parseProofFile(text: string): ParsedProofFile {
       }
     }
     if (version === null) {
-      problems.push({ severity: 'FAIL', message: '证明文件的 front matter 缺少 version。' });
+      problems.push({ severity: 'FAIL', message: 'The proof file front matter has no version.' });
     }
   }
 
@@ -75,7 +75,7 @@ export function parseProofFile(text: string): ParsedProofFile {
       if (!match) {
         problems.push({
           severity: 'FAIL',
-          message: `证明标记语法不合规（第 ${index + 1} 行）：${line}`
+          message: `Invalid proof marker syntax (line ${index + 1}): ${line}`
         });
         continue;
       }
@@ -84,7 +84,7 @@ export function parseProofFile(text: string): ParsedProofFile {
   }
 
   if (markers.length === 0) {
-    problems.push({ severity: 'FAIL', message: '证明文件不包含任何证明块（空证明）。' });
+    problems.push({ severity: 'FAIL', message: 'The proof file contains no proof blocks (empty proof).' });
     return { version, blocks: [], problems };
   }
 
@@ -98,14 +98,14 @@ export function parseProofFile(text: string): ParsedProofFile {
   if (separatorIndex < 0) {
     problems.push({
       severity: 'FAIL',
-      message: '未找到分隔头部与证明块的独立 --- 行。'
+      message: 'Could not find the standalone --- line separating the header from the proof blocks.'
     });
   } else {
     for (let index = separatorIndex + 1; index < markers[0].index; index += 1) {
       if (lines[index].trim().length > 0) {
         problems.push({
           severity: 'FAIL',
-          message: `分隔线与第一个证明标记之间存在多余内容（第 ${index + 1} 行）。`
+          message: `Unexpected content between the separator and the first proof marker (line ${index + 1}).`
         });
         break;
       }

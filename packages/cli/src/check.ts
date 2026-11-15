@@ -41,7 +41,9 @@ export async function runCheck(options: CheckOptions): Promise<CheckResult> {
     if (!repository) {
       return {
         status: 'ERROR',
-        messages: [`仓库不存在或为私有仓库：${owner}/${repo}。如为私有仓库，请先执行 ideahub login。`]
+        messages: [
+          `Repository not found or private: ${owner}/${repo}. If it is private, run \`ideahub login\` first.`
+        ]
       };
     }
 
@@ -51,7 +53,7 @@ export async function runCheck(options: CheckOptions): Promise<CheckResult> {
       return {
         status: 'ERROR',
         messages: [
-          `无法从地址中确定分支：${segments.join('/')}。请确认地址中的分支已存在于远程仓库。`
+          `Cannot determine the branch from the URL: ${segments.join('/')}. Make sure that branch exists on the remote repository.`
         ]
       };
     }
@@ -64,7 +66,7 @@ export async function runCheck(options: CheckOptions): Promise<CheckResult> {
     if (readme === null) {
       return {
         status: 'ERROR',
-        messages: [`未找到证明文件：${location}/README.md`]
+        messages: [`Proof file not found: ${location}/README.md`]
       };
     }
 
@@ -77,21 +79,21 @@ export async function runCheck(options: CheckOptions): Promise<CheckResult> {
       return {
         status: 'ERROR',
         messages: [
-          `不认识的证明文件 version：${structure.version ?? '缺失'}（当前支持 ${PROOF_FILE_VERSION}）。`
+          `Unsupported proof file version: ${structure.version ?? 'missing'} (this build supports ${PROOF_FILE_VERSION}).`
         ]
       };
     }
 
     const headSha = await api.getBranchHeadSha(owner, repo, branch);
     if (!headSha) {
-      return { status: 'ERROR', messages: [`无法读取分支最新提交：${owner}/${repo}@${branch}`] };
+      return { status: 'ERROR', messages: [`Cannot read the branch head commit: ${owner}/${repo}@${branch}`] };
     }
 
     const tree = await api.getTreeRecursive(owner, repo, headSha);
     if (tree.truncated) {
       return {
         status: 'ERROR',
-        messages: ['仓库文件树过大，GitHub 返回 truncated: true，无法完整校验。']
+        messages: ['The repository tree is too large: GitHub returned truncated: true, so it cannot be verified completely.']
       };
     }
 
@@ -100,7 +102,7 @@ export async function runCheck(options: CheckOptions): Promise<CheckResult> {
       (entry) => entry.path === projectPath && entry.type === 'tree'
     );
     if (!folder) {
-      return { status: 'ERROR', messages: [`已发布内容中找不到项目目录：${location}`] };
+      return { status: 'ERROR', messages: [`Project directory not found in the published content: ${location}`] };
     }
 
     const byPath = new Map<string, TreeEntry>();
@@ -119,7 +121,7 @@ export async function runCheck(options: CheckOptions): Promise<CheckResult> {
       return {
         status: 'FAIL',
         messages: [
-          `项目使用 Git LFS（${lfs}），其中的文件无法纳入证明与校验范围。`
+          `This project uses Git LFS (${lfs}); its files cannot be covered by the proof or the check.`
         ]
       };
     }
@@ -138,14 +140,14 @@ export async function runCheck(options: CheckOptions): Promise<CheckResult> {
         return {
           ok: false,
           code: 'missing-file',
-          message: `引用的文件在已发布内容中不存在：${relative}`
+          message: `Referenced file does not exist in the published content: ${relative}`
         };
       }
       if (entry.type !== 'blob') {
         return {
           ok: false,
           code: 'directory',
-          message: `引用指向目录而不是文件：${relative}`
+          message: `The reference points to a directory, not a file: ${relative}`
         };
       }
       return { ok: true, blob: entry.sha };
@@ -155,7 +157,7 @@ export async function runCheck(options: CheckOptions): Promise<CheckResult> {
     for (const block of structure.blocks) {
       const problems = checkReservedChars(block.text);
       if (problems.length > 0) {
-        failures.push(...problems.map((problem) => `${block.timeText ?? '未知时间'}：${problem}`));
+        failures.push(...problems.map((problem) => `${block.timeText ?? 'unknown time'}: ${problem}`));
         continue;
       }
 
@@ -163,7 +165,7 @@ export async function runCheck(options: CheckOptions): Promise<CheckResult> {
       if (!marker) {
         return {
           status: 'ERROR',
-          messages: [`无法解析证明标记的时间：${block.timeText ?? '缺失'}`]
+          messages: [`Cannot parse the proof marker time: ${block.timeText ?? 'missing'}`]
         };
       }
 
@@ -173,25 +175,25 @@ export async function runCheck(options: CheckOptions): Promise<CheckResult> {
         resolveBlob
       });
       if (!fingerprint.ok) {
-        failures.push(`${block.timeText}：${fingerprint.message}`);
+        failures.push(`${block.timeText}: ${fingerprint.message}`);
         continue;
       }
 
       const tag = `ideahub-${fingerprint.hash}`;
       const release = releaseByTag.get(tag);
       if (!release) {
-        failures.push(`${block.timeText}：远程不存在对应 tag 的不可变 Release（${tag}）。`);
+        failures.push(`${block.timeText}: no immutable Release with this tag exists on the remote (${tag}).`);
         continue;
       }
       if (release.immutable === false) {
-        failures.push(`${block.timeText}：对应的 Release 不是不可变 Release。`);
+        failures.push(`${block.timeText}: the matching Release is not immutable.`);
         continue;
       }
       if (release.immutable !== true) {
         return {
           status: 'ERROR',
           messages: [
-            `${block.timeText}：Release 未返回 immutable 字段，无法确认其不可变性。`
+            `${block.timeText}: the Release did not return the immutable field, so its immutability cannot be confirmed.`
           ]
         };
       }
@@ -200,12 +202,12 @@ export async function runCheck(options: CheckOptions): Promise<CheckResult> {
       if (Number.isNaN(published)) {
         return {
           status: 'ERROR',
-          messages: [`${block.timeText}：Release 缺少可用的发布时间（published_at）。`]
+          messages: [`${block.timeText}: the Release has no usable publish time (published_at).`]
         };
       }
       if (Math.abs(published - marker.instant.getTime()) > ONE_HOUR_MS) {
         failures.push(
-          `${block.timeText}：标记时间与 Release 发布时间相差超过 1 小时（发布：${release.publishedAt}）。`
+          `${block.timeText}: the marker time differs from the Release publish time by more than 1 hour (published: ${release.publishedAt}).`
         );
       }
     }
@@ -217,7 +219,7 @@ export async function runCheck(options: CheckOptions): Promise<CheckResult> {
     return {
       status: 'PASS',
       messages: [],
-      detail: `已校验 ${structure.blocks.length} 个证明块：${location}（commit ${headSha.slice(0, 7)}）`
+      detail: `Verified ${structure.blocks.length} proof block(s): ${location} (commit ${headSha.slice(0, 7)})`
     };
   } catch (error) {
     if (error instanceof RateLimitError) {
@@ -248,7 +250,7 @@ function checkReservedChars(text: string): string[] {
       // `slice` rather than a single `charAt`/index lookup.
       const prefix = text.slice(reference.index - RESERVED_CHAR.length, reference.index);
       if (prefix !== RESERVED_CHAR) {
-        problems.push(`项目内文件引用前缺少 ${RESERVED_CHAR}：${reference.target}`);
+        problems.push(`Missing ${RESERVED_CHAR} before a project-internal reference: ${reference.target}`);
       }
     }
   }
@@ -256,7 +258,7 @@ function checkReservedChars(text: string): string[] {
   let index = text.indexOf(RESERVED_CHAR);
   while (index >= 0) {
     if (!internalIndexes.has(index + RESERVED_CHAR.length)) {
-      problems.push(`${RESERVED_CHAR} 只允许出现在证明标记或项目内文件引用前。`);
+      problems.push(`${RESERVED_CHAR} may only appear before a proof marker or a project-internal reference.`);
       break;
     }
     index = text.indexOf(RESERVED_CHAR, index + RESERVED_CHAR.length);

@@ -75,7 +75,7 @@ export class CliGitHub {
       response = await this.fetchImpl(url, { method: 'GET', headers: this.headers() });
     } catch (error) {
       throw new ApiError(
-        `无法连接 GitHub API：${error instanceof Error ? error.message : String(error)}`,
+        `Cannot reach the GitHub API: ${error instanceof Error ? error.message : String(error)}`,
         0
       );
     }
@@ -84,21 +84,21 @@ export class CliGitHub {
       return null;
     }
     if (response.status === 401) {
-      throw new ApiError('GitHub 认证失败，请重新执行 ideahub login。', 401);
+      throw new ApiError('GitHub authentication failed; run `ideahub login` again.', 401);
     }
     if (response.status === 403 || response.status === 429) {
       const remaining = response.headers.get('x-ratelimit-remaining');
       const retryAfter = response.headers.get('retry-after') ?? undefined;
       if (response.status === 429 || remaining === '0' || retryAfter) {
         throw new RateLimitError(
-          'GitHub API 请求额度已用尽。可执行 ideahub login 后重试（登录后为 5000 次/小时）。',
+          'The GitHub API rate limit is exhausted. Run `ideahub login` and retry (5000 requests per hour when signed in).',
           retryAfter
         );
       }
-      throw new ApiError('GitHub 拒绝访问（HTTP 403）。', 403);
+      throw new ApiError('GitHub denied the request (HTTP 403).', 403);
     }
     if (!response.ok) {
-      throw new ApiError(`GitHub API 请求失败（HTTP ${response.status}）。`, response.status);
+      throw new ApiError(`GitHub API request failed (HTTP ${response.status}).`, response.status);
     }
     return (await response.json()) as T;
   }
@@ -214,7 +214,7 @@ export class CliGitHub {
       });
     } catch (error) {
       throw new ApiError(
-        `无法读取远程文件：${error instanceof Error ? error.message : String(error)}`,
+        `Cannot read the remote file: ${error instanceof Error ? error.message : String(error)}`,
         0
       );
     }
@@ -222,7 +222,7 @@ export class CliGitHub {
       return null;
     }
     if (!response.ok) {
-      throw new ApiError(`读取远程文件失败（HTTP ${response.status}）。`, response.status);
+      throw new ApiError(`Failed to read the remote file (HTTP ${response.status}).`, response.status);
     }
     return response.text();
   }

@@ -12,11 +12,11 @@ export const green = (text: string): string => paint(32, text);
 export const red = (text: string): string => paint(31, text);
 
 const USAGE = [
-  '用法：',
-  '  ideahub check <项目网址>   校验证明文件（PASS=0 / FAIL=1 / 执行错误=2）',
+  'Usage:',
+  '  ideahub check <project-url>   verify the proof file (PASS=0 / FAIL=1 / execution error=2)',
   '  ideahub login [--token <token>]',
   '',
-  '项目网址只接受：',
+  'Accepted project URLs:',
   '  https://github.com/<owner>/<repo>/tree/<branch>/<path...>',
   '  https://github.com/<owner>/<repo>/tree/<branch>/<path...>/README.md'
 ].join('\n');
@@ -46,7 +46,7 @@ export async function main(argv: string[]): Promise<number> {
 async function runCheckCommand(args: string[]): Promise<number> {
   const input = args.find((arg) => !arg.startsWith('-'));
   if (!input) {
-    console.error('缺少项目网址。');
+    console.error('Missing project URL.');
     console.error(USAGE);
     return 2;
   }
@@ -71,9 +71,11 @@ async function runCheckCommand(args: string[]): Promise<number> {
   }
 
   if (token === null) {
-    console.error('当前为匿名访问（60 次/小时）。可执行 ideahub login 提升到 5000 次/小时。');
+    console.error(
+      'Using anonymous access (60 requests per hour). Run `ideahub login` to raise the limit to 5000.'
+    );
   } else {
-    console.error(`当前使用 ${source} 提供的 token。`);
+    console.error(`Using a token from ${source}.`);
   }
   return 2;
 }
