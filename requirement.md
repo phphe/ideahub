@@ -345,7 +345,9 @@ export default {
 - `proofFileVersion`：生成的证明文件 Front Matter 中 `version` 的值，**字符串**，默认 `"0"`。不读取插件版本号、不在代码里硬编码（见 7.8）。
 - `proofFileHeader`：生成的证明文件头部说明文案，**字符串**，默认空字符串。多行文案用**模板字符串**书写，不再用 `\n` 拼接，并按 Markdown 引用块书写（每行以 `> ` 开头，空行写成单独的 `>`）。生成时把其中所有 `<project-url>` 替换为该项目的真实远程地址；缺失、非字符串或空字符串时不写头部说明，并在构建期告警。统计信息列表每行也以 `> ` 开头，与头部说明保持同一个引用块；单独一行 `---` 分隔线保持在引用块之外（不加 `> `）。头部文案中**不得**包含独立的 `---` 行（引用块内的 `> ---` 不算），否则构建期直接失败，原因见 7.8 与 13.2。
 - `oauthClientId`：GitHub OAuth App 的 client id，**字符串**，默认空字符串。预留给 CLI 的 `ideahub login`（device flow）使用，扩展本身不使用该值；空字符串是**合法值**，不告警、不影响其他字段的解析。client id 是公开标识而非凭据；client secret 不得写入本文件，也不得注入构建产物。
-- 扩展与 CLI 是两个独立构建，但都读取**同一份** `packages/vscode-extension/config.mjs` 与该包内的 `.env`，并在各自构建期把 `oauthClientId` 注入产物；因此只需填写一处，两边同时生效，运行时不再读取环境变量。
+- 两个包**各自持有**自己的开发者配置，互不引用：`packages/vscode-extension/config.mjs` 供扩展构建使用，`packages/cli/config.mjs` 供 CLI 构建使用；两者各自同级放置 `.env`（默认为空文件），读取优先级均为 `.env` > 本包 `config.mjs` > 默认，并在各自构建期注入产物，运行时不再读取环境变量。
+- CLI 的 `config.mjs` 目前只包含 `oauthClientId` 一个字段（空值合法）；扩展的 `config.mjs` 保持 `releaseBranch` / `proofFileVersion` / `proofFileHeader` / `oauthClientId` 不变。
+- 两个包内的 `.env` 均被 git 忽略、不进入 VSIX；`config.mjs` 与 `.env` 都不进入任何构建产物（扩展 VSIX 与 CLI 的 `dist` 均不含）。
 - 读取优先级：`.env`（`IDEAHUB_RELEASE_BRANCH`、`IDEAHUB_PROOF_FILE_VERSION`、`IDEAHUB_PROOF_FILE_HEADER`、`IDEAHUB_OAUTH_CLIENT_ID`，本地临时覆盖用；已在 `.gitignore` / `.vscodeignore`，不提交、不打包进 vsix）> `config.mjs` 的 `default` 导出 > 内置默认（`main` / `"0"` / 空 / 空）。
 - 该文件在**构建期**由构建脚本用动态 `import()` 加载，取 `default` 导出，再通过 esbuild `define` 把解析结果注入为常量。构建产物中只有最终值，不包含配置文件；运行时**不会**从用户机器读取 `.env` 或任何外部配置文件。
 - 逐字段校验并在构建期告警回落：模块加载抛错、`default` 缺失或不是对象、字段缺失、字段类型不对、字段为空，都视为该字段非法，分别回落到该字段的默认值；构建继续，扩展也不能崩溃。唯一例外是 `oauthClientId`：空字符串是合法值，不告警。
@@ -943,7 +945,7 @@ https://github.com/<远程仓库用户>/<远程仓库名字>/tree/<远程仓库�
 - 模块加载抛错、`default` 缺失或不是对象、字段缺失、类型错误、空字符串或空值时，构建期告警并逐字段回落到默认值，构建不中断。
 - 证明文件 `version` 只来自上述配置，不读取插件版本号，也不在代码里硬编码。
 - `.env`、`.env.*`、`config.mjs` 不进入 vsix；构建产物中只有解析后的最终值。
-- 迁移到 monorepo 后，`config.mjs` 与 `.env` 的读取位置为扩展包 `packages/vscode-extension`（见 12.3），优先级与回落逻辑不变。
+- 迁移到 monorepo 后，扩展的 `config.mjs` 与 `.env` 读取位置为 `packages/vscode-extension`（见 12.3），CLI 的为 `packages/cli`，两边互不引用，优先级与回落逻辑一致。
 - 构建期额外校验 `proofFileHeader`：解析后的头部文案中若存在独立 `---` 行（`trim()` 后恰为 `---`；`> ---` 不算），构建直接失败并输出命中行号；该检查属于构建脚本，不产出运行时逻辑。
 
 ### 11.5 CLI
@@ -967,11 +969,11 @@ https://github.com/<远程仓库用户>/<远程仓库名字>/tree/<远程仓库�
 packages/
 ├── core/                 # @ideahub/core：纯逻辑库，不发布
 ├── vscode-extension/     # ideahub：VS Code 扩展（发布为 VSIX）
-└── cli/                  # @ideahub/cli：CLI 工具，本期只建占位目录（需求见第十三章）
+└── cli/                  # @ideahub/cli：CLI 工具（需求见第十三章）
 ```
 
 - `packages/core`、`packages/vscode-extension` 均 `private: true`，不发布到 npm。
-- `packages/cli` 只保留占位目录与说明文件，不包含可运行实现。
+- `packages/cli` 用 esbuild 打包为 `dist/index.js`，`private: true`，不发布到 npm；自带 `config.mjs` 与 `.env`，构建期注入 `oauthClientId`。
 
 ### 12.2 packages/core
 
@@ -1002,7 +1004,7 @@ packages/
 - 测试按包拆分：纯逻辑测试归 `packages/core/test`，依赖 VS Code/UI 的测试归 `packages/vscode-extension/test`；迁移后测试数量不得减少。
 - 迁移不改变任何现有功能行为和用户可见文案。
 - 根目录 `pnpm install`、`pnpm build`、`pnpm typecheck`、`pnpm lint`、`pnpm test`、`pnpm package` 全部通过；打包后的 VSIX 内容清单与迁移前一致（除路径外），且不含 `config.mjs`。
-- `.env` 只保留在扩展包内：根目录不保留 `.env`；`packages/vscode-extension/.env` 默认为空文件，用于存放本地敏感信息，被 `.gitignore` 忽略、也不进入 VSIX。构建读取的就是该位置的 `.env`（见 6.7）。
+- `.env` 不保留在仓库根目录：扩展包与 CLI 包各自持有 `.env`（默认为空文件），用于存放本地敏感信息，均被 `.gitignore` 忽略、也不进入各自产物（VSIX / `dist`）。构建读取的就是各包自己目录下的 `.env`（见 6.7）。
 
 ---
 
