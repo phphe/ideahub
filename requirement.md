@@ -950,7 +950,7 @@ https://github.com/<远程仓库用户>/<远程仓库名字>/tree/<远程仓库�
 
 ### 11.5 CLI
 
-- `ideahub check <项目网址>` 对合规证明输出 `PASS` 并以 0 退出；对确定不合规的证明输出 `FAIL` 并以 1 退出；执行错误（限流、网络、仓库不可访问等）不输出 `PASS`/`FAIL`，以 2 退出（见 13.1、13.6）。
+- `ideahub check <project-url>` 对合规证明输出 `PASS` 并以 0 退出；对确定不合规的证明输出 `FAIL` 并以 1 退出；执行错误（限流、网络、仓库不可访问等）不输出 `PASS`/`FAIL`，以 2 退出（见 13.1、13.6）。
 - `ideahub login` 成功后，`check` 的配额从匿名的 60 次/小时提升到 5000 次/小时。
 - CLI 与扩展对同一份证明文件的判定一致：结构、块指纹、不可变校验、时间窗口、`🔏` 规则均由 `@ideahub/core` 的同一套实现承担（见 13.4）。
 - 每个证明块只消耗一次列表请求的量级：整份文件固定为「README 1 次 + git tree 1 次 + releases 列表 1 次起」，不随块数线性增长（见 13.3）。
@@ -1013,8 +1013,9 @@ packages/
 ### 13.1 命令与退出码
 
 - 命令：
-  - `ideahub check <项目网址>`：校验一份已发布的证明文件；
+  - `ideahub check <project-url>`：校验一份已发布的证明文件；
   - `ideahub login`：登录 GitHub，用于提升 API 配额。
+- 所有面向用户的输出（用法、进度、结果说明、错误信息）一律使用**英文**，不中英混排；仅 `PASS` / `FAIL` 关键字与退出码保持不变。
 - 输出与退出码：
 
 | 结果 | 输出 | 退出码 |
@@ -1030,7 +1031,7 @@ packages/
 
 - 只接受上面两种地址；允许去掉结尾斜杠，允许携带查询串（如 `?tab=readme-ov-file`）与锚点，解析时丢弃。
 - 地址以 `/README.md` 结尾时，去掉该段后剩下的路径必须至少一段；去掉后为空（即仓库根 README）视为不合格。
-- 其余地址一律按“无法解析的地址 / 不符合要求的地址”报错并以 2 退出，**不做猜测性修正**。至少包括：`blob/` 地址、非 `github.com` 域名、非 `https`、缺少 owner / repo / `tree` / 分支 / 路径段、路径段中出现 `.` 或 `..`、`README.md` 之后还有路径。
+- 其余地址一律按“`Cannot parse or unsupported URL`”报错并以 2 退出，**不做猜测性修正**。至少包括：`blob/` 地址、非 `github.com` 域名、非 `https`、缺少 owner / repo / `tree` / 分支 / 路径段、路径段中出现 `.` 或 `..`、`README.md` 之后还有路径。
 - 分支解析：分支名可能含 `/`，只按 URL 的路径段与仓库分支列表做**最长前缀匹配**确定分支边界，剩余段即项目路径；匹配不到任何分支时以 2 退出，不使用 `default_branch` 兜底。
 - 证明文件：读取项目根目录的 `README.md`，可通过 `raw.githubusercontent.com` 或 `GET /repos/{owner}/{repo}/contents/...` 获取；优先 raw，避免占用 API 配额。
 - 文件 Blob SHA-1：用 `GET /repos/{owner}/{repo}/git/trees/<分支最新 commit 的树>?recursive=1` **一次**取整棵树，不采用“先根树、再子树”的两步方式；返回 `truncated: true` 时视为 ERROR（退出码 2），不得按缺少文件处理。
@@ -1063,7 +1064,7 @@ packages/
 - 无法插入 `🔏` 的形式（CSS `url(...)`、裸 `srcset`、`<iframe src>` 等）中出现项目内相对路径时，判定为不可证明并判 FAIL；证明阶段已按 7.7 拒绝此类项目。
 - 由于 `🔏` 属于参与哈希的文本，任何增删改都会使块指纹不一致；规则中的“引用前缺 `🔏`”主要用于“引用写法不在哈希覆盖范围”以及块内未被哈希覆盖的写法，CLI 必须按上述清单自行判定，不能只依赖指纹。
 - 路径规范化与匹配：反斜杠转正斜杠、百分号解码、收敛 `./` 与 `..`、Unicode 统一为 NFC；与远端 tree 比对时大小写不敏感（远端路径保持原样展示）。
-- 项目内 `.gitattributes` 含 `filter=lfs` 时，CLI 明确报告“项目使用 Git LFS，无法校验”并按 FAIL 处理（不可证明），不得退化为“找不到文件”的通用错误。
+- 项目内 `.gitattributes` 含 `filter=lfs` 时，CLI 明确报告“`This project uses Git LFS; its files cannot be covered by the proof or the check.`”并按 FAIL 处理（不可证明），不得退化为“找不到文件”的通用错误。
 
 ### 13.5 指纹一致性
 
