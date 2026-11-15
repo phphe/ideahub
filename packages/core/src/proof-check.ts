@@ -1,3 +1,5 @@
+import { translate, type Translator } from './i18n';
+
 export interface ProofCheckTarget {
   time: string | null;
   tag: string;
@@ -27,11 +29,16 @@ export function findMissingProofReleases<T extends ProofCheckTarget>(
 }
 
 export function describeMissingProofReleases(
-  missing: Array<{ time: string | null }>
+  missing: Array<{ time: string | null }>,
+  t: Translator = translate
 ): string {
-  const lines = missing.map((target) => `- ${target.time ?? '未知时间'}`);
+  const lines = missing.map(
+    (target) => `- ${target.time ?? t('Unknown time')}`
+  );
   return [
-    '发布已阻止：以下证明在远程仓库中不存在对应的不可变 Release：',
+    t(
+      'Publish blocked: the following proofs do not have a matching immutable Release in the remote repository:'
+    ),
     ...lines
   ].join('\n');
 }

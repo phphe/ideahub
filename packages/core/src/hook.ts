@@ -1,5 +1,6 @@
 import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
+import { translate, type Translator } from './i18n';
 
 export const HOOK_BLOCK_START = '# >>> ideahub pre-push guard >>>';
 export const HOOK_BLOCK_END = '# <<< ideahub pre-push guard <<<';
@@ -134,7 +135,8 @@ export async function readPrePushHook(root: string): Promise<string | null> {
 
 export async function installPrePushHook(
   root: string,
-  target: HookTarget | null
+  target: HookTarget | null,
+  t: Translator = translate
 ): Promise<{ ok: true; path: string } | { ok: false; error: string }> {
   try {
     await fs.mkdir(hooksDir(root), { recursive: true });
@@ -148,7 +150,10 @@ export async function installPrePushHook(
   } catch (error) {
     return {
       ok: false,
-      error: `无法写入 pre-push hook：${error instanceof Error ? error.message : String(error)}`
+      error: t(
+        'Unable to write the pre-push hook: {0}',
+        error instanceof Error ? error.message : String(error)
+      )
     };
   }
 }

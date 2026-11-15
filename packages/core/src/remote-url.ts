@@ -1,3 +1,5 @@
+import { translate, type Translator } from './i18n';
+
 export interface ParsedRemoteUrl {
   owner: string;
   repo: string;
@@ -25,10 +27,13 @@ const SSH_URL_PATTERN = new RegExp(
 );
 const SCP_PATTERN = new RegExp(`^git@github\\.com:${OWNER_REPO}/${OWNER_REPO}$`, 'i');
 
-export function parseRemoteUrl(input: string): ParseRemoteUrlResult {
+export function parseRemoteUrl(
+  input: string,
+  t: Translator = translate
+): ParseRemoteUrlResult {
   const raw = input.trim();
   if (raw.length === 0) {
-    return { ok: false, error: '请填写远程创意仓库地址。' };
+    return { ok: false, error: t('Enter the remote idea repository URL.') };
   }
 
   let owner: string | undefined;
@@ -46,13 +51,14 @@ export function parseRemoteUrl(input: string): ParseRemoteUrlResult {
   if (!owner || !repo) {
     return {
       ok: false,
-      error:
-        '地址格式无效。请使用 GitHub HTTPS 地址（https://github.com/owner/repo）或 SSH 地址（git@github.com:owner/repo.git）。'
+      error: t(
+        'Invalid URL. Use a GitHub HTTPS URL (https://github.com/owner/repo) or SSH URL (git@github.com:owner/repo.git).'
+      )
     };
   }
 
   if (repo.length === 0 || repo === '.' || repo === '..') {
-    return { ok: false, error: '地址中的仓库名无效。' };
+    return { ok: false, error: t('The repository name in the URL is invalid.') };
   }
 
   return {

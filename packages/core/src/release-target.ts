@@ -1,4 +1,5 @@
 import { runGit } from './git';
+import { translate, type Translator } from './i18n';
 
 const MAX_REF_LENGTH = 120;
 const INVALID_REF_CHARS = new Set([' ', '~', '^', ':', '?', '*', '[', '\\']);
@@ -54,57 +55,66 @@ function findRefProblem(name: string): RefProblem | null {
   return null;
 }
 
-function tagMessage(problem: RefProblem): string {
+function tagMessage(problem: RefProblem, t: Translator): string {
   switch (problem) {
     case 'empty':
-      return '生成的 tag 为空，无法创建 Release。';
+      return t('The generated tag is empty and cannot be used to create a Release.');
     case 'too-long':
-      return `生成的 tag 超过 ${MAX_REF_LENGTH} 个字符，无法创建 Release。`;
+      return t(
+        'The generated tag exceeds {0} characters and cannot be used to create a Release.',
+        MAX_REF_LENGTH
+      );
     case 'invalid-char':
-      return '生成的 tag 含 Git 不允许的字符（空格、~ ^ : ? * [ \\ 或控制字符）。';
+      return t(
+        'The generated tag contains characters Git does not allow (space, ~ ^ : ? * [ \\ or control characters).'
+      );
     case 'leading':
-      return '生成的 tag 不能以 "." 或 "/" 开头。';
+      return t('The generated tag cannot start with "." or "/".');
     case 'trailing':
-      return '生成的 tag 不能以 "." 或 "/" 结尾。';
+      return t('The generated tag cannot end with "." or "/".');
     case 'leading-dash':
-      return '生成的 tag 不能以 "-" 开头或命名为 "HEAD"。';
+      return t('The generated tag cannot start with "-" or be named "HEAD".');
     case 'dot-dot':
-      return '生成的 tag 不能包含连续的 ".."。';
+      return t('The generated tag cannot contain consecutive "..".');
     case 'at-brace':
-      return '生成的 tag 不能包含 "@{"。';
+      return t('The generated tag cannot contain "@{".');
     case 'double-slash':
-      return '生成的 tag 不能包含连续的斜杠。';
+      return t('The generated tag cannot contain consecutive slashes.');
     case 'lock':
-      return '生成的 tag 分段不能以 ".lock" 结尾。';
+      return t('The generated tag segments cannot end with ".lock".');
     default:
-      return '生成的 tag 不合法，无法创建 Release。';
+      return t('The generated tag is invalid and cannot be used to create a Release.');
   }
 }
 
-function branchMessage(problem: RefProblem): string {
+function branchMessage(problem: RefProblem, t: Translator): string {
   switch (problem) {
     case 'empty':
-      return 'release 分支名为空，请检查扩展的开发者配置或使用默认值 main。';
+      return t(
+        'The release branch name is empty. Check the extension developer configuration or use the default "main".'
+      );
     case 'too-long':
-      return `release 分支名超过 ${MAX_REF_LENGTH} 个字符。`;
+      return t('The release branch name exceeds {0} characters.', MAX_REF_LENGTH);
     case 'invalid-char':
-      return 'release 分支名含 Git 不允许的字符（空格、~ ^ : ? * [ \\ 或控制字符）。';
+      return t(
+        'The release branch name contains characters Git does not allow (space, ~ ^ : ? * [ \\ or control characters).'
+      );
     case 'leading':
-      return 'release 分支名不能以 "." 或 "/" 开头。';
+      return t('The release branch name cannot start with "." or "/".');
     case 'trailing':
-      return 'release 分支名不能以 "." 或 "/" 结尾。';
+      return t('The release branch name cannot end with "." or "/".');
     case 'leading-dash':
-      return 'release 分支名不能以 "-" 开头或命名为 "HEAD"。';
+      return t('The release branch name cannot start with "-" or be named "HEAD".');
     case 'dot-dot':
-      return 'release 分支名不能包含连续的 ".."。';
+      return t('The release branch name cannot contain consecutive "..".');
     case 'at-brace':
-      return 'release 分支名不能包含 "@{"。';
+      return t('The release branch name cannot contain "@{".');
     case 'double-slash':
-      return 'release 分支名不能包含连续的斜杠。';
+      return t('The release branch name cannot contain consecutive slashes.');
     case 'lock':
-      return 'release 分支名分段不能以 ".lock" 结尾。';
+      return t('The release branch name segments cannot end with ".lock".');
     default:
-      return 'release 分支名不合法。';
+      return t('The release branch name is invalid.');
   }
 }
 
@@ -112,17 +122,20 @@ function branchMessage(problem: RefProblem): string {
  * Validates a bare tag name against Git's ref rules for `refs/tags/<tag>`
  * (the same checks as `git check-ref-format "refs/tags/<tag>"`).
  */
-export function validateTagName(tag: string): string | null {
+export function validateTagName(tag: string, t: Translator = translate): string | null {
   const problem = findRefProblem(tag);
-  return problem ? tagMessage(problem) : null;
+  return problem ? tagMessage(problem, t) : null;
 }
 
 /**
  * Validates a bare branch name against Git's ref rules for `refs/heads/<branch>`.
  */
-export function validateBranchName(branch: string): string | null {
+export function validateBranchName(
+  branch: string,
+  t: Translator = translate
+): string | null {
   const problem = findRefProblem(branch);
-  return problem ? branchMessage(problem) : null;
+  return problem ? branchMessage(problem, t) : null;
 }
 
 export interface ReleaseTagResult {
@@ -163,16 +176,17 @@ export function parseLsRemoteRef(stdout: string, ref: string): string | null {
 export async function lookupRemoteBranch(
   root: string,
   url: string,
-  branch: string
+  branch: string,
+  t: Translator = translate
 ): Promise<BranchLookup> {
   const ref = `refs/heads/${branch}`;
   const result = await runGit(root, ['ls-remote', url, ref], { timeoutMs: 60_000 });
   if (result.code !== 0) {
-    const detail = result.stderr.trim() || result.stdout.trim() || `exit ${result.code}`;
+    const detail = result.stderr.trim() || result.stdout.trim() || t('exit code {0}', result.code);
     return {
       ok: false,
       missing: false,
-      error: `无法读取远程 release 分支（git ls-remote 失败）：${detail}`
+      error: t('Unable to read the remote release branch (git ls-remote failed): {0}', detail)
     };
   }
   const sha = parseLsRemoteRef(result.stdout, ref);
@@ -180,7 +194,7 @@ export async function lookupRemoteBranch(
     return {
       ok: false,
       missing: true,
-      error: `release 分支不存在：${branch}（${ref}）。`
+      error: t('The release branch does not exist: {0} ({1}).', branch, ref)
     };
   }
   return { ok: true, sha };
@@ -210,9 +224,10 @@ export async function resolveReleaseTarget(
   deps: ReleaseTargetDeps,
   owner: string,
   repo: string,
-  branch: string
+  branch: string,
+  t: Translator = translate
 ): Promise<ReleaseTargetResult> {
-  const branchError = validateBranchName(branch);
+  const branchError = validateBranchName(branch, t);
   if (branchError) {
     return { ok: false, error: branchError };
   }
@@ -250,9 +265,10 @@ export async function ensureReleaseTarget(
   deps: EnsureReleaseTargetDeps,
   owner: string,
   repo: string,
-  branch: string
+  branch: string,
+  t: Translator = translate
 ): Promise<ReleaseTargetResult> {
-  const branchError = validateBranchName(branch);
+  const branchError = validateBranchName(branch, t);
   if (branchError) {
     return { ok: false, error: branchError };
   }
@@ -277,7 +293,11 @@ export async function ensureReleaseTarget(
   if (!created.ok) {
     return {
       ok: false,
-      error: `远程不存在 release 分支 ${branch}，自动创建失败：${created.error}`
+      error: t(
+        'The remote release branch {0} does not exist, and automatic creation failed: {1}',
+        branch,
+        created.error
+      )
     };
   }
 
@@ -285,7 +305,11 @@ export async function ensureReleaseTarget(
   if (!lookup.ok) {
     return {
       ok: false,
-      error: `release 分支 ${branch} 已自动创建，但读取最新 commit 失败：${lookup.error}`
+      error: t(
+        'The release branch {0} was created automatically, but reading its latest commit failed: {1}',
+        branch,
+        lookup.error
+      )
     };
   }
 

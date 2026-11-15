@@ -1,5 +1,6 @@
 import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
+import { translate, type Translator } from './i18n';
 
 export const IDEAS_FILE = 'ideas.md';
 
@@ -48,27 +49,28 @@ export async function listProjects(root: string): Promise<string[]> {
 export function validateProjectName(
   name: string,
   existingProjects: string[] = [],
-  remoteProjects: string[] = []
+  remoteProjects: string[] = [],
+  t: Translator = translate
 ): string | null {
   if (name.length === 0) {
-    return '项目名称不能为空。';
+    return t('Project name cannot be empty.');
   }
   if (name === '.' || name === '..') {
-    return '项目名称不能是 "." 或 ".."。';
+    return t('Project name cannot be "." or "..".');
   }
   if (name.startsWith('.')) {
-    return '项目名称不能以点开头。';
+    return t('Project name cannot start with a dot.');
   }
   if (/[\\/]/.test(name)) {
-    return '项目名称不能包含路径分隔符。';
+    return t('Project name cannot contain a path separator.');
   }
   if (/[<>:"|?*]/.test(name)) {
-    return '项目名称不能包含 Windows 不允许的字符（<>:"|?*）。';
+    return t('Project name cannot contain characters Windows does not allow (<>:"|?*).');
   }
   for (const char of name) {
     const code = char.codePointAt(0) ?? 0;
     if (code < 0x20 || code === 0x7f) {
-      return '项目名称不能包含控制字符。';
+      return t('Project name cannot contain control characters.');
     }
   }
   const lower = name.toLowerCase();
@@ -76,7 +78,7 @@ export function validateProjectName(
     existingProjects.some((entry) => entry.toLowerCase() === lower) ||
     remoteProjects.some((entry) => entry.toLowerCase() === lower)
   ) {
-    return '已存在同名项目或远程仓库同名目录。';
+    return t('A project or remote directory with the same name already exists.');
   }
   return null;
 }
@@ -87,16 +89,17 @@ export function validateProjectName(
 export async function createProject(
   root: string,
   name: string,
-  remoteProjects: string[] = []
+  remoteProjects: string[] = [],
+  t: Translator = translate
 ): Promise<CreateProjectResult> {
   let existingProjects: string[];
   try {
     existingProjects = await listProjects(root);
   } catch (error) {
-    return { ok: false, error: `无法读取项目列表：${describeError(error)}` };
+    return { ok: false, error: t('Unable to read the project list: {0}', describeError(error)) };
   }
 
-  const invalid = validateProjectName(name, existingProjects, remoteProjects);
+  const invalid = validateProjectName(name, existingProjects, remoteProjects, t);
   if (invalid) {
     return { ok: false, error: invalid };
   }
@@ -108,10 +111,15 @@ export async function createProject(
     if ((error as NodeJS.ErrnoException).code === 'EEXIST') {
       return {
         ok: false,
-        error: '已存在同名文件夹，已停止创建（不会覆盖任何内容）。'
+        error: t(
+          'A folder with the same name already exists. Creation stopped without overwriting anything.'
+        )
       };
     }
-    return { ok: false, error: `无法创建项目文件夹：${describeError(error)}` };
+    return {
+      ok: false,
+      error: t('Unable to create the project folder: {0}', describeError(error))
+    };
   }
 
   const ideasPath = path.join(projectPath, IDEAS_FILE);
@@ -124,7 +132,10 @@ export async function createProject(
     } catch {
       // Best effort cleanup; the error below still reports the failure.
     }
-    return { ok: false, error: `无法创建 ideas.md：${describeError(error)}` };
+    return {
+      ok: false,
+      error: t('Unable to create ideas.md: {0}', describeError(error))
+    };
   }
 
   return { ok: true, projectPath, ideasPath, content };

@@ -1,5 +1,6 @@
 import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
+import { translate, type Translator } from './i18n';
 import { parseRemoteUrl } from './remote-url';
 
 export interface RemoteConfig {
@@ -35,29 +36,41 @@ export function remoteRepoPath(root: string): string {
   return path.join(root, '.ideahub', 'remote');
 }
 
-export async function readConfig(root: string): Promise<ReadConfigResult> {
+export async function readConfig(
+  root: string,
+  t: Translator = translate
+): Promise<ReadConfigResult> {
   let raw: string;
   try {
     raw = await fs.readFile(configPath(root), 'utf8');
   } catch (error) {
     if (isNotFound(error)) {
-      return { ok: false, error: '缺少 .ideahub/config.json 配置文件。' };
+      return { ok: false, error: t('The .ideahub/config.json configuration file is missing.') };
     }
-    return { ok: false, error: `无法读取 .ideahub/config.json：${describeError(error)}` };
+    return {
+      ok: false,
+      error: t('Unable to read .ideahub/config.json: {0}', describeError(error))
+    };
   }
 
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
   } catch {
-    return { ok: false, error: '.ideahub/config.json 不是有效的 JSON，请修正或重新填写。' };
+    return {
+      ok: false,
+      error: t('.ideahub/config.json is not valid JSON. Fix it or fill it in again.')
+    };
   }
 
   if (!isObject(parsed)) {
-    return { ok: false, error: '.ideahub/config.json 顶层必须是对象。' };
+    return { ok: false, error: t('The top level of .ideahub/config.json must be an object.') };
   }
   if (parsed.version !== 1) {
-    return { ok: false, error: '不支持的 config.json 版本（应为 version: 1）。' };
+    return {
+      ok: false,
+      error: t('Unsupported config.json version (expected version: 1).')
+    };
   }
 
   const remote = parsed.remote;
@@ -65,7 +78,7 @@ export async function readConfig(root: string): Promise<ReadConfigResult> {
     return { ok: true, config: { version: 1 } };
   }
   if (!isObject(remote)) {
-    return { ok: false, error: 'config.json 中的 remote 字段必须是对象。' };
+    return { ok: false, error: t('The remote field in config.json must be an object.') };
   }
 
   const owner = typeof remote.owner === 'string' ? remote.owner.trim() : '';
@@ -76,24 +89,27 @@ export async function readConfig(root: string): Promise<ReadConfigResult> {
   if (!owner || !repo || !url) {
     return {
       ok: false,
-      error: 'config.json 的 remote 字段缺少 owner、repo 或 url。'
+      error: t('The remote field in config.json is missing owner, repo, or url.')
     };
   }
-  const parsedUrl = parseRemoteUrl(url);
+  const parsedUrl = parseRemoteUrl(url, t);
   if (!parsedUrl.ok) {
-    return { ok: false, error: `config.json 中的远程地址无效：${parsedUrl.error}` };
+    return {
+      ok: false,
+      error: t('Invalid remote URL in config.json: {0}', parsedUrl.error)
+    };
   }
   if (
     parsedUrl.value.owner.toLowerCase() !== owner.toLowerCase() ||
     parsedUrl.value.repo.toLowerCase() !== repo.toLowerCase()
   ) {
-    return { ok: false, error: 'config.json 中 owner/repo 与 url 不一致。' };
+    return { ok: false, error: t('owner/repo in config.json does not match url.') };
   }
   if (!branch) {
-    return { ok: false, error: 'config.json 的 remote 字段缺少 branch。' };
+    return { ok: false, error: t('The remote field in config.json is missing branch.') };
   }
   if (remote.provider !== undefined && remote.provider !== 'github') {
-    return { ok: false, error: 'config.json 仅支持 provider: "github"。' };
+    return { ok: false, error: t('config.json only supports provider: "github".') };
   }
 
   return {

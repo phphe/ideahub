@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
 import { runGit } from './git';
+import { translate, type Translator } from './i18n';
 
 /** Section 7.3: reserved character inserted by the extension, never by users. */
 export const RESERVED_CHAR = '🔏';
@@ -47,6 +48,7 @@ export interface FingerprintInput {
   text: string;
   projectDir: string;
   repoRoot: string;
+  t?: Translator;
 }
 
 /**
@@ -88,10 +90,14 @@ export function buildFingerprint(input: FingerprintInput): Promise<FingerprintRe
 }
 
 async function fingerprint(input: FingerprintInput): Promise<FingerprintResult> {
+  const t = input.t ?? translate;
   if (input.text.includes(RESERVED_CHAR)) {
     return fail(
       'reserved-char',
-      `原文包含保留字符 ${RESERVED_CHAR}，无法生成证明。请删除该字符后重试。`
+      t(
+        'The text contains the reserved character {0} and cannot be fingerprinted. Remove it and retry.',
+        RESERVED_CHAR
+      )
     );
   }
 
@@ -115,7 +121,10 @@ async function fingerprint(input: FingerprintInput): Promise<FingerprintResult> 
       if (reference.isImage) {
         return fail(
           'external-image',
-          `不支持外部图片：${reference.target}。请改为项目内的相对路径图片。`
+          t(
+            'External images are not supported: {0}. Use an image path relative to the project instead.',
+            reference.target
+          )
         );
       }
       externalLinks.add(reference.target);
@@ -388,6 +397,7 @@ export interface FingerprintWithResolverInput {
   /** Final text as stored in the proof file; `🔏` is already present. */
   text: string;
   resolveBlob: BlobResolver;
+  t?: Translator;
 }
 
 /**
@@ -398,6 +408,7 @@ export interface FingerprintWithResolverInput {
 export async function computeFingerprintWith(
   input: FingerprintWithResolverInput
 ): Promise<FingerprintResult> {
+  const t = input.t ?? translate;
   const references = scanReferences(input.text);
   const files: Record<string, string> = {};
   const externalLinks = new Set<string>();
@@ -411,17 +422,26 @@ export async function computeFingerprintWith(
       if (reference.isImage) {
         return fail(
           'external-image',
-          `不支持外部图片：${reference.target}。请改为项目内的相对路径图片。`
+          t(
+            'External images are not supported: {0}. Use an image path relative to the project instead.',
+            reference.target
+          )
         );
       }
       externalLinks.add(reference.target);
       continue;
     }
     if (normalized.kind === 'outside') {
-      return fail('outside-repo', `不能引用仓库外的路径：${reference.target}。`);
+      return fail(
+        'outside-repo',
+        t('Cannot reference a path outside the repository: {0}.', reference.target)
+      );
     }
     if (normalized.relative === '..' || normalized.relative.startsWith('../')) {
-      return fail('outside-project', `不能引用项目外文件：${reference.target}。`);
+      return fail(
+        'outside-project',
+        t('Cannot reference a file outside the project: {0}.', reference.target)
+      );
     }
     const resolved = await input.resolveBlob(normalized.relative);
     if (!resolved.ok) {
@@ -458,6 +478,7 @@ async function classifyReference(
   rawTarget: string,
   input: FingerprintInput
 ): Promise<Classification> {
+  const t = input.t ?? translate;
   const target = rawTarget.trim();
   const normalized = normalizeReferenceTarget(rawTarget);
   if (normalized.kind === 'skip') {
@@ -469,7 +490,10 @@ async function classifyReference(
   if (normalized.kind === 'outside') {
     return {
       kind: 'error',
-      failure: fail('outside-repo', `不能引用仓库外的路径：${target}。`)
+      failure: fail(
+        'outside-repo',
+        t('Cannot reference a path outside the repository: {0}.', target)
+      )
     };
   }
 
@@ -478,13 +502,19 @@ async function classifyReference(
   if (!isInside(input.repoRoot, absolute)) {
     return {
       kind: 'error',
-      failure: fail('outside-repo', `不能引用仓库外的路径：${target}。`)
+      failure: fail(
+        'outside-repo',
+        t('Cannot reference a path outside the repository: {0}.', target)
+      )
     };
   }
   if (!isInside(input.projectDir, absolute)) {
     return {
       kind: 'error',
-      failure: fail('outside-project', `不能引用项目外文件：${target}。`)
+      failure: fail(
+        'outside-project',
+        t('Cannot reference a file outside the project: {0}.', target)
+      )
     };
   }
 
@@ -494,13 +524,16 @@ async function classifyReference(
   } catch {
     return {
       kind: 'error',
-      failure: fail('missing-file', `引用的文件不存在：${target}。`)
+      failure: fail('missing-file', t('The referenced file does not exist: {0}.', target))
     };
   }
   if (stat.isDirectory()) {
     return {
       kind: 'error',
-      failure: fail('directory', `引用指向目录而不是文件：${target}。`)
+      failure: fail(
+        'directory',
+        t('The reference points to a directory, not a file: {0}.', target)
+      )
     };
   }
 
@@ -510,12 +543,20 @@ async function classifyReference(
     if (blob.missing) {
       return {
         kind: 'error',
-        failure: fail('git-missing', '未找到 git。内容指纹需要 git 计算引用文件的 Blob SHA-1。')
+        failure: fail(
+          'git-missing',
+          t(
+            'git was not found. Content fingerprints need git to compute the Blob SHA-1 of referenced files.'
+          )
+        )
       };
     }
     return {
       kind: 'error',
-      failure: fail('git-failed', `读取引用文件的 Git Blob SHA-1 失败：${target}。`)
+      failure: fail(
+        'git-failed',
+        t('Failed to read the Git Blob SHA-1 of the referenced file: {0}.', target)
+      )
     };
   }
   return { kind: 'internal', relative, blob: blob.sha };

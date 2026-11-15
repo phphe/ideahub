@@ -1,3 +1,5 @@
+import { translate, type Translator } from './i18n';
+
 export const GITHUB_COM_HOST = 'github.com';
 
 export type ImmutabilityCheck =
@@ -44,28 +46,41 @@ export function classifyImmutabilityProbe(probe: ImmutabilityProbe): Immutabilit
   return { kind: 'unknown', reason: 'http', status: probe.status };
 }
 
-export function describeImmutabilityCheck(check: ImmutabilityCheck): string {
+export function describeImmutabilityCheck(
+  check: ImmutabilityCheck,
+  t: Translator = translate
+): string {
   switch (check.kind) {
     case 'enabled':
       return check.enforcedByOwner
-        ? '已通过 GitHub API 确认启用 Release 不可变（组织策略强制）。'
-        : '已通过 GitHub API 确认启用 Release 不可变。';
+        ? t(
+            'Release immutability is enabled (confirmed by the GitHub API; enforced by the organization policy).'
+          )
+        : t('Release immutability is enabled (confirmed by the GitHub API).');
     case 'disabled':
       return check.source === 'not-found'
-        ? 'GitHub API 返回 404：该仓库未启用 Release 不可变。'
-        : 'GitHub API 返回 enabled=false：该仓库未启用 Release 不可变。';
+        ? t(
+            'The GitHub API returned 404: release immutability is not enabled for this repository.'
+          )
+        : t(
+            'The GitHub API returned enabled=false: release immutability is not enabled for this repository.'
+          );
     case 'unknown':
       switch (check.reason) {
         case 'forbidden':
-          return '无法确认 Release 不可变性（需要仓库 admin 读权限）。';
+          return t(
+            'Cannot confirm release immutability (repository admin read permission is required).'
+          );
         case 'non-github-host':
-          return '无法确认 Release 不可变性（非 github.com 域名，GHES 可能没有该检测端点）。';
+          return t(
+            'Cannot confirm release immutability (non-github.com host; GHES may not expose this endpoint).'
+          );
         case 'network':
-          return '无法确认 Release 不可变性（网络请求失败）。';
+          return t('Cannot confirm release immutability (the network request failed).');
         default:
           return check.status === undefined
-            ? '无法确认 Release 不可变性（GitHub API 返回异常响应）。'
-            : `无法确认 Release 不可变性（GitHub API 返回 HTTP ${check.status}）。`;
+            ? t('Cannot confirm release immutability (unexpected GitHub API response).')
+            : t('Cannot confirm release immutability (GitHub API returned HTTP {0}).', check.status);
       }
   }
 }
@@ -78,9 +93,10 @@ export interface RemoteSetupDecision {
 export function decideRemoteSetup(
   check: ImmutabilityCheck,
   manualConfirmed: boolean,
-  settingsUrl: string
+  settingsUrl: string,
+  t: Translator = translate
 ): RemoteSetupDecision {
-  const description = describeImmutabilityCheck(check);
+  const description = describeImmutabilityCheck(check, t);
 
   if (check.kind === 'enabled') {
     return { ok: true, message: description };
@@ -89,26 +105,43 @@ export function decideRemoteSetup(
   if (check.kind === 'disabled') {
     return {
       ok: false,
-      message: `${description}\n请在 ${settingsUrl} 启用 “Enable release immutability” 后重试。`
+      message: t(
+        '{0}\nEnable "Enable release immutability" at {1} and try again.',
+        description,
+        settingsUrl
+      )
     };
   }
 
   if (!manualConfirmed) {
     return {
       ok: false,
-      message: `${description}\n请勾选“我已确认仓库启用了 Enable release immutability”后重试。`
+      message: t(
+        '{0}\nCheck "I have confirmed that Enable release immutability is enabled for the repository" and try again.',
+        description
+      )
     };
   }
 
-  return { ok: true, message: `${description}\n已按你的手动确认继续。` };
+  return {
+    ok: true,
+    message: t('{0}\nContinued based on your manual confirmation.', description)
+  };
 }
 
-export function describeReleaseImmutability(immutable: boolean | undefined): string {
+export function describeReleaseImmutability(
+  immutable: boolean | undefined,
+  t: Translator = translate
+): string {
   if (immutable === true) {
-    return '本次证明已确认不可变。';
+    return t('This proof is confirmed immutable.');
   }
   if (immutable === false) {
-    return '本次 Release 可变，仓库可能未启用该设置。';
+    return t(
+      'This release is mutable; the repository may not have this setting enabled.'
+    );
   }
-  return '本次 Release 不可变性未知（API 未返回 immutable 字段）。';
+  return t(
+    'The immutability of this release is unknown (the API did not return the immutable field).'
+  );
 }

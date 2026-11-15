@@ -5,6 +5,7 @@ export * from './front-matter';
 export * from './git';
 export * from './github';
 export * from './hook';
+export * from './i18n';
 export * from './ideas';
 export * from './immutability';
 export * from './init';

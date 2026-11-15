@@ -9,6 +9,7 @@ import {
 } from './config';
 import { initGitRepository } from './git';
 import { installPrePushHook } from './hook';
+import { translate, type Translator } from './i18n';
 import { commitSingleFile, CONFIG_INIT_COMMIT_MESSAGE } from './marker-commit';
 
 const README_CONTENT = `# 创意仓库
@@ -40,6 +41,7 @@ export type InitResult =
 export interface InitializeOptions {
   /** Explicit user opt-in for a non-empty folder; never overwrites existing files. */
   allowNonEmpty?: boolean;
+  t?: Translator;
 }
 
 async function exists(target: string): Promise<boolean> {
@@ -63,16 +65,23 @@ export async function initializeLocalRepository(
   root: string,
   options: InitializeOptions = {}
 ): Promise<InitResult> {
+  const t = options.t ?? translate;
   let entries;
   try {
     entries = await fs.readdir(root);
   } catch (error) {
-    return { ok: false, error: `无法读取当前文件夹：${describeError(error)}`, completedSteps: [] };
+    return {
+      ok: false,
+      error: t('Unable to read the current folder: {0}', describeError(error)),
+      completedSteps: []
+    };
   }
   if (entries.length > 0 && !options.allowNonEmpty) {
     return {
       ok: false,
-      error: '当前文件夹不是空文件夹，为避免覆盖用户数据，已停止初始化。',
+      error: t(
+        'The current folder is not empty. To avoid overwriting user data, initialization was stopped.'
+      ),
       completedSteps: []
     };
   }
@@ -81,66 +90,85 @@ export async function initializeLocalRepository(
   const notes: string[] = [];
   try {
     if (await exists(path.join(root, '.git'))) {
-      completed.push('复用现有 Git 仓库');
-      notes.push('检测到已存在的 .git/，已按现有 Git 仓库处理，未重复执行 git init。');
+      completed.push(t('Reused the existing Git repository'));
+      notes.push(
+        t(
+          'Found an existing .git/ and reused it as the Git repository; git init was not run again.'
+        )
+      );
     } else {
       const gitResult = await initGitRepository(root);
       if (gitResult.code !== 0) {
         return {
           ok: false,
-          error: `git init 失败：${gitResult.stderr.trim() || gitResult.stdout.trim()}`,
+          error: t(
+            'git init failed: {0}',
+            gitResult.stderr.trim() || gitResult.stdout.trim()
+          ),
           completedSteps: completed
         };
       }
-      completed.push('初始化 Git 仓库');
+      completed.push(t('Initialized the Git repository'));
     }
 
     await fs.mkdir(ideahubDir(root), { recursive: true });
 
     if (await exists(configGitignorePath(root))) {
-      completed.push('复用 .ideahub/.gitignore');
+      completed.push(t('Reused .ideahub/.gitignore'));
     } else {
       await fs.writeFile(
         configGitignorePath(root),
         '# Ignore the cloned public idea repository\nremote/\n',
         'utf8'
       );
-      completed.push('创建 .ideahub/.gitignore');
+      completed.push(t('Created .ideahub/.gitignore'));
     }
 
     let createdConfig = false;
     if (await exists(configPath(root))) {
-      completed.push('复用 .ideahub/config.json');
+      completed.push(t('Reused .ideahub/config.json'));
     } else {
       await writeConfig(root, { version: 1 });
-      completed.push('创建 .ideahub/config.json');
+      completed.push(t('Created .ideahub/config.json'));
       createdConfig = true;
     }
 
-    const hookResult = await installPrePushHook(root, null);
+    const hookResult = await installPrePushHook(root, null, t);
     if (!hookResult.ok) {
       return { ok: false, error: hookResult.error, completedSteps: completed };
     }
-    completed.push('安装 pre-push hook');
+    completed.push(t('Installed the pre-push hook'));
 
     if (await hasReadmeFile(root)) {
-      notes.push('README.md 已存在，已保留现有 README.md（未覆盖）。');
-      completed.push('保留现有 README.md');
+      notes.push(
+        t('README.md already exists, so the existing README.md was kept (not overwritten).')
+      );
+      completed.push(t('Kept the existing README.md'));
     } else {
       await fs.writeFile(path.join(root, 'README.md'), README_CONTENT, 'utf8');
-      completed.push('创建 README.md');
+      completed.push(t('Created README.md'));
     }
 
     if (createdConfig) {
       const commit = await commitSingleFile({
         root,
         filePath: configPath(root),
-        message: CONFIG_INIT_COMMIT_MESSAGE
+        message: CONFIG_INIT_COMMIT_MESSAGE,
+        t
       });
       if (commit.status === 'committed') {
-        notes.push('已自动提交新建的 .ideahub/config.json 到本地仓库（未推送）。');
+        notes.push(
+          t(
+            'Committed the new .ideahub/config.json to the local repository automatically (not pushed).'
+          )
+        );
       } else if (commit.status === 'failed') {
-        notes.push(`.ideahub/config.json 已创建，但自动提交失败：${commit.reason}`);
+        notes.push(
+          t(
+            '.ideahub/config.json was created, but the automatic commit failed: {0}',
+            commit.reason
+          )
+        );
       }
     }
 
@@ -148,20 +176,21 @@ export async function initializeLocalRepository(
   } catch (error) {
     return {
       ok: false,
-      error: `初始化失败：${describeError(error)}`,
+      error: t('Initialization failed: {0}', describeError(error)),
       completedSteps: completed
     };
   }
 }
 
 export async function ensureLocalGitRepository(
-  root: string
+  root: string,
+  t: Translator = translate
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   const result = await initGitRepository(root);
   if (result.code !== 0) {
     return {
       ok: false,
-      error: `git init 失败：${result.stderr.trim() || result.stdout.trim()}`
+      error: t('git init failed: {0}', result.stderr.trim() || result.stdout.trim())
     };
   }
   return { ok: true };

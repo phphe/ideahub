@@ -1,3 +1,4 @@
+import { translate, type Translator } from './i18n';
 import {
   classifyImmutabilityProbe,
   GITHUB_COM_HOST,
@@ -68,7 +69,8 @@ function releaseFromRaw(raw: RawRelease): GitHubReleaseInfo {
 export class GitHubClient {
   constructor(
     private readonly tokenProvider: () => Promise<string | null>,
-    private readonly fetchImpl: typeof fetch = fetch
+    private readonly fetchImpl: typeof fetch = fetch,
+    private readonly t: Translator = translate
   ) {}
 
   private async request<T>(
@@ -97,7 +99,10 @@ export class GitHubClient {
       });
     } catch (error) {
       throw new GitHubApiError(
-        `无法连接 GitHub API：${error instanceof Error ? error.message : String(error)}`,
+        this.t(
+          'Unable to connect to the GitHub API: {0}',
+          error instanceof Error ? error.message : String(error)
+        ),
         0,
         url
       );
@@ -112,7 +117,7 @@ export class GitHubClient {
       const payload = parseErrorPayload(text);
       const detail = payload?.message ?? text;
       throw new GitHubApiError(
-        describeStatus(response.status, detail, payload?.errors),
+        describeStatus(response.status, detail, payload?.errors, this.t),
         response.status,
         url,
         payload,
@@ -334,41 +339,55 @@ function parseErrorPayload(text: string): GitHubErrorPayload | undefined {
   }
 }
 
-function describe422Hint(errors?: GitHubValidationError[]): string {
+function describe422Hint(
+  errors: GitHubValidationError[] | undefined,
+  t: Translator
+): string {
   if (!errors || errors.length === 0) {
     return '';
   }
   const fields = new Set(errors.map((entry) => entry.field).filter(Boolean));
   const codes = new Set(errors.map((entry) => entry.code).filter(Boolean));
   if (fields.has('target_commitish')) {
-    return '\n提示：target_commitish 指向的分支或提交在远程仓库中不存在。请确认远程仓库至少有一个提交，且该分支已推送到远端。';
+    return t(
+      '\nHint: the branch or commit referenced by target_commitish does not exist in the remote repository. Make sure the remote repository has at least one commit and the branch has been pushed.'
+    );
   }
   if (fields.has('tag_name') || codes.has('already_exists')) {
-    return '\n提示：tag_name 已存在（可能已有同名 Git tag 或 Release）。为避免覆盖，扩展不会修改或删除已有内容。';
+    return t(
+      '\nHint: tag_name already exists (there may be an existing Git tag or Release). To avoid overwriting, the extension does not modify or delete existing content.'
+    );
   }
-  return '\n提示：请根据 errors 中的 resource / field / code 修正请求参数后重试。';
+  return t('\nHint: fix the resource / field / code in errors and retry the request.');
 }
 
 function describeStatus(
   status: number,
   detail: string,
-  errors?: GitHubValidationError[]
+  errors: GitHubValidationError[] | undefined,
+  t: Translator
 ): string {
   const errorsLine =
     errors && errors.length > 0
-      ? `\nerrors（原始响应）：${JSON.stringify(errors)}`
+      ? `\n${t('errors (raw response): {0}', JSON.stringify(errors))}`
       : '';
   if (status === 401) {
-    return 'GitHub 认证已失效，请重新登录后重试。';
+    return t('GitHub authentication has expired. Sign in again and retry.');
   }
   if (status === 403) {
-    return `GitHub 拒绝访问（权限不足或触发速率限制）。${detail ? `详细信息：${detail}` : ''}${errorsLine}`;
+    return `${t('GitHub access denied (insufficient permission or rate limit).')}${
+      detail ? ` ${t('Detail: {0}', detail)}` : ''
+    }${errorsLine}`;
   }
   if (status === 404) {
-    return '仓库不存在，或当前账号没有访问权限。';
+    return t('The repository does not exist, or the current account cannot access it.');
   }
   if (status === 422) {
-    return `GitHub API 请求失败（HTTP 422）。${detail ? `详细信息：${detail}` : ''}${errorsLine}${describe422Hint(errors)}`;
+    return `${t('GitHub API request failed (HTTP 422).')}${
+      detail ? ` ${t('Detail: {0}', detail)}` : ''
+    }${errorsLine}${describe422Hint(errors, t)}`;
   }
-  return `GitHub API 请求失败（HTTP ${status}）。${detail ? `详细信息：${detail}` : ''}${errorsLine}`;
+  return `${t('GitHub API request failed (HTTP {0}).', status)}${
+    detail ? ` ${t('Detail: {0}', detail)}` : ''
+  }${errorsLine}`;
 }

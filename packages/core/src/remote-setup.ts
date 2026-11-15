@@ -1,4 +1,5 @@
 import type { GitHubClient } from './github';
+import { translate, type Translator } from './i18n';
 import type { ImmutabilityCheck } from './immutability';
 import { parseRemoteUrl } from './remote-url';
 import type { RemoteConfig } from './config';
@@ -17,9 +18,10 @@ export type ValidateRemoteResult =
 export async function validateRemoteRepository(
   url: string,
   client: GitHubClient,
-  branchInput: string = ''
+  branchInput: string = '',
+  t: Translator = translate
 ): Promise<ValidateRemoteResult> {
-  const parsed = parseRemoteUrl(url);
+  const parsed = parseRemoteUrl(url, t);
   if (!parsed.ok) {
     return parsed;
   }
@@ -30,29 +32,37 @@ export async function validateRemoteRepository(
   } catch (error) {
     return {
       ok: false,
-      error: `无法访问远程仓库：${error instanceof Error ? error.message : String(error)}`
+      error: t(
+        'Unable to access the remote repository: {0}',
+        error instanceof Error ? error.message : String(error)
+      )
     };
   }
 
   if (!repo) {
-    return { ok: false, error: '仓库不存在，或当前 GitHub 账号没有访问权限。' };
+    return {
+      ok: false,
+      error: t('The repository does not exist, or the current GitHub account cannot access it.')
+    };
   }
   if (repo.isPrivate) {
-    return { ok: false, error: '远程创意仓库必须是公开仓库。' };
+    return { ok: false, error: t('The remote idea repository must be public.') };
   }
   if (!repo.canPush) {
     return {
       ok: false,
-      error: '当前 GitHub 账号对该仓库没有写入权限，请确认你是仓库的所有者或协作者。'
+      error: t(
+        'The current GitHub account does not have write access to this repository. Make sure you are the owner or a collaborator.'
+      )
     };
   }
 
   const requested = branchInput.trim();
   let branch: string;
   if (requested.length > 0) {
-    const branchError = validateBranchName(requested);
+    const branchError = validateBranchName(requested, t);
     if (branchError) {
-      return { ok: false, error: `分支名无效：${branchError}` };
+      return { ok: false, error: t('Invalid branch name: {0}', branchError) };
     }
     let head;
     try {
@@ -60,15 +70,20 @@ export async function validateRemoteRepository(
     } catch (error) {
       return {
         ok: false,
-        error: `无法读取远程分支“${requested}”：${
+        error: t(
+          'Unable to read the remote branch "{0}": {1}',
+          requested,
           error instanceof Error ? error.message : String(error)
-        }`
+        )
       };
     }
     if (!head) {
       return {
         ok: false,
-        error: `远程仓库中不存在分支“${requested}”。请检查分支名，或先在 GitHub 上创建并推送该分支后再试。`
+        error: t(
+          'The branch "{0}" does not exist in the remote repository. Check the branch name, or create and push the branch on GitHub first.',
+          requested
+        )
       };
     }
     branch = requested;
@@ -77,7 +92,9 @@ export async function validateRemoteRepository(
     if (branch.length === 0) {
       return {
         ok: false,
-        error: '无法读取远程仓库的默认分支，请手动填写分支名后重试。'
+        error: t(
+          'Unable to read the remote repository default branch. Enter a branch name manually and retry.'
+        )
       };
     }
   }

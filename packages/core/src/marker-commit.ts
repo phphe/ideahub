@@ -2,6 +2,7 @@ import { promises as fs } from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { appendMarkerLine } from './ideas';
+import { translate, type Translator } from './i18n';
 import { isGitRepository, runGit, type GitResult } from './git';
 
 export const DEFAULT_PROOF_COMMIT_MESSAGE = 'ideahub: record proof';
@@ -39,6 +40,7 @@ export interface MarkerCommitOptions {
   message: string;
   /** Mirrors `ideahub.proof.autoCommit`. */
   enabled: boolean;
+  t?: Translator;
 }
 
 export interface MarkerCommitResult {
@@ -53,11 +55,15 @@ function skipped(reason: string, silent: boolean): MarkerCommitResult {
   return { status: 'skipped', reason, silent };
 }
 
-function gitFailure(stage: string, result: GitResult): MarkerCommitResult {
-  const detail = (result.stderr.trim() || result.stdout.trim() || `退出码 ${result.code}`)
+function gitFailure(stage: string, result: GitResult, t: Translator): MarkerCommitResult {
+  const detail = (
+    result.stderr.trim() ||
+    result.stdout.trim() ||
+    t('exit code {0}', result.code)
+  )
     .split(/\r?\n/)
     .join(' ');
-  return { status: 'failed', reason: `${stage}：${detail}`, silent: false };
+  return { status: 'failed', reason: `${stage}: ${detail}`, silent: false };
 }
 
 function tempName(prefix: string): string {
@@ -75,42 +81,53 @@ function tempName(prefix: string): string {
 export async function commitMarkerLine(
   options: MarkerCommitOptions
 ): Promise<MarkerCommitResult> {
+  const t = options.t ?? translate;
   if (!options.enabled) {
-    return skipped('自动提交已关闭（ideahub.proof.autoCommit=false）', true);
+    return skipped(t('Auto-commit is disabled (ideahub.proof.autoCommit=false)'), true);
   }
   if (!(await isGitRepository(options.root))) {
-    return skipped('本地不是 Git 仓库', true);
+    return skipped(t('The local workspace is not a Git repository.'), true);
   }
 
   const toplevel = await runGit(options.root, ['rev-parse', '--show-toplevel']);
   if (toplevel.code !== 0) {
-    return skipped('无法确定 Git 仓库根目录', true);
+    return skipped(t('Unable to determine the Git repository root.'), true);
   }
   const repoRoot = toplevel.stdout.trim();
   const ideasPath = path.join(options.root, options.project, 'ideas.md');
   const relPath = path.relative(repoRoot, ideasPath).split(path.sep).join('/');
   if (!relPath || relPath.startsWith('../')) {
-    return { status: 'failed', reason: 'ideas.md 不在 Git 仓库内', silent: false };
+    return {
+      status: 'failed',
+      reason: t('ideas.md is not inside the Git repository.'),
+      silent: false
+    };
   }
 
   if ((await runGit(repoRoot, ['rev-parse', '--verify', 'HEAD'])).code !== 0) {
-    return skipped('本地仓库还没有提交，无法确定基线', false);
+    return skipped(
+      t('The local repository has no commit yet, so the baseline is unknown.'),
+      false
+    );
   }
   if ((await runGit(repoRoot, ['cat-file', '-e', `HEAD:${relPath}`])).code !== 0) {
-    return skipped('ideas.md 尚未纳入 Git 跟踪，无法只提交标记行', false);
+    return skipped(
+      t('ideas.md is not tracked by Git, so only the marker line cannot be committed.'),
+      false
+    );
   }
 
   const staged = await runGit(repoRoot, ['diff', '--cached', '--name-only', '--', relPath]);
   if (staged.code !== 0) {
-    return gitFailure('无法检查暂存区', staged);
+    return gitFailure(t('Unable to inspect the staging area'), staged, t);
   }
   if (staged.stdout.trim().length > 0) {
-    return skipped('暂存区已有对 ideas.md 的改动', false);
+    return skipped(t('ideas.md already has staged changes.'), false);
   }
 
   const headContent = await runGit(repoRoot, ['cat-file', '-p', `HEAD:${relPath}`]);
   if (headContent.code !== 0) {
-    return skipped('无法读取 HEAD 中的 ideas.md', false);
+    return skipped(t('Unable to read ideas.md from HEAD.'), false);
   }
   const updated = appendMarkerLine(headContent.stdout, options.markerLine);
 
@@ -122,13 +139,13 @@ export async function commitMarkerLine(
 
     const blob = await runGit(repoRoot, ['hash-object', '-w', '-t', 'blob', tempFile]);
     if (blob.code !== 0) {
-      return gitFailure('无法写入 Git blob', blob);
+      return gitFailure(t('Unable to write the Git blob'), blob, t);
     }
     const blobSha = blob.stdout.trim();
 
     const readTree = await runGit(repoRoot, ['read-tree', 'HEAD'], { env: indexEnv });
     if (readTree.code !== 0) {
-      return gitFailure('无法初始化临时索引', readTree);
+      return gitFailure(t('Unable to initialize the temporary index'), readTree, t);
     }
 
     const updateIndex = await runGit(
@@ -137,12 +154,12 @@ export async function commitMarkerLine(
       { env: indexEnv }
     );
     if (updateIndex.code !== 0) {
-      return gitFailure('无法写入临时索引', updateIndex);
+      return gitFailure(t('Unable to write the temporary index'), updateIndex, t);
     }
 
     const commit = await runGit(repoRoot, ['commit', '-m', options.message], { env: indexEnv });
     if (commit.code !== 0) {
-      return gitFailure('git commit 失败', commit);
+      return gitFailure(t('git commit failed'), commit, t);
     }
 
     // Keep the real index in sync for this path (there were no staged changes).
@@ -167,6 +184,7 @@ export interface SingleFileCommitOptions {
   /** Absolute path of the only file that may be committed. */
   filePath: string;
   message: string;
+  t?: Translator;
 }
 
 /**
@@ -178,32 +196,37 @@ export interface SingleFileCommitOptions {
 export async function commitSingleFile(
   options: SingleFileCommitOptions
 ): Promise<MarkerCommitResult> {
+  const t = options.t ?? translate;
   if (!(await isGitRepository(options.root))) {
-    return skipped('本地不是 Git 仓库', true);
+    return skipped(t('The local workspace is not a Git repository.'), true);
   }
 
   const toplevel = await runGit(options.root, ['rev-parse', '--show-toplevel']);
   if (toplevel.code !== 0) {
-    return skipped('无法确定 Git 仓库根目录', true);
+    return skipped(t('Unable to determine the Git repository root.'), true);
   }
   const repoRoot = toplevel.stdout.trim();
   const relPath = path.relative(repoRoot, options.filePath).split(path.sep).join('/');
   if (!relPath || relPath.startsWith('../')) {
-    return { status: 'failed', reason: '配置文件不在 Git 仓库内', silent: false };
+    return {
+      status: 'failed',
+      reason: t('The configuration file is not inside the Git repository.'),
+      silent: false
+    };
   }
 
   let content: string;
   try {
     content = await fs.readFile(options.filePath, 'utf8');
   } catch {
-    return skipped('配置文件不存在，无需提交', true);
+    return skipped(t('The configuration file does not exist; nothing to commit.'), true);
   }
 
   const hasHead = (await runGit(repoRoot, ['rev-parse', '--verify', 'HEAD'])).code === 0;
   if (hasHead) {
     const headContent = await runGit(repoRoot, ['cat-file', '-p', `HEAD:${relPath}`]);
     if (headContent.code === 0 && headContent.stdout === content) {
-      return skipped('配置文件内容未变化', true);
+      return skipped(t('The configuration file content did not change.'), true);
     }
   }
 
@@ -215,7 +238,7 @@ export async function commitSingleFile(
 
     const blob = await runGit(repoRoot, ['hash-object', '-w', '-t', 'blob', tempFile]);
     if (blob.code !== 0) {
-      return gitFailure('无法写入 Git blob', blob);
+      return gitFailure(t('Unable to write the Git blob'), blob, t);
     }
     const blobSha = blob.stdout.trim();
 
@@ -223,7 +246,7 @@ export async function commitSingleFile(
       env: indexEnv
     });
     if (readTree.code !== 0) {
-      return gitFailure('无法初始化临时索引', readTree);
+      return gitFailure(t('Unable to initialize the temporary index'), readTree, t);
     }
 
     const updateIndex = await runGit(
@@ -232,12 +255,12 @@ export async function commitSingleFile(
       { env: indexEnv }
     );
     if (updateIndex.code !== 0) {
-      return gitFailure('无法写入临时索引', updateIndex);
+      return gitFailure(t('Unable to write the temporary index'), updateIndex, t);
     }
 
     const commit = await runGit(repoRoot, ['commit', '-m', options.message], { env: indexEnv });
     if (commit.code !== 0) {
-      return gitFailure('git commit 失败', commit);
+      return gitFailure(t('git commit failed'), commit, t);
     }
 
     await runGit(repoRoot, ['update-index', '--add', '--cacheinfo', `100644,${blobSha},${relPath}`]);

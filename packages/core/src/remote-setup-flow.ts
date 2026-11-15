@@ -1,5 +1,6 @@
 import type { CloneResult, RemoteTargetInspection } from './clone';
 import type { RemoteConfig } from './config';
+import { translate, type Translator } from './i18n';
 import type { ImmutabilityCheck } from './immutability';
 import type { ValidateRemoteResult } from './remote-setup';
 
@@ -11,6 +12,7 @@ export interface RemoteSetupDecisionLike {
 }
 
 export interface RemoteSetupFlowDeps {
+  t?: Translator;
   validate(): Promise<ValidateRemoteResult>;
   decideImmutability(check: ImmutabilityCheck): RemoteSetupDecisionLike;
   confirmChange?(next: RemoteConfig): Promise<boolean>;
@@ -54,6 +56,7 @@ export function planRemoteClone(target: RemoteTargetInspection): RemoteClonePlan
 export async function runRemoteSetupFlow(
   deps: RemoteSetupFlowDeps
 ): Promise<RemoteSetupFlowResult> {
+  const t = deps.t ?? translate;
   deps.onStep?.('validate');
   const validation = await deps.validate();
   if (!validation.ok) {
@@ -79,7 +82,7 @@ export async function runRemoteSetupFlow(
     return {
       ok: false,
       stage: 'validation',
-      message: '已取消更换远程地址。',
+      message: t('Remote repository address change cancelled.'),
       retryClone: false
     };
   }

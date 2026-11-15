@@ -10,6 +10,7 @@ import {
 } from './config';
 import { hasHeadCommit, isGitRepository, getRemoteOriginUrl } from './git';
 import { hasHookBlock, isHookTargetCurrent, readPrePushHook } from './hook';
+import { translate, type Translator } from './i18n';
 import { listProjects, IDEAS_FILE } from './projects';
 import { ProjectParseCache } from './project-cache';
 import { computeProofHash, parseIdeas } from './ideas';
@@ -84,7 +85,8 @@ export type WorkspaceState =
 
 export async function detectWorkspace(
   folder: string | null,
-  projectCache?: ProjectParseCache
+  projectCache?: ProjectParseCache,
+  t: Translator = translate
 ): Promise<WorkspaceState> {
   if (!folder) {
     return { kind: 'no-folder' };
@@ -97,7 +99,7 @@ export async function detectWorkspace(
     if (isNotFound(error)) {
       return { kind: 'no-folder' };
     }
-    return { kind: 'error', message: `无法读取文件夹：${describeError(error)}` };
+    return { kind: 'error', message: t('Unable to read the folder: {0}', describeError(error)) };
   }
 
   if (entries.length === 0) {
@@ -111,7 +113,10 @@ export async function detectWorkspace(
     if (isNotFound(error)) {
       return { kind: 'not-ideahub', root: folder };
     }
-    return { kind: 'error', message: `无法访问 .ideahub：${describeError(error)}` };
+    return {
+      kind: 'error',
+      message: t('Unable to access .ideahub: {0}', describeError(error))
+    };
   }
   if (!ideahubStat.isDirectory()) {
     return { kind: 'not-ideahub', root: folder };
@@ -123,14 +128,16 @@ export async function detectWorkspace(
   if (!gitOk) {
     issues.push({
       id: 'local-git',
-      title: '本地根目录不是 Git 仓库',
-      message: '缺少 .git/。可以点击下方按钮初始化 Git 仓库（不会提交或推送）。'
+      title: t('The workspace root is not a Git repository'),
+      message: t(
+        'Missing .git/. You can initialize a Git repository with the button below (it will not commit or push).'
+      )
     });
   }
 
   let remote: RemoteConfig | null = null;
   let configError: string | null = null;
-  const configResult = await readConfig(folder);
+  const configResult = await readConfig(folder, t);
   if (!configResult.ok) {
     configError = configResult.error;
   } else if (!configResult.config.remote) {
@@ -142,10 +149,12 @@ export async function detectWorkspace(
   if (configError || !remote) {
     issues.push({
       id: 'remote-url',
-      title: '缺少远程仓库地址',
+      title: t('Missing remote repository URL'),
       message:
         configError ??
-        '请填写你在 GitHub 上手动创建好的公开创意仓库地址（扩展不会自动创建仓库）。'
+        t(
+          'Enter the URL of the public idea repository you created manually on GitHub (the extension never creates repositories).'
+        )
     });
   }
 
@@ -169,14 +178,20 @@ export async function detectWorkspace(
     if (!remoteDirOk) {
       issues.push({
         id: 'remote-dir',
-        title: remoteGitOk ? '远程仓库克隆不完整' : '缺少远程仓库克隆',
+        title: remoteGitOk
+          ? t('The remote repository clone is incomplete')
+          : t('Missing remote repository clone'),
         message: remoteGitOk
-          ? '内层仓库没有可用的 HEAD（可能为空克隆或克隆未完成）。请使用“重新克隆”重新获取远程创意仓库。'
-          : '缺少 .ideahub/remote/ 或它不是有效的 Git 仓库。可以点击下方按钮执行克隆。'
+          ? t(
+              'The inner repository has no usable HEAD (it may be an empty clone or the clone did not finish). Use "Re-clone" to fetch the remote idea repository again.'
+            )
+          : t(
+              'Missing .ideahub/remote/ or it is not a valid Git repository. Use the button below to clone.'
+            )
       });
     } else {
       const origin = await getRemoteOriginUrl(remoteRepoPath(folder));
-      const parsedOrigin = origin ? parseRemoteUrl(origin) : null;
+      const parsedOrigin = origin ? parseRemoteUrl(origin, t) : null;
       const matches =
         parsedOrigin?.ok &&
         parsedOrigin.value.owner.toLowerCase() === remote.owner.toLowerCase() &&
@@ -184,9 +199,10 @@ export async function detectWorkspace(
       if (!matches) {
         issues.push({
           id: 'remote-mismatch',
-          title: '远程克隆与配置不一致',
-          message:
-            '当前 .ideahub/remote/ 指向的仓库与 config.json 中的远程地址不一致。请先重新克隆，避免发布到错误的仓库。'
+          title: t('The remote clone does not match the configuration'),
+          message: t(
+            'The repository that .ideahub/remote/ points to does not match the remote URL in config.json. Re-clone first to avoid publishing to the wrong repository.'
+          )
         });
       }
     }
@@ -199,27 +215,33 @@ export async function detectWorkspace(
     } catch (error) {
       issues.push({
         id: 'hook',
-        title: '无法读取 pre-push hook',
+        title: t('Unable to read the pre-push hook'),
         message: describeError(error)
       });
     }
     if (hookContent === null) {
       issues.push({
         id: 'hook',
-        title: '缺少防止误提交的 git pre-push hook',
-        message: '点击下方按钮安装 hook；只会新增或替换由创意仓库管理的标记块。'
+        title: t('Missing the git pre-push hook that prevents accidental pushes'),
+        message: t(
+          'Use the button below to install the hook; it only adds or replaces the block managed by IdeaHub.'
+        )
       });
     } else if (!hasHookBlock(hookContent)) {
       issues.push({
         id: 'hook',
-        title: '缺少防止误提交的 git pre-push hook',
-        message: '点击下方按钮安装 hook；不会覆盖你在标记块之外的自定义逻辑。'
+        title: t('Missing the git pre-push hook that prevents accidental pushes'),
+        message: t(
+          'Use the button below to install the hook; custom logic outside the managed block is preserved.'
+        )
       });
     } else if (!isHookTargetCurrent(hookContent, remote)) {
       issues.push({
         id: 'hook',
-        title: 'pre-push hook 的拦截目标已过期',
-        message: '远程地址已变化，需要更新 hook 中由创意仓库管理的标记块。'
+        title: t('The pre-push hook target is out of date'),
+        message: t(
+          'The remote URL changed; update the block managed by IdeaHub in the hook.'
+        )
       });
     }
   }

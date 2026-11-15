@@ -3,6 +3,7 @@ import * as path from 'node:path';
 import { INNER_REPO_NO_HEAD_ERROR, verifyClonedRepository } from './clone';
 import { describeError } from './config';
 import { isShallowRepository, redactSecrets, runGit, unshallowRepository } from './git';
+import { translate, type Translator } from './i18n';
 import { parseRemoteUrl } from './remote-url';
 
 export type InnerRepositoryHeadCheck =
@@ -15,15 +16,16 @@ export type InnerRepositoryHeadCheck =
  * actionable message instead of leaking `fatal: ambiguous argument 'HEAD'`.
  */
 export async function checkInnerRepositoryHead(
-  remotePath: string
+  remotePath: string,
+  t: Translator = translate
 ): Promise<InnerRepositoryHeadCheck> {
-  const verified = await verifyClonedRepository(remotePath);
+  const verified = await verifyClonedRepository(remotePath, t);
   if (verified.ok) {
     return { ok: true };
   }
   return {
     ok: false,
-    error: verified.error ?? INNER_REPO_NO_HEAD_ERROR,
+    error: verified.error ?? t(INNER_REPO_NO_HEAD_ERROR),
     detail: verified.detail ?? 'git rev-parse --verify HEAD failed'
   };
 }
@@ -33,7 +35,10 @@ export interface ProjectScan {
   blocked: string[];
 }
 
-export async function scanProjectDirectory(projectDir: string): Promise<ProjectScan> {
+export async function scanProjectDirectory(
+  projectDir: string,
+  t: Translator = translate
+): Promise<ProjectScan> {
   const files: string[] = [];
   const blocked: string[] = [];
 
@@ -42,19 +47,21 @@ export async function scanProjectDirectory(projectDir: string): Promise<ProjectS
     try {
       entries = await fs.readdir(directory, { withFileTypes: true });
     } catch (error) {
-      blocked.push(`${prefix || '.'}（无法读取：${describeError(error)}）`);
+      blocked.push(
+        t('{0} (unreadable: {1})', prefix || '.', describeError(error))
+      );
       return;
     }
     entries.sort((a, b) => a.name.localeCompare(b.name));
     for (const entry of entries) {
       const relative = prefix ? `${prefix}/${entry.name}` : entry.name;
       if (entry.isSymbolicLink()) {
-        blocked.push(`${relative}（符号链接）`);
+        blocked.push(t('{0} (symbolic link)', relative));
         continue;
       }
       if (entry.isDirectory()) {
         if (entry.name === '.git') {
-          blocked.push(`${relative}（嵌套 Git 仓库）`);
+          blocked.push(t('{0} (nested Git repository)', relative));
           continue;
         }
         await walk(path.join(directory, entry.name), relative);
@@ -64,7 +71,7 @@ export async function scanProjectDirectory(projectDir: string): Promise<ProjectS
         files.push(relative);
         continue;
       }
-      blocked.push(`${relative}（特殊文件）`);
+      blocked.push(t('{0} (special file)', relative));
     }
   }
 
@@ -74,21 +81,27 @@ export async function scanProjectDirectory(projectDir: string): Promise<ProjectS
 
 export async function syncInnerRepository(
   remotePath: string,
-  branch: string
+  branch: string,
+  t: Translator = translate
 ): Promise<{ ok: true } | { ok: false; error: string; detail?: string }> {
-  const readiness = await checkInnerRepositoryHead(remotePath);
+  const readiness = await checkInnerRepositoryHead(remotePath, t);
   if (!readiness.ok) {
     return readiness;
   }
 
   const status = await runGit(remotePath, ['status', '--porcelain']);
   if (status.code !== 0) {
-    return { ok: false, error: `无法读取内层仓库状态：${status.stderr.trim()}` };
+    return {
+      ok: false,
+      error: t('Unable to read the inner repository status: {0}', status.stderr.trim())
+    };
   }
   if (status.stdout.trim().length > 0) {
     return {
       ok: false,
-      error: '内层仓库存在未提交的变更或冲突。请先手动处理 .ideahub/remote/ 后再发布。'
+      error: t(
+        'The inner repository has uncommitted changes or conflicts. Handle .ideahub/remote/ manually before publishing.'
+      )
     };
   }
 
@@ -96,7 +109,10 @@ export async function syncInnerRepository(
   if (fetch.code !== 0) {
     return {
       ok: false,
-      error: `拉取远程创意仓库失败：${fetch.stderr.trim() || fetch.stdout.trim()}`
+      error: t(
+        'Failed to fetch the remote idea repository: {0}',
+        fetch.stderr.trim() || fetch.stdout.trim()
+      )
     };
   }
 
@@ -104,7 +120,7 @@ export async function syncInnerRepository(
   if (current.code !== 0) {
     return {
       ok: false,
-      error: INNER_REPO_NO_HEAD_ERROR,
+      error: t(INNER_REPO_NO_HEAD_ERROR),
       detail: current.stderr.trim() || current.stdout.trim()
     };
   }
@@ -113,7 +129,10 @@ export async function syncInnerRepository(
     if (checkout.code !== 0) {
       return {
         ok: false,
-        error: `切换到远程主要分支失败：${checkout.stderr.trim() || checkout.stdout.trim()}`
+        error: t(
+          'Failed to switch to the remote main branch: {0}',
+          checkout.stderr.trim() || checkout.stdout.trim()
+        )
       };
     }
   }
@@ -122,8 +141,9 @@ export async function syncInnerRepository(
   if (merge.code !== 0) {
     return {
       ok: false,
-      error:
-        '内层仓库无法与远程分支快进同步，可能存在冲突或分支保护。请先手动处理，扩展不会强制覆盖。'
+      error: t(
+        'The inner repository cannot fast-forward to the remote branch; there may be conflicts or branch protection. Handle it manually; the extension never force-overwrites.'
+      )
     };
   }
   return { ok: true };
@@ -138,7 +158,8 @@ export async function copyProjectIntoInnerRepository(
   remotePath: string,
   projectName: string,
   sourceDir: string,
-  proofFile: string
+  proofFile: string,
+  t: Translator = translate
 ): Promise<{ ok: true; target: string } | { ok: false; error: string }> {
   const target = path.join(remotePath, projectName);
   try {
@@ -166,7 +187,10 @@ export async function copyProjectIntoInnerRepository(
     await fs.writeFile(path.join(target, 'README.md'), proofFile, 'utf8');
     return { ok: true, target };
   } catch (error) {
-    return { ok: false, error: `复制项目到内层仓库失败：${describeError(error)}` };
+    return {
+      ok: false,
+      error: t('Failed to copy the project into the inner repository: {0}', describeError(error))
+    };
   }
 }
 
@@ -183,13 +207,14 @@ export type InnerRepositoryHead =
   | { ok: false; error: string; detail: string };
 
 export async function readInnerRepositoryHead(
-  remotePath: string
+  remotePath: string,
+  t: Translator = translate
 ): Promise<InnerRepositoryHead> {
   const head = await runGit(remotePath, ['rev-parse', '--verify', 'HEAD']);
   if (head.code !== 0 || head.stdout.trim().length === 0) {
     return {
       ok: false,
-      error: INNER_REPO_NO_HEAD_ERROR,
+      error: t(INNER_REPO_NO_HEAD_ERROR),
       detail: head.stderr.trim() || head.stdout.trim()
     };
   }
@@ -204,20 +229,27 @@ export async function readInnerRepositoryHead(
 export async function restoreInnerRepository(
   remotePath: string,
   head: string,
-  projectName: string
+  projectName: string,
+  t: Translator = translate
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   const reset = await runGit(remotePath, ['reset', '--hard', head]);
   if (reset.code !== 0) {
     return {
       ok: false,
-      error: `回滚本地 remote 失败：${reset.stderr.trim() || reset.stdout.trim()}`
+      error: t(
+        'Failed to reset the local remote: {0}',
+        reset.stderr.trim() || reset.stdout.trim()
+      )
     };
   }
   const clean = await runGit(remotePath, ['clean', '-fd', '--', projectName]);
   if (clean.code !== 0) {
     return {
       ok: false,
-      error: `清理本次发布文件失败：${clean.stderr.trim() || clean.stdout.trim()}`
+      error: t(
+        'Failed to clean up files from this publish: {0}',
+        clean.stderr.trim() || clean.stdout.trim()
+      )
     };
   }
   return { ok: true };
@@ -230,24 +262,33 @@ export async function commitAndPushInnerRepository(
     branch: string;
     projectName: string;
     token: string;
-  }
+  },
+  t: Translator = translate
 ): Promise<
   | { ok: true; pushed: boolean }
   | { ok: false; error: string; stage: 'add' | 'commit' | 'push' }
 > {
-  const parsed = parseRemoteUrl(params.url);
+  const parsed = parseRemoteUrl(params.url, t);
   if (!parsed.ok) {
     return { ok: false, error: parsed.error, stage: 'add' };
   }
 
   const add = await runGit(remotePath, ['add', '-A']);
   if (add.code !== 0) {
-    return { ok: false, error: `暂存变更失败：${add.stderr.trim()}`, stage: 'add' };
+    return {
+      ok: false,
+      error: t('Failed to stage changes: {0}', add.stderr.trim()),
+      stage: 'add'
+    };
   }
 
   const staged = await runGit(remotePath, ['diff', '--cached', '--name-only']);
   if (staged.code !== 0) {
-    return { ok: false, error: `检查暂存变更失败：${staged.stderr.trim()}`, stage: 'add' };
+    return {
+      ok: false,
+      error: t('Failed to inspect staged changes: {0}', staged.stderr.trim()),
+      stage: 'add'
+    };
   }
   const hasStagedChanges = staged.stdout.trim().length > 0;
   if (hasStagedChanges) {
@@ -259,7 +300,10 @@ export async function commitAndPushInnerRepository(
     if (commit.code !== 0) {
       return {
         ok: false,
-        error: `提交内层仓库失败：${commit.stderr.trim() || commit.stdout.trim()}`,
+        error: t(
+          'Failed to commit the inner repository: {0}',
+          commit.stderr.trim() || commit.stdout.trim()
+        ),
         stage: 'commit'
       };
     }
@@ -279,7 +323,10 @@ export async function commitAndPushInnerRepository(
     if (unshallow.code !== 0) {
       return {
         ok: false,
-        error: `补齐 Git 历史失败：${unshallow.stderr.trim() || unshallow.stdout.trim()}`,
+        error: t(
+          'Failed to complete the Git history: {0}',
+          unshallow.stderr.trim() || unshallow.stdout.trim()
+        ),
         stage: 'push'
       };
     }
@@ -302,7 +349,11 @@ export async function commitAndPushInnerRepository(
       credentials,
       params.token
     ]);
-    return { ok: false, error: `推送内层仓库失败：${detail}`, stage: 'push' };
+    return {
+      ok: false,
+      error: t('Failed to push the inner repository: {0}', detail),
+      stage: 'push'
+    };
   }
 
   return { ok: true, pushed: true };
