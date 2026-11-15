@@ -3,16 +3,23 @@
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
-      "outputs": ["dist/**", "media/**"]
+      "outputs": ["dist/**", "media/**"],
+      "cache": false
     },
     "typecheck": {
-      "dependsOn": ["^build"]
+      "dependsOn": ["^build"],
+      "cache": false
     },
-    "lint": {},
-    "test": {},
+    "lint": {
+      "cache": false
+    },
+    "test": {
+      "cache": false
+    },
     "package": {
       "dependsOn": ["build"],
-      "outputs": ["*.vsix"]
+      "outputs": ["*.vsix"],
+      "cache": false
     }
   }
 }
