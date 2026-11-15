@@ -4,5 +4,5 @@
 // An empty string is a valid value: login then falls back to a manual token.
 // The client secret never belongs here.
 export default {
-  oauthClientId: '',
+  oauthClientId: 'Iv23liILCafYLpMseji1',
 };
