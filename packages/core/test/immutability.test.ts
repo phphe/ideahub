@@ -128,7 +128,7 @@ describe('decideRemoteSetup', () => {
   it('allows saving when the API confirms the setting', () => {
     const decision = decideRemoteSetup({ kind: 'enabled', enforcedByOwner: false }, false, settingsUrl);
     expect(decision.ok).toBe(true);
-    expect(decision.message).toContain('已通过 GitHub API 确认启用');
+    expect(decision.message).toContain('Release immutability is enabled');
   });
 
   it('blocks saving when the API reports disabled', () => {
@@ -144,7 +144,7 @@ describe('decideRemoteSetup', () => {
       settingsUrl
     );
     expect(decision.ok).toBe(true);
-    expect(decision.message).toContain('无法确认');
+    expect(decision.message).toContain('Cannot confirm release immutability');
   });
 
   it('asks for manual confirmation when status is unknown', () => {
@@ -154,20 +154,20 @@ describe('decideRemoteSetup', () => {
       settingsUrl
     );
     expect(decision.ok).toBe(false);
-    expect(decision.message).toContain('请勾选');
+    expect(decision.message).toContain('I have confirmed that Enable release immutability');
   });
 });
 
 describe('describeReleaseImmutability', () => {
   it('confirms immutable releases', () => {
-    expect(describeReleaseImmutability(true)).toContain('已确认不可变');
+    expect(describeReleaseImmutability(true)).toContain('confirmed immutable');
   });
 
   it('warns about mutable releases', () => {
-    expect(describeReleaseImmutability(false)).toContain('本次 Release 可变');
+    expect(describeReleaseImmutability(false)).toContain('release is mutable');
   });
 
   it('reports unknown when the field is missing', () => {
-    expect(describeReleaseImmutability(undefined)).toContain('未知');
+    expect(describeReleaseImmutability(undefined)).toContain('unknown');
   });
 });

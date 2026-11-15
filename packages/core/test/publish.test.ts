@@ -34,7 +34,7 @@ describe('scanProjectDirectory', () => {
 
     const scan = await scanProjectDirectory(project);
     expect(scan.files).toEqual(['assets/image.png', 'ideas.md']);
-    expect(scan.blocked).toEqual(['.git（嵌套 Git 仓库）']);
+    expect(scan.blocked).toEqual(['.git (nested Git repository)']);
   });
 
   it.skipIf(process.platform === 'win32')('blocks symbolic links', async () => {
@@ -42,7 +42,7 @@ describe('scanProjectDirectory', () => {
     await fs.writeFile(path.join(project, 'ideas.md'), 'idea', 'utf8');
     await fs.symlink(path.join(project, 'ideas.md'), path.join(project, 'link.md'));
     const scan = await scanProjectDirectory(project);
-    expect(scan.blocked).toEqual(['link.md（符号链接）']);
+    expect(scan.blocked).toEqual(['link.md (symbolic link)']);
   });
 });
 

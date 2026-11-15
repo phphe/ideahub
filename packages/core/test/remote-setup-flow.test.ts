@@ -183,7 +183,7 @@ describe('runRemoteSetupFlow', () => {
       throw new Error('expected a cancelled flow');
     }
     expect(result.stage).toBe('validation');
-    expect(result.message).toBe('已取消更换远程地址。');
+    expect(result.message).toBe('Remote repository address change cancelled.');
     expect(deps.persist).not.toHaveBeenCalled();
     expect(deps.clone).not.toHaveBeenCalled();
   });
@@ -274,12 +274,12 @@ describe('describeCloneFailure', () => {
       describeCloneFailure(
         "fatal: could not read Username for 'https://github.com': terminal prompts disabled"
       )
-    ).toContain('认证失败');
+    ).toContain('authentication failed');
     expect(describeCloneFailure('remote: Repository not found.')).toContain(
-      '仓库不存在'
+      'repository does not exist'
     );
     expect(
       describeCloneFailure('fatal: unable to access: Could not resolve host: github.com')
-    ).toContain('网络错误');
+    ).toContain('network error');
   });
 });

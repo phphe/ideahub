@@ -147,7 +147,7 @@ describe('commitMarkerLine', { timeout: 20000 }, () => {
       const result = await commitMarkerLine(options(root, markerLine, false));
       expect(result).toEqual({
         status: 'skipped',
-        reason: '自动提交已关闭（ideahub.proof.autoCommit=false）',
+        reason: 'Auto-commit is disabled (ideahub.proof.autoCommit=false)',
         silent: true
       });
       expect(await headSha(root)).toBe(before);
@@ -183,7 +183,7 @@ describe('commitMarkerLine', { timeout: 20000 }, () => {
 
     expect(result.status).toBe('skipped');
     expect(result.silent).toBe(false);
-    expect(result.reason).toContain('暂存区');
+    expect(result.reason).toContain('staged changes');
     expect(await headSha(root)).toBe(before);
     expect((await runGit(root, ['diff', '--cached', '--name-only'])).stdout.trim()).toBe(
       'MyGame/ideas.md'
@@ -199,7 +199,7 @@ describe('commitMarkerLine', { timeout: 20000 }, () => {
     const result = await commitMarkerLine({ ...options(root), project: 'NewGame' });
 
     expect(result.status).toBe('skipped');
-    expect(result.reason).toContain('尚未纳入');
+    expect(result.reason).toContain('not tracked by Git');
     expect(await headSha(root)).toBe(before);
   });
 });

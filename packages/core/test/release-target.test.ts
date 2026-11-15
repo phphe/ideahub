@@ -23,15 +23,15 @@ describe('buildReleaseTag / validateTagName', () => {
   });
 
   it('rejects tags with spaces, "..", trailing dots and .lock segments', () => {
-    expect(validateTagName('ideahub-bad tag')).toContain('不允许的字符');
+    expect(validateTagName('ideahub-bad tag')).toContain('characters Git does not allow');
     expect(validateTagName('ideahub-a..b')).toContain('..');
-    expect(validateTagName('ideahub-.')).toContain('结尾');
+    expect(validateTagName('ideahub-.')).toContain('cannot end with');
     expect(validateTagName('ideahub-.lock')).toContain('.lock');
-    expect(validateTagName('/ideahub')).toContain('开头');
+    expect(validateTagName('/ideahub')).toContain('cannot start with');
   });
 
   it('rejects empty and overly long tags', () => {
-    expect(validateTagName('')).toContain('为空');
+    expect(validateTagName('')).toContain('is empty');
     expect(validateTagName('a'.repeat(121))).toContain('120');
   });
 });
@@ -40,12 +40,12 @@ describe('validateBranchName', () => {
   it('accepts normal branch names and rejects illegal ones', () => {
     expect(validateBranchName('main')).toBeNull();
     expect(validateBranchName('release/empty')).toBeNull();
-    expect(validateBranchName('')).toContain('为空');
-    expect(validateBranchName('main branch')).toContain('不允许的字符');
+    expect(validateBranchName('')).toContain('is empty');
+    expect(validateBranchName('main branch')).toContain('characters Git does not allow');
     expect(validateBranchName('feature..x')).toContain('..');
     expect(validateBranchName('-main')).toContain('-');
     expect(validateBranchName('HEAD')).toContain('HEAD');
-    expect(validateBranchName('main/')).toContain('结尾');
+    expect(validateBranchName('main/')).toContain('cannot end with');
   });
 });
 
@@ -102,7 +102,7 @@ describe('resolveReleaseTarget', () => {
 
     expect(result.ok).toBe(false);
     if (!result.ok) {
-      expect(result.error).toContain('release 分支名为空');
+      expect(result.error).toContain('The release branch name is empty');
     }
     expect(target.getRepository).not.toHaveBeenCalled();
     expect(target.lookupBranch).not.toHaveBeenCalled();
@@ -113,14 +113,14 @@ describe('resolveReleaseTarget', () => {
       lookup: {
         ok: false,
         missing: true,
-        error: 'release 分支不存在：release。'
+        error: 'The release branch does not exist: release (refs/heads/release).'
       }
     });
     const result = await resolveReleaseTarget(target, 'owner', 'repo', 'release');
 
     expect(result.ok).toBe(false);
     if (!result.ok) {
-      expect(result.error).toContain('release 分支不存在');
+      expect(result.error).toContain('does not exist');
     }
   });
 
@@ -129,14 +129,14 @@ describe('resolveReleaseTarget', () => {
       lookup: {
         ok: false,
         missing: false,
-        error: '无法读取远程 release 分支（git ls-remote 失败）：connection reset'
+        error: 'Unable to read the remote release branch (git ls-remote failed): connection reset'
       }
     });
     const result = await resolveReleaseTarget(target, 'owner', 'repo', 'main');
 
     expect(result.ok).toBe(false);
     if (!result.ok) {
-      expect(result.error).toContain('ls-remote 失败');
+      expect(result.error).toContain('ls-remote failed');
       expect(result.error).toContain('connection reset');
     }
   });
@@ -209,15 +209,15 @@ describe('ensureReleaseTarget', () => {
   it('aborts with a clear message when branch creation fails', async () => {
     const target = deps({
       lookups: [{ ok: false, missing: true, error: 'release 分支不存在：release。' }],
-      create: { ok: false, error: '认证失败' }
+      create: { ok: false, error: 'Authentication failed' }
     });
 
     const result = await ensureReleaseTarget(target, 'owner', 'repo', 'release');
 
     expect(result.ok).toBe(false);
     if (!result.ok) {
-      expect(result.error).toContain('自动创建失败');
-      expect(result.error).toContain('认证失败');
+      expect(result.error).toContain('automatic creation failed');
+      expect(result.error).toContain('Authentication failed');
     }
     expect(target.lookupBranch).toHaveBeenCalledTimes(1);
   });
@@ -226,7 +226,7 @@ describe('ensureReleaseTarget', () => {
     const target = deps({
       lookups: [
         { ok: false, missing: true, error: 'missing' },
-        { ok: false, missing: false, error: 'ls-remote 失败' }
+        { ok: false, missing: false, error: 'ls-remote failed' }
       ]
     });
 
@@ -234,13 +234,13 @@ describe('ensureReleaseTarget', () => {
 
     expect(result.ok).toBe(false);
     if (!result.ok) {
-      expect(result.error).toContain('读取最新 commit 失败');
+      expect(result.error).toContain('reading its latest commit failed');
     }
   });
 
   it('does not attempt creation when ls-remote itself fails', async () => {
     const target = deps({
-      lookups: [{ ok: false, missing: false, error: 'ls-remote 失败' }]
+      lookups: [{ ok: false, missing: false, error: 'ls-remote failed' }]
     });
 
     const result = await ensureReleaseTarget(target, 'owner', 'repo', 'release');

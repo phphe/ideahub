@@ -127,7 +127,7 @@ describe('shallow clone and push', { timeout: 60000 }, () => {
 
     expect(result.ok).toBe(false);
     if (!result.ok) {
-      expect(result.error).toContain('分支名');
+      expect(result.error).toContain('release branch name');
     }
     const ref = await runGit(inner, ['ls-remote', remote.url, 'refs/heads/release']);
     expect(ref.stdout.trim()).toBe('');

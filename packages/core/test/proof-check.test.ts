@@ -42,7 +42,7 @@ describe('describeMissingProofReleases', () => {
     const message = describeMissingProofReleases([
       { time: '2026-11-07 09:54:51 (UTC+08:00)' }
     ]);
-    expect(message).toContain('发布已阻止');
+    expect(message).toContain('Publish blocked');
     expect(message).toContain('- 2026-11-07 09:54:51 (UTC+08:00)');
   });
 });

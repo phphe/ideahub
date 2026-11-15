@@ -123,7 +123,7 @@ describe('inner repository state', { timeout: 20000 }, () => {
     const sync = await syncInnerRepository(remotePath, 'main');
     expect(sync.ok).toBe(false);
     if (!sync.ok) {
-      expect(sync.error).toContain('未提交');
+      expect(sync.error).toContain('uncommitted changes');
     }
   });
 });

@@ -40,6 +40,6 @@ describe('buildFingerprint without git', () => {
       throw new Error('expected failure');
     }
     expect(result.code).toBe('git-missing');
-    expect(result.message).toContain('未找到 git');
+    expect(result.message).toContain('git was not found');
   });
 });

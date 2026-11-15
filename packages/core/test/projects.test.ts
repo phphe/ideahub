@@ -38,7 +38,7 @@ describe('createProject', () => {
     if (second.ok) {
       throw new Error('expected a duplicate rejection');
     }
-    expect(second.error).toContain('已存在同名');
+    expect(second.error).toContain('same name already exists');
     expect(await fs.readFile(path.join(root, 'Existing', IDEAS_FILE), 'utf8')).toBe(original);
 
     await fs.rm(root, { recursive: true, force: true });
@@ -54,7 +54,7 @@ describe('createProject', () => {
     if (result.ok) {
       throw new Error('expected the folder guard to reject');
     }
-    expect(result.error).toContain('已存在同名文件夹');
+    expect(result.error).toContain('folder with the same name already exists');
     await expect(fs.access(path.join(root, 'ccc', IDEAS_FILE))).rejects.toThrow();
 
     await fs.rm(root, { recursive: true, force: true });
@@ -81,7 +81,7 @@ describe('createProject', () => {
 
     expect(result.ok).toBe(false);
     if (!result.ok) {
-      expect(result.error).toContain('远程仓库同名目录');
+      expect(result.error).toContain('remote directory with the same name');
     }
 
     await fs.rm(root, { recursive: true, force: true });

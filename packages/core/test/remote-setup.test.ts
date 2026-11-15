@@ -50,8 +50,8 @@ describe('validateRemoteRepository branch resolution', () => {
 
     expect(result.ok).toBe(false);
     if (!result.ok) {
-      expect(result.error).toContain('不存在分支“dev”');
-      expect(result.error).toContain('检查分支名');
+      expect(result.error).toContain('does not exist in the remote repository');
+      expect(result.error).toContain('Check the branch name');
     }
     expect(github.getImmutableReleasesStatus).not.toHaveBeenCalled();
   });
@@ -63,7 +63,7 @@ describe('validateRemoteRepository branch resolution', () => {
 
     expect(result.ok).toBe(false);
     if (!result.ok) {
-      expect(result.error).toContain('分支名无效');
+      expect(result.error).toContain('Invalid branch name');
     }
     expect(github.getBranchHead).not.toHaveBeenCalled();
   });
@@ -75,7 +75,7 @@ describe('validateRemoteRepository branch resolution', () => {
 
     expect(result.ok).toBe(false);
     if (!result.ok) {
-      expect(result.error).toContain('无法读取远程仓库的默认分支');
+      expect(result.error).toContain('Unable to read the remote repository default branch');
     }
   });
 });
