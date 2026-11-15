@@ -29,16 +29,18 @@ export interface LoginResult {
 
 export async function runLogin(
   args: string[],
-  fetchImpl: typeof fetch = fetch
+  fetchImpl: typeof fetch = fetch,
+  report: (message: string) => void = () => undefined,
+  clientIdValue: string = OAUTH_CLIENT_ID
 ): Promise<LoginResult> {
   const explicit = readTokenArgument(args);
   if (explicit !== undefined) {
     return finishLogin(explicit, fetchImpl);
   }
 
-  const clientId = OAUTH_CLIENT_ID.trim();
+  const clientId = clientIdValue.trim();
   if (clientId.length > 0) {
-    return deviceFlowLogin(clientId, fetchImpl);
+    return deviceFlowLogin(clientId, fetchImpl, report);
   }
 
   if (!process.stdin.isTTY) {
@@ -95,7 +97,14 @@ async function finishLogin(token: string, fetchImpl: typeof fetch): Promise<Logi
   }
 }
 
-async function deviceFlowLogin(clientId: string, fetchImpl: typeof fetch): Promise<LoginResult> {
+async function deviceFlowLogin(
+  clientId: string,
+  fetchImpl: typeof fetch,
+  report: (message: string) => void
+): Promise<LoginResult> {
+  // Live output: the flow waits for the user in a browser, so instructions and
+  // progress must be printed before/while polling instead of after it returns.
+  report('正在向 GitHub 申请设备授权码…');
   let start: DeviceCodeResponse;
   try {
     start = await postForm<DeviceCodeResponse>(
@@ -106,7 +115,7 @@ async function deviceFlowLogin(clientId: string, fetchImpl: typeof fetch): Promi
   } catch (error) {
     return {
       code: 2,
-      messages: [`无法发起 device flow：${error instanceof Error ? error.message : String(error)}`]
+      messages: [`无法发起 device flow：${describeNetworkError(error)}`]
     };
   }
 
@@ -117,9 +126,8 @@ async function deviceFlowLogin(clientId: string, fetchImpl: typeof fetch): Promi
     };
   }
 
-  const messages = [
-    `请在浏览器打开 ${start.verification_uri}，输入代码 ${start.user_code} 完成授权。`
-  ];
+  report(`请在浏览器打开 ${start.verification_uri}，输入代码 ${start.user_code} 完成授权。`);
+  report('等待授权中…（按 Ctrl+C 可取消）');
   const intervalMs = Math.max(1, start.interval ?? 5) * 1000;
   const deadline = Date.now() + Math.max(60, start.expires_in ?? 900) * 1000;
 
@@ -139,7 +147,7 @@ async function deviceFlowLogin(clientId: string, fetchImpl: typeof fetch): Promi
     } catch (error) {
       return {
         code: 2,
-        messages: [...messages, `轮询授权状态失败：${error instanceof Error ? error.message : String(error)}`]
+        messages: [`轮询授权状态失败：${describeNetworkError(error)}`]
       };
     }
 
@@ -151,7 +159,7 @@ async function deviceFlowLogin(clientId: string, fetchImpl: typeof fetch): Promi
       continue;
     }
     if (poll.error) {
-      return { code: 2, messages: [...messages, `授权失败：${poll.error_description ?? poll.error}`] };
+      return { code: 2, messages: [`授权失败：${poll.error_description ?? poll.error}`] };
     }
 
     const token = (poll as DeviceCodeResponse & { access_token?: string }).access_token;
@@ -161,7 +169,18 @@ async function deviceFlowLogin(clientId: string, fetchImpl: typeof fetch): Promi
     break;
   }
 
-  return { code: 2, messages: [...messages, '授权超时，请重新执行 ideahub login。'] };
+  return { code: 2, messages: ['授权超时，请重新执行 ideahub login。'] };
+}
+
+/** Section 13.6: never leave the user staring at a silent terminal. */
+function describeNetworkError(error: unknown): string {
+  if (
+    error instanceof Error &&
+    (error.name === 'TimeoutError' || error.name === 'AbortError')
+  ) {
+    return '请求 GitHub 超时（15 秒）。若当前网络无法访问 github.com，请改用 `ideahub login --token <token>`。';
+  }
+  return error instanceof Error ? error.message : String(error);
 }
 
 async function postForm<T>(
@@ -176,7 +195,8 @@ async function postForm<T>(
       'Content-Type': 'application/x-www-form-urlencoded',
       'User-Agent': 'ideahub-cli'
     },
-    body: new URLSearchParams(fields).toString()
+    body: new URLSearchParams(fields).toString(),
+    signal: AbortSignal.timeout(15000)
   });
   if (!response.ok) {
     throw new Error(`HTTP ${response.status}`);

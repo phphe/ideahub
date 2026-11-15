@@ -32,7 +32,7 @@ export async function main(argv: string[]): Promise<number> {
     return runCheckCommand(rest);
   }
   if (command === 'login') {
-    const result = await runLogin(rest);
+    const result = await runLogin(rest, fetch, (message) => console.log(message));
     for (const message of result.messages) {
       console.log(message);
     }
