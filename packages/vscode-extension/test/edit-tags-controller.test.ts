@@ -78,6 +78,13 @@ vi.mock('vscode', async () => {
     Position,
     WorkspaceEdit,
     ProgressLocation: { Notification: 1 },
+    l10n: {
+      t: (message: string, ...args: unknown[]) =>
+        message.replace(/\{(\d+)\}/g, (match, index) => {
+          const value = args[Number(index)];
+          return value === undefined ? match : String(value);
+        })
+    },
     env: { language: 'zh-cn', clipboard: { writeText: clipboardMock } }
   };
 });
@@ -140,7 +147,7 @@ describe('editProjectTags', () => {
       expect.objectContaining({ value: '游戏, 写作' })
     );
     expect(result.ok).toBe(true);
-    expect(result.message).toContain('已更新标签');
+    expect(result.message).toContain('Updated tags');
     expect(
       await fs.readFile(path.join(root, 'Demo', 'ideas.md'), 'utf8')
     ).toBe(

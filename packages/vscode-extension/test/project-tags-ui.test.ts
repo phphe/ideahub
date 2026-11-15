@@ -128,7 +128,7 @@ interface FakeChip {
 function chipsFrom(html: string): FakeChip[] {
   const chips: FakeChip[] = [];
   const chipPattern =
-    /<button class="(chip[^"]*)" data-chip="([^"]+)" aria-pressed="([^"]+)">([^<]*)<\/button>/g;
+    /<button class="([^"]*)" data-chip="([^"]+)" aria-pressed="([^"]+)">([^<]*)<\/button>/g;
   for (const match of html.matchAll(chipPattern)) {
     chips.push({
       dataset: { chip: match[2] },
@@ -145,15 +145,15 @@ function chipsFrom(html: string): FakeChip[] {
 function tagsFrom(html: string): FakeTagChip[] {
   const tags: FakeTagChip[] = [];
   const pattern =
-    /<button class="chip tag-chip" data-tag="([^"]+)" aria-pressed="([^"]+)">([\s\S]*?)<\/button>/g;
+    /<button class="([^"]*)" data-tag="([^"]+)" aria-pressed="([^"]+)">([\s\S]*?)<\/button>/g;
   for (const match of html.matchAll(pattern)) {
-    const countMatch = /data-tag-count>([^<]*)</.exec(match[3]);
+    const countMatch = /data-tag-count>([^<]*)</.exec(match[4]);
     const countEl = { textContent: countMatch ? countMatch[1] : '' };
     tags.push({
-      dataset: { tag: match[1] },
-      classList: new FakeClassList('chip tag-chip'),
+      dataset: { tag: match[2] },
+      classList: new FakeClassList(match[1]),
       hidden: false,
-      attributes: { 'aria-pressed': match[2] },
+      attributes: { 'aria-pressed': match[3] },
       countEl,
       setAttribute(name, value) {
         this.attributes[name] = value;
@@ -352,7 +352,7 @@ function taggedProjects(): ProjectSummary[] {
 describe('project tags webview behaviour', () => {
   it('renders the tag row on its own line after the status chips', () => {
     const html = renderMainHtml(localState(taggedProjects()));
-    expect(html).toContain('placeholder="按名称搜索"');
+    expect(html).toContain('placeholder="Search by name"');
     expect(html.indexOf('project-chips')).toBeLessThan(html.indexOf('id="project-tags"'));
     expect(html.indexOf('id="project-tags"')).toBeLessThan(
       html.indexOf('id="project-filter-empty"')
@@ -453,7 +453,7 @@ describe('project tags webview behaviour', () => {
   it('opens the context menu, routes all three actions and closes it', () => {
     const html = renderMainHtml(localState(taggedProjects()));
     expect(html).toContain('data-menu-action="copyUrl"');
-    expect(html).toContain('复制项目地址');
+    expect(html).toContain('Copy project URL');
     const harness = run(html);
 
     harness.contextmenu('GameOne', 20, 20);

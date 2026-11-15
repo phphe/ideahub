@@ -67,11 +67,11 @@ describe('renderMainHtml', () => {
     expect(empty).not.toContain('initNonEmpty');
 
     const nonEmpty = renderMainHtml({ kind: 'not-ideahub', root: 'C:/non-empty' });
-    expect(nonEmpty).toContain('<h1>创意仓库</h1>');
-    expect(nonEmpty).toContain('<div class="title">未识别到创意仓库</div>');
+    expect(nonEmpty).toContain('<h1>IdeaHub</h1>');
+    expect(nonEmpty).toContain('<div class="title">No idea repository detected</div>');
     expect(nonEmpty).toContain('data-action="initNonEmpty"');
-    expect(nonEmpty).toContain('>仍要初始化</button>');
-    expect(nonEmpty).toContain('已存在的文件不会被覆盖');
+    expect(nonEmpty).toContain('>Initialize anyway</button>');
+    expect(nonEmpty).toContain('existing files are never overwritten');
   });
 });
 
@@ -120,13 +120,15 @@ describe('renderMainHtml project list', () => {
 
   it('renders exactly the four supported badges with titles', () => {
     const html = renderMainHtml(state);
-    expect(html).toContain('title="已生成的证明数量">2个证明</span>');
-    expect(html).toContain('class="badge badge-warning" title="存在尚未证明的新内容">未证明</span>');
-    expect(html).toContain('title="已发布的次数">发布3次</span>');
-    expect(html).toContain('title="已证明的内容可以发布">可发布</span>');
+    expect(html).toContain('title="Number of generated proofs">2 proofs</span>');
+    expect(html).toContain(
+      'class="badge badge-warning" title="There is new content that has not been proven yet">Unproven</span>'
+    );
+    expect(html).toContain('title="Number of publishes">Published 3 times</span>');
+    expect(html).toContain('title="The proven content can be published">Publishable</span>');
     expect(html).not.toContain('最近证明');
-    expect(html).not.toContain('未发布</span>');
-    expect(html).not.toContain('远程状态不可用');
+    expect(html).not.toContain('Unpublished</span>');
+    expect(html).not.toContain('Remote status is temporarily unavailable');
   });
 
   it('hides 未证明, 发布N次 and 可发布 when they do not apply', () => {
@@ -145,20 +147,20 @@ describe('renderMainHtml project list', () => {
       ]
     };
     const html = renderMainHtml(emptyState);
-    expect(html).toContain('>0个证明</span>');
-    expect(html).not.toContain('>未证明</span>');
-    expect(html).not.toContain('>发布0次</span>');
-    expect(html).not.toContain('>可发布</span>');
+    expect(html).toContain('>0 proofs</span>');
+    expect(html).not.toContain('>Unproven</span>');
+    expect(html).not.toContain('>Published 0 times</span>');
+    expect(html).not.toContain('>Publishable</span>');
   });
 
   it('renders the proof and publish buttons with secondary styling and tooltips', () => {
     const html = renderMainHtml(state);
     expect(html).toContain('class="secondary" data-action="mark"');
     expect(html).toContain('class="secondary" data-action="publish"');
-    expect(html).toContain('title="发布新增内容的时间证明"');
-    expect(html).toContain('>证明</button>');
-    expect(html).toContain('title="发布创意原文"');
-    expect(html).toContain('>发布</button>');
+    expect(html).toContain('title="Publish a time proof for the new content"');
+    expect(html).toContain('>Prove</button>');
+    expect(html).toContain('title="Publish the original idea text"');
+    expect(html).toContain('>Publish</button>');
   });
 
   it('does not mention the old rename warning', () => {
@@ -179,11 +181,11 @@ describe('renderMainHtml project list', () => {
     });
 
     expect(html).toContain('<div class="header">');
-    expect(html).toContain('<h1>创意项目</h1>');
+    expect(html).toContain('<h1>Idea projects</h1>');
     expect(html).toContain('.header-actions { margin-left: auto;');
     expect(html).toContain('class="icon" data-action="refresh"');
     expect(html).toContain('class="icon" data-action="openSettings"');
-    expect(html).toContain('class="icon" data-action="createProject" title="新建项目"');
+    expect(html).toContain('class="icon" data-action="createProject" title="New project"');
     expect(html).toContain('codicon codicon-add');
     expect(html).toContain('codicon codicon-refresh');
     expect(html).toContain('codicon codicon-settings-gear');
@@ -195,13 +197,13 @@ describe('renderMainHtml project list', () => {
     expect(html).not.toContain('>新建项目</button>');
     expect(html).not.toContain('id="status"');
     expect(html).toContain(
-      'title="工作区：C:/repo | 远程创意仓库：phphe/test_1027e9ad9a（分支 main）"'
+      'title="Workspace: C:/repo | Remote idea repository: phphe/test_1027e9ad9a (branch main)"'
     );
-    expect(html).toContain('远程创意仓库：phphe/test_1027e9ad9a（分支 main）');
+    expect(html).toContain('Remote idea repository: phphe/test_1027e9ad9a (branch main)');
 
     // The old info line under the title is gone.
     expect(html).not.toContain('<p class="muted">C:/repo</p>');
-    expect(html).not.toContain('<p class="muted">远程创意仓库');
+    expect(html).not.toContain('<p class="muted">Remote idea repository');
   });
 });
 
@@ -281,7 +283,7 @@ describe('project ordering, filter and status chips', () => {
     const html = renderMainHtml(localState(projects));
 
     expect(html).not.toContain('id="project-filter"');
-    expect(html).not.toContain('没有匹配的项目');
+    expect(html).not.toContain('No matching projects');
     expect(html).toContain('data-chip="all"');
   });
 
@@ -292,7 +294,7 @@ describe('project ordering, filter and status chips', () => {
     const html = renderMainHtml(localState(projects));
 
     expect(html).toContain('id="project-filter"');
-    expect(html).toContain('没有匹配的项目');
+    expect(html).toContain('No matching projects');
     expect(html.indexOf('id="project-filter"')).toBeLessThan(
       html.indexOf('<ul class="projects">')
     );
@@ -307,10 +309,10 @@ describe('project ordering, filter and status chips', () => {
       ])
     );
 
-    expect(html).toContain('data-chip="all" aria-pressed="true">全部 3</button>');
-    expect(html).toContain('data-chip="new" aria-pressed="false">未证明 1</button>');
-    expect(html).toContain('data-chip="publishable" aria-pressed="false">可发布 1</button>');
-    expect(html).toContain('data-chip="unpublished" aria-pressed="false">未发布 2</button>');
+    expect(html).toContain('data-chip="all" aria-pressed="true">All 3</button>');
+    expect(html).toContain('data-chip="new" aria-pressed="false">Unproven 1</button>');
+    expect(html).toContain('data-chip="publishable" aria-pressed="false">Publishable 1</button>');
+    expect(html).toContain('data-chip="unpublished" aria-pressed="false">Unpublished 2</button>');
   });
 
   it('keeps zero-count chips visible but dims them', () => {
@@ -318,12 +320,12 @@ describe('project ordering, filter and status chips', () => {
       localState([project('published', { publishedCount: 2 })])
     );
 
-    expect(html).toContain('class="chip is-empty chip-warning" data-chip="new" aria-pressed="false">未证明 0</button>');
+    expect(html).toContain('class="chip is-empty chip-warning" data-chip="new" aria-pressed="false">Unproven 0</button>');
     expect(html).toContain(
-      'class="chip is-empty" data-chip="publishable" aria-pressed="false">可发布 0</button>'
+      'class="chip is-empty" data-chip="publishable" aria-pressed="false">Publishable 0</button>'
     );
     expect(html).toContain(
-      'class="chip is-empty" data-chip="unpublished" aria-pressed="false">未发布 0</button>'
+      'class="chip is-empty" data-chip="unpublished" aria-pressed="false">Unpublished 0</button>'
     );
   });
 
@@ -368,27 +370,33 @@ describe('renderSettingsHtml', () => {
     repo: 'test_1027e9ad9a',
     host: 'github.com',
     branch: 'main',
-    visibility: '公开',
-    immutability: '已启用 Release 不可变性',
-    error: null
+    visibility: 'Public',
+    immutability: 'Release immutability is enabled',
+    error: null,
+    display: {
+      url: 'https://github.com/phphe/test_1027e9ad9a',
+      ownerRepo: 'phphe/test_1027e9ad9a',
+      host: 'github.com',
+      branch: 'main'
+    }
   };
 
   it('shows the current remote repository details', () => {
     const html = renderSettingsHtml(info);
-    expect(html).toContain('远程创意仓库');
+    expect(html).toContain('Remote idea repository');
     expect(html).toContain(
-      '地址：</span><span id="settings-url">https://github.com/phphe/test_1027e9ad9a'
+      'URL: </span><span id="settings-url">https://github.com/phphe/test_1027e9ad9a'
     );
-    expect(html).toContain('owner/repo：</span><span id="settings-owner-repo">phphe/test_1027e9ad9a');
-    expect(html).toContain('host：</span><span id="settings-host">github.com');
-    expect(html).toContain('分支：</span><span id="settings-branch">main');
-    expect(html).toContain('是否公开：</span><span id="settings-visibility">公开');
+    expect(html).toContain('owner/repo: </span><span id="settings-owner-repo">phphe/test_1027e9ad9a');
+    expect(html).toContain('host: </span><span id="settings-host">github.com');
+    expect(html).toContain('Branch: </span><span id="settings-branch">main');
+    expect(html).toContain('Public: </span><span id="settings-visibility">Public');
     expect(html).toContain(
-      '不可变性：</span><span id="settings-immutability">已启用 Release 不可变性'
+      'Immutability: </span><span id="settings-immutability">Release immutability is enabled'
     );
     expect(html).toContain('codicon codicon-arrow-left');
-    expect(html).toContain('title="返回创意仓库"');
-    expect(html).toContain('<title>创意仓库 - 设置</title>');
+    expect(html).toContain('title="Back to IdeaHub"');
+    expect(html).toContain('<title>IdeaHub - Settings</title>');
     expect(html).toContain('data.type === \'settingsInfo\'');
     expect(html).not.toContain('id="status"');
   });
@@ -403,7 +411,7 @@ describe('renderSettingsHtml', () => {
     expect(html).not.toContain('data-action="clone"');
     expect(html).not.toContain('data-action="publish"');
     expect(html).toContain('id="remote-branch"');
-    expect(html).toContain('配置只自动提交到本地仓库');
+    expect(html).toContain('only committed to the local repository');
   });
 
   it('renders unconfigured values and API errors without crashing', () => {
@@ -414,15 +422,21 @@ describe('renderSettingsHtml', () => {
       repo: null,
       host: null,
       branch: null,
-      visibility: '未知',
-      immutability: '未知（未登录 GitHub，无法通过 API 检查）',
-      error: '尚未配置远程创意仓库。'
+      visibility: 'Unknown',
+      immutability: 'Unknown (not signed in to GitHub, so the API check is unavailable)',
+      error: 'No remote idea repository is configured yet.',
+      display: {
+        url: 'Not configured',
+        ownerRepo: 'Not configured',
+        host: 'Unknown',
+        branch: 'Unknown'
+      }
     });
-    expect(html).toContain('地址：</span><span id="settings-url">未配置');
-    expect(html).toContain('owner/repo：</span><span id="settings-owner-repo">未配置');
+    expect(html).toContain('URL: </span><span id="settings-url">Not configured');
+    expect(html).toContain('owner/repo: </span><span id="settings-owner-repo">Not configured');
     expect(html).toContain(
-      '不可变性：</span><span id="settings-immutability">未知（未登录 GitHub，无法通过 API 检查）'
+      'Immutability: </span><span id="settings-immutability">Unknown (not signed in to GitHub, so the API check is unavailable)'
     );
-    expect(html).toContain('尚未配置远程创意仓库。');
+    expect(html).toContain('No remote idea repository is configured yet.');
   });
 });

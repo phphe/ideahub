@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { runGit } from '@ideahub/core';
 import type { WorkspaceState } from '@ideahub/core';
 import { IdeahubController } from '../src/ui/controller';
+import { zhL10n } from './helpers/l10n';
 
 const vscodeMocks = vi.hoisted(() => ({
   showWarningMessage: vi.fn(),
@@ -21,6 +22,13 @@ vi.mock('vscode', () => ({
   workspace: { getConfiguration: vi.fn() },
   Uri: { file: (fsPath: string) => ({ fsPath }) },
   ProgressLocation: { Notification: 1 },
+  l10n: {
+    t: (message: string, ...args: unknown[]) =>
+      message.replace(/\{(\d+)\}/g, (match, index) => {
+        const value = args[Number(index)];
+        return value === undefined ? match : String(value);
+      })
+  },
   env: { language: 'zh-cn' }
 }));
 
@@ -59,12 +67,12 @@ describe('explicit init in a non-empty folder', () => {
     expect(result).toMatchObject({ ok: false, silent: true });
     expect(vscodeMocks.showWarningMessage).toHaveBeenCalledTimes(1);
     const confirmation = vscodeMocks.showWarningMessage.mock.calls[0][0] as string;
-    expect(confirmation).toContain('将在此文件夹创建 .git/');
+    expect(confirmation).toContain('A .git/ will be created in this folder');
     expect(confirmation).toContain('.ideahub/');
-    expect(confirmation).toContain('将创建 README.md');
-    expect(confirmation).toContain('不会覆盖任何已有文件');
-    expect(confirmation).toContain('不会自动推送或公开');
-    expect(confirmation).not.toContain('检测到现有');
+    expect(confirmation).toContain('README.md will be created');
+    expect(confirmation).toContain('No existing files will be overwritten');
+    expect(confirmation).toContain('nothing will be pushed or published automatically');
+    expect(confirmation).not.toContain('Detected an existing');
 
     await expect(fs.access(path.join(root, '.git'))).rejects.toThrow();
     await expect(fs.access(path.join(root, '.ideahub'))).rejects.toThrow();
@@ -82,29 +90,31 @@ describe('explicit init in a non-empty folder', () => {
 
     expect(result).toMatchObject({ ok: false, silent: true });
     const confirmation = vscodeMocks.showWarningMessage.mock.calls[0][0] as string;
-    expect(confirmation).toContain('检测到现有 .git/');
-    expect(confirmation).toContain('不会重新初始化或覆盖');
+    expect(confirmation).toContain('Detected an existing .git/');
+    expect(confirmation).toContain('will not reinitialize or overwrite it');
     expect(confirmation).toContain('.ideahub/');
-    expect(confirmation).toContain('将创建 README.md');
-    expect(confirmation).toContain('不会覆盖任何已有文件');
-    expect(confirmation).toContain('不会自动推送或公开');
-    expect(confirmation).not.toContain('将在此文件夹创建 .git/');
+    expect(confirmation).toContain('README.md will be created');
+    expect(confirmation).toContain('No existing files will be overwritten');
+    expect(confirmation).toContain('nothing will be pushed or published automatically');
+    expect(confirmation).not.toContain('A .git/ will be created in this folder');
   });
 
   it('creates the structure and skips an existing README.md', async () => {
     const root = await tempRoot('ideahub-nonempty-readme-');
     await fs.writeFile(path.join(root, 'README.md'), '# my own readme', 'utf8');
     await fs.writeFile(path.join(root, 'keep.txt'), 'user content', 'utf8');
-    vscodeMocks.showWarningMessage.mockResolvedValue('仍要初始化');
+    vscodeMocks.showWarningMessage.mockResolvedValue('Initialize anyway');
 
     const result = await controllerFor(root).initialize(true);
 
     expect(result.ok).toBe(true);
-    expect(result.message).toContain('README.md 已存在，已保留现有 README.md（未覆盖）。');
-    expect(result.message).not.toContain('覆盖 README.md');
+    expect(result.message).toContain(
+      'README.md already exists, so the existing README.md was kept (not overwritten).'
+    );
+    expect(result.message).not.toContain('overwrite README.md');
     const confirmation = vscodeMocks.showWarningMessage.mock.calls[0][0] as string;
-    expect(confirmation).toContain('保留现有 README.md');
-    expect(confirmation).not.toContain('覆盖 README.md');
+    expect(confirmation).toContain('will be kept');
+    expect(confirmation).not.toContain('overwrite README.md');
     expect(await fs.readFile(path.join(root, 'README.md'), 'utf8')).toBe('# my own readme');
     expect(await fs.readFile(path.join(root, 'keep.txt'), 'utf8')).toBe('user content');
     await expect(fs.access(path.join(root, '.git'))).resolves.toBeUndefined();
@@ -124,12 +134,12 @@ describe('explicit init in a non-empty folder', () => {
     await fs.mkdir(path.join(root, '.ideahub'), { recursive: true });
     await fs.writeFile(path.join(root, '.ideahub', 'config.json'), '{"version":99}', 'utf8');
     await fs.writeFile(path.join(root, '.ideahub', '.gitignore'), 'custom-ignore\n', 'utf8');
-    vscodeMocks.showWarningMessage.mockResolvedValue('仍要初始化');
+    vscodeMocks.showWarningMessage.mockResolvedValue('Initialize anyway');
 
     const result = await controllerFor(root).initialize(true);
 
     expect(result.ok).toBe(true);
-    expect(result.message).toContain('已按现有 Git 仓库处理');
+    expect(result.message).toContain('reused it as the Git repository');
     await expect(fs.access(path.join(root, 'README.md'))).resolves.toBeUndefined();
     expect((await runGit(root, ['rev-parse', 'HEAD'])).stdout.trim()).toBe(beforeHead);
     expect(await fs.readFile(path.join(root, '.ideahub', 'config.json'), 'utf8')).toBe(
@@ -147,8 +157,25 @@ describe('explicit init in a non-empty folder', () => {
 
     const result = await controller.initialize();
 
-    expect(result).toEqual({ ok: false, message: '当前状态不允许初始化。' });
+    expect(result).toEqual({
+      ok: false,
+      message: 'Initialization is not allowed in the current state.'
+    });
     expect(vscodeMocks.showWarningMessage).not.toHaveBeenCalled();
     await expect(fs.access(path.join(root, 'README.md'))).rejects.toThrow();
+  });
+
+  it('returns Chinese controller messages when the zh translator is injected', async () => {
+    const controller = new IdeahubController(
+      { appendLine: vi.fn() } as unknown as import('vscode').OutputChannel,
+      zhL10n()
+    );
+
+    const result = await controller.initialize();
+
+    expect(result).toEqual({
+      ok: false,
+      message: '当前状态不允许初始化。'
+    });
   });
 });

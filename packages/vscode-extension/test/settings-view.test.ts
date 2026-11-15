@@ -19,7 +19,14 @@ vi.mock('vscode', () => ({
     })
   },
   ProgressLocation: { Notification: 1 },
-  env: { language: 'zh-cn' }
+  l10n: {
+    t: (message: string, ...args: unknown[]) =>
+      message.replace(/\{(\d+)\}/g, (match, index) => {
+        const value = args[Number(index)];
+        return value === undefined ? match : String(value);
+      })
+  },
+  env: { language: 'en' }
 }));
 
 const REMOTE = {
@@ -46,15 +53,21 @@ const CACHED: RemoteSettingsInfo = {
   repo: REMOTE.repo,
   host: 'github.com',
   branch: 'main',
-  visibility: '公开',
-  immutability: '已启用 Release 不可变性',
-  error: null
+  visibility: 'Public',
+  immutability: 'Release immutability is enabled',
+  error: null,
+  display: {
+    url: REMOTE.url,
+    ownerRepo: 'phphe/test_1027e9ad9a',
+    host: 'github.com',
+    branch: 'main'
+  }
 };
 
 const PLACEHOLDER: RemoteSettingsInfo = {
   ...CACHED,
-  visibility: '读取中…',
-  immutability: '读取中…'
+  visibility: 'Loading…',
+  immutability: 'Loading…'
 };
 
 function outputChannel(): import('vscode').OutputChannel {
@@ -119,7 +132,7 @@ const EXTENSION_URI = { fsPath: 'C:/ext' } as unknown as import('vscode').Uri;
 async function mount(provider: MainViewProvider) {
   const created = createView();
   provider.resolveWebviewView(created.view);
-  await vi.waitFor(() => expect(created.webview.html).toContain('<h1>创意项目</h1>'));
+  await vi.waitFor(() => expect(created.webview.html).toContain('<h1>Idea projects</h1>'));
   return created;
 }
 
@@ -144,12 +157,12 @@ describe('settings view switching', () => {
 
     // The message handler must render settings before returning to the event loop.
     handler()({ type: 'openSettings' });
-    expect(webview.html).toContain('<h1>设置</h1>');
-    expect(webview.html).toContain('已启用 Release 不可变性');
+    expect(webview.html).toContain('<h1>Settings</h1>');
+    expect(webview.html).toContain('Release immutability is enabled');
     expect(controller.currentRemoteSettingsInfo).toHaveBeenCalledTimes(1);
 
     handler()({ type: 'closeSettings' });
-    expect(webview.html).toContain('<h1>创意项目</h1>');
+    expect(webview.html).toContain('<h1>Idea projects</h1>');
     expect(controller.refresh).toHaveBeenCalledTimes(1);
     expect(webview.postMessage).not.toHaveBeenCalled();
   });
@@ -169,8 +182,8 @@ describe('settings view switching', () => {
     const { webview, handler } = await mount(provider);
 
     handler()({ type: 'openSettings' });
-    expect(webview.html).toContain('<h1>设置</h1>');
-    expect(webview.html).toContain('读取中…');
+    expect(webview.html).toContain('<h1>Settings</h1>');
+    expect(webview.html).toContain('Loading…');
 
     await vi.waitFor(() => expect(webview.postMessage).toHaveBeenCalledTimes(1));
     expect(webview.postMessage.mock.calls[0][0]).toEqual({
@@ -204,7 +217,7 @@ describe('settings view switching', () => {
     resolveInfo(CACHED);
     await new Promise((resolve) => setTimeout(resolve, 0));
 
-    expect(webview.html).toContain('<h1>创意项目</h1>');
+    expect(webview.html).toContain('<h1>Idea projects</h1>');
     expect(webview.postMessage).not.toHaveBeenCalled();
   });
 });
@@ -269,7 +282,7 @@ describe('busy state recovery', () => {
 
     handler()({ type: 'openSettings' });
     expect(htmlSets.length).toBe(2);
-    expect(webview.html).toContain('<h1>设置</h1>');
+    expect(webview.html).toContain('<h1>Settings</h1>');
 
     handler()({
       type: 'setRemote',
@@ -281,7 +294,7 @@ describe('busy state recovery', () => {
     );
     expect(controller.setRemote).toHaveBeenCalledWith('https://github.com/phphe/other', true);
     expect(htmlSets.length).toBe(2);
-    expect(webview.html).toContain('<h1>设置</h1>');
+    expect(webview.html).toContain('<h1>Settings</h1>');
   });
 
   it('re-renders after a failed clone so the retry button is clickable again', async () => {

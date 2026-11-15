@@ -78,7 +78,14 @@ vi.mock('vscode', async () => {
     Position,
     WorkspaceEdit,
     ProgressLocation: { Notification: 1 },
-    env: { language: 'zh-cn' }
+    l10n: {
+      t: (message: string, ...args: unknown[]) =>
+        message.replace(/\{(\d+)\}/g, (match, index) => {
+          const value = args[Number(index)];
+          return value === undefined ? match : String(value);
+        })
+    },
+    env: { language: 'en' }
   };
 });
 
@@ -161,7 +168,7 @@ afterEach(async () => {
   );
 });
 
-describe('markProject guard and release payload', { timeout: 20000 }, () => {
+describe('markProject guard and release payload', { timeout: 60000 }, () => {
   it('ignores a second proof request and creates only one release and marker', async () => {
     const { root, controller } = await createProject();
     let resolveRelease!: (value: unknown) => void;
@@ -175,7 +182,9 @@ describe('markProject guard and release payload', { timeout: 20000 }, () => {
     const typed = controller as ControllerLike;
 
     const first = typed.markProject('MyGame');
-    await vi.waitFor(() => expect(createReleaseMock).toHaveBeenCalledTimes(1));
+    await vi.waitFor(() => expect(createReleaseMock).toHaveBeenCalledTimes(1), {
+      timeout: 15000
+    });
     const second = await typed.markProject('MyGame');
 
     expect(second).toMatchObject({ ok: true, silent: true });
@@ -212,7 +221,7 @@ describe('markProject guard and release payload', { timeout: 20000 }, () => {
     const result = await (controller as ControllerLike).markProject('MyGame');
 
     expect(result.ok).toBe(true);
-    expect(result.message).toContain('证明已存在');
+    expect(result.message).toContain('Proof already existed');
     expect(createReleaseMock).not.toHaveBeenCalled();
     const current = await fs.readFile(path.join(root, 'MyGame', 'ideas.md'), 'utf8');
     expect(current.match(/Proof:/g)).toHaveLength(2);

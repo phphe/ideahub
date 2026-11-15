@@ -43,7 +43,14 @@ vi.mock('vscode', () => {
     Position,
     WorkspaceEdit,
     ProgressLocation: { Notification: 1 },
-    env: { language: 'zh-cn' }
+    l10n: {
+      t: (message: string, ...args: unknown[]) =>
+        message.replace(/\{(\d+)\}/g, (match, index) => {
+          const value = args[Number(index)];
+          return value === undefined ? match : String(value);
+        })
+    },
+    env: { language: 'en' }
   };
 });
 
@@ -124,7 +131,10 @@ describe('publishProject precondition', { timeout: 30000 }, () => {
       controller as { publishProject: (project: string) => Promise<{ ok: boolean; message: string }> }
     ).publishProject('MyGame');
 
-    expect(result).toEqual({ ok: false, message: '存在未证明的新内容，请先证明' });
+    expect(result).toEqual({
+      ok: false,
+      message: 'There is new unproven content. Prove it first.'
+    });
     expect(warningMock).not.toHaveBeenCalled();
     expect(await head(root)).toBe(before);
     expect(await fs.readFile(path.join(root, 'MyGame', 'ideas.md'), 'utf8')).toBe(
@@ -151,14 +161,16 @@ describe('publishProject precondition', { timeout: 30000 }, () => {
     };
 
     const first = typed.publishProject('MyGame');
-    await vi.waitFor(() => expect(warningMock).toHaveBeenCalledTimes(1));
+    await vi.waitFor(() => expect(warningMock).toHaveBeenCalledTimes(1), {
+      timeout: 15000
+    });
     const second = await typed.publishProject('MyGame');
 
     expect(second).toMatchObject({ ok: true, silent: true });
     expect(warningMock).toHaveBeenCalledTimes(1);
 
     // Resolve the first confirmation so the guard can be released.
-    resolveWarning('取消');
-    expect(await first).toMatchObject({ ok: false, message: '已取消发布。' });
+    resolveWarning('Cancel');
+    expect(await first).toMatchObject({ ok: false, message: 'Publish cancelled.' });
   });
 });

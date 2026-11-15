@@ -38,7 +38,14 @@ vi.mock('vscode', () => {
       })
     },
     ProgressLocation: { Notification: 1 },
-    env: { language: 'zh-cn' }
+    l10n: {
+      t: (message: string, ...args: unknown[]) =>
+        message.replace(/\{(\d+)\}/g, (match, index) => {
+          const value = args[Number(index)];
+          return value === undefined ? match : String(value);
+        })
+    },
+    env: { language: 'en' }
   };
 });
 
@@ -295,7 +302,7 @@ describe('ideas.md watcher', () => {
     expect(created.webview.postMessage).toHaveBeenCalledWith({
       type: 'projectBadges',
       project: 'MyGame',
-      html: expect.stringContaining('3个证明'),
+      html: expect.stringContaining('3 proofs'),
       flags: {
         hasNewContent: false,
         canPublish: true,

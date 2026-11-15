@@ -23,6 +23,19 @@ async function readSettings(): Promise<Record<string, ConfigurationProperty>> {
   return (JSON.parse(raw) as PackageJson).contributes.configuration.properties;
 }
 
+async function readNls(): Promise<Record<string, string>> {
+  const raw = await fs.readFile(path.join(ROOT, 'package.nls.json'), 'utf8');
+  return JSON.parse(raw) as Record<string, string>;
+}
+
+function resolveNls(value: string | undefined, nls: Record<string, string>): string {
+  if (!value) {
+    return '';
+  }
+  const match = /^%(.+)%$/.exec(value);
+  return match ? (nls[match[1]] ?? value) : value;
+}
+
 describe('package.json contributes.configuration', () => {
   it('exposes exactly the proof and publish settings', async () => {
     const properties = await readSettings();
@@ -48,9 +61,11 @@ describe('package.json contributes.configuration', () => {
       type: 'string',
       default: 'ideahub: mark published'
     });
+    const nls = await readNls();
     for (const key of ['ideahub.proof.commitMessage', 'ideahub.publish.commitMessage']) {
-      expect(properties[key].description).toContain('{project}');
-      expect(properties[key].description).toContain('{time}');
+      const description = resolveNls(properties[key].description, nls);
+      expect(description).toContain('{project}');
+      expect(description).toContain('{time}');
     }
   });
 });
