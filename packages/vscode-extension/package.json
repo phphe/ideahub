@@ -1,7 +1,7 @@
 {
   "name": "ideahub",
-  "displayName": "创意仓库 / IdeaHub",
-  "description": "Your Ideas. Your History. Your Proof.",
+  "displayName": "%ideahub.displayName%",
+  "description": "%ideahub.description%",
   "version": "0.1.0",
   "publisher": "ideahub-dev",
   "license": "UNLICENSED",
@@ -13,6 +13,7 @@
     "Other"
   ],
   "main": "./dist/extension.js",
+  "l10n": "./l10n",
   "activationEvents": [
     "onView:ideahub.main"
   ],
@@ -21,7 +22,7 @@
       "activitybar": [
         {
           "id": "ideahub",
-          "title": "创意仓库",
+          "title": "%ideahub.viewContainerTitle%",
           "icon": "icon.svg"
         }
       ]
@@ -31,37 +32,37 @@
         {
           "type": "webview",
           "id": "ideahub.main",
-          "name": "创意仓库"
+          "name": "%ideahub.viewName%"
         }
       ]
     },
     "commands": [
       {
         "command": "ideahub.refresh",
-        "title": "创意仓库: 刷新状态"
+        "title": "%ideahub.command.refresh%"
       },
       {
         "command": "ideahub.openMain",
-        "title": "创意仓库: 打开主界面"
+        "title": "%ideahub.command.openMain%"
       }
     ],
     "configuration": {
-      "title": "创意仓库",
+      "title": "%ideahub.configuration.title%",
       "properties": {
         "ideahub.proof.autoCommit": {
           "type": "boolean",
           "default": true,
-          "description": "插入证明或发布标记后自动提交该行到本地 git（不会推送）。"
+          "description": "%ideahub.configuration.proofAutoCommit.description%"
         },
         "ideahub.proof.commitMessage": {
           "type": "string",
           "default": "ideahub: record proof",
-          "description": "证明标记自动提交信息模板，支持 {project}、{time} 占位符；未知占位符原样保留，空值回落默认值。"
+          "description": "%ideahub.configuration.proofCommitMessage.description%"
         },
         "ideahub.publish.commitMessage": {
           "type": "string",
           "default": "ideahub: mark published",
-          "description": "发布标记自动提交信息模板，支持 {project}、{time} 占位符；未知占位符原样保留，空值回落默认值。"
+          "description": "%ideahub.configuration.publishCommitMessage.description%"
         }
       }
     }

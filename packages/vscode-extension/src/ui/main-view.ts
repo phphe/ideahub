@@ -1,6 +1,7 @@
 import * as path from 'node:path';
 import * as vscode from 'vscode';
-import type { WorkspaceState } from '@ideahub/core';
+import type { Translator, WorkspaceState } from '@ideahub/core';
+import { translate } from '@ideahub/core';
 import { IdeahubController, type OpResult } from './controller';
 import {
   DEFAULT_WEBVIEW_ASSETS,
@@ -35,11 +36,14 @@ export class MainViewProvider implements vscode.WebviewViewProvider, vscode.Disp
   private watcherTimer?: ReturnType<typeof setTimeout>;
   private pendingProjectChanges = new Set<string>();
   private pendingStructureRefresh = false;
+  /** Language used for the last full render; a change forces fresh text. */
+  private renderedLanguage: string | null = null;
 
   constructor(
     private readonly controller: IdeahubController,
     private readonly output: vscode.OutputChannel,
-    private readonly extensionUri: vscode.Uri
+    private readonly extensionUri: vscode.Uri,
+    private readonly t: Translator = translate
   ) {}
 
   private log(message: string): void {
@@ -199,7 +203,7 @@ export class MainViewProvider implements vscode.WebviewViewProvider, vscode.Disp
       void this.view.webview.postMessage({
         type: 'projectBadges',
         project,
-        html: renderProjectBadges(summary),
+        html: renderProjectBadges(summary, this.t),
         flags: {
           hasNewContent: summary.hasNewContent,
           canPublish: summary.canPublish,
@@ -215,12 +219,23 @@ export class MainViewProvider implements vscode.WebviewViewProvider, vscode.Disp
       this.log('refresh skipped: webview view has not been created yet');
       return;
     }
+    const language = vscode.env.language;
+    const languageChanged =
+      this.renderedLanguage !== null && this.renderedLanguage !== language;
+    if (languageChanged) {
+      // Never reuse text rendered under the previous language.
+      this.settingsRequest += 1;
+      if (this.settingsInfo) {
+        this.settingsInfo = this.controller.currentRemoteSettingsInfo();
+      }
+    }
+    this.renderedLanguage = language;
     if (this.settingsInfo) {
       // Settings must switch instantly: render the cached snapshot first and
       // patch API-derived fields later instead of blocking on network IO.
       const info = this.controller.currentRemoteSettingsInfo();
       this.settingsInfo = info;
-      this.view.webview.html = renderSettingsHtml(info, this.assets);
+      this.view.webview.html = renderSettingsHtml(info, this.assets, this.t, language);
       void this.loadSettingsInfo();
       return;
     }
@@ -230,10 +245,13 @@ export class MainViewProvider implements vscode.WebviewViewProvider, vscode.Disp
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
       this.log(`state detection failed: ${describeError(error)}`);
-      state = { kind: 'error' as const, message: `状态检测失败：${reason}` };
+      state = {
+        kind: 'error' as const,
+        message: this.t('State detection failed: {0}', reason)
+      };
     }
     this.log(`state detected: ${state.kind}${'root' in state ? ` (${state.root})` : ''}`);
-    this.view.webview.html = renderMainHtml(state, this.assets);
+    this.view.webview.html = renderMainHtml(state, this.assets, this.t, language);
   }
 
   private openSettings(): void {
@@ -242,7 +260,13 @@ export class MainViewProvider implements vscode.WebviewViewProvider, vscode.Disp
     }
     const info = this.controller.currentRemoteSettingsInfo();
     this.settingsInfo = info;
-    this.view.webview.html = renderSettingsHtml(info, this.assets);
+    this.renderedLanguage = vscode.env.language;
+    this.view.webview.html = renderSettingsHtml(
+      info,
+      this.assets,
+      this.t,
+      vscode.env.language
+    );
     this.log('settings: opened (instant, cached snapshot)');
     void this.loadSettingsInfo();
   }
@@ -254,7 +278,13 @@ export class MainViewProvider implements vscode.WebviewViewProvider, vscode.Disp
     this.settingsRequest += 1;
     this.settingsInfo = null;
     // Reuse the in-memory workspace state: no git/API scan on the way back.
-    this.view.webview.html = renderMainHtml(this.controller.currentState, this.assets);
+    this.renderedLanguage = vscode.env.language;
+    this.view.webview.html = renderMainHtml(
+      this.controller.currentState,
+      this.assets,
+      this.t,
+      vscode.env.language
+    );
     this.log('settings: closed (instant, reused cached state)');
   }
 
@@ -281,7 +311,7 @@ export class MainViewProvider implements vscode.WebviewViewProvider, vscode.Disp
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
       this.log(`message handling failed (${message.type ?? 'unknown'}): ${describeError(error)}`);
-      void vscode.window.showErrorMessage(`操作失败：${reason}`);
+      void vscode.window.showErrorMessage(this.t('Operation failed: {0}', reason));
       try {
         await this.refresh();
       } catch (refreshError) {
@@ -301,9 +331,11 @@ export class MainViewProvider implements vscode.WebviewViewProvider, vscode.Disp
     }
 
     if (message.type === 'uiError') {
-      const reason = message.message || '未知的前端错误';
+      const reason = message.message || this.t('Unknown webview error');
       this.log(`webview script error: ${reason}`);
-      void vscode.window.showErrorMessage(`界面脚本出错：${reason}`);
+      void vscode.window.showErrorMessage(
+        this.t('Webview script error: {0}', reason)
+      );
       await this.refresh();
       return;
     }
@@ -364,7 +396,7 @@ export class MainViewProvider implements vscode.WebviewViewProvider, vscode.Disp
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
       this.log(`action crashed: ${name}: ${describeError(error)}`);
-      result = { ok: false, message: `操作失败：${reason}` };
+      result = { ok: false, message: this.t('Operation failed: {0}', reason) };
     }
     this.log(`action finished: ${name} -> ${result.ok ? 'ok' : 'error'}: ${result.message}`);
     // Reset before any notification or refresh so the icon stops immediately

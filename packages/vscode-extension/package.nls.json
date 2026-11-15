@@ -1,0 +1,12 @@
+{
+  "ideahub.displayName": "IdeaHub",
+  "ideahub.description": "Your Ideas. Your History. Your Proof.",
+  "ideahub.viewContainerTitle": "IdeaHub",
+  "ideahub.viewName": "IdeaHub",
+  "ideahub.command.refresh": "IdeaHub: Refresh Status",
+  "ideahub.command.openMain": "IdeaHub: Open Main View",
+  "ideahub.configuration.title": "IdeaHub",
+  "ideahub.configuration.proofAutoCommit.description": "Automatically commit the marker line to local git after inserting a proof or publish marker (never pushes).",
+  "ideahub.configuration.proofCommitMessage.description": "Commit message template for proof markers. Supports the {project} and {time} placeholders; unknown placeholders are kept verbatim and an empty value falls back to the default.",
+  "ideahub.configuration.publishCommitMessage.description": "Commit message template for publish markers. Supports the {project} and {time} placeholders; unknown placeholders are kept verbatim and an empty value falls back to the default."
+}

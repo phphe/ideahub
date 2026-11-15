@@ -4,9 +4,11 @@ import * as vscode from 'vscode';
 import {
   detectWorkspace,
   summarizeProject,
+  translate,
   type ProjectSummary,
   type ProjectRemoteStatus,
   type RemoteStatus,
+  type Translator,
   type WorkspaceState
 } from '@ideahub/core';
 import {
@@ -29,7 +31,7 @@ import { ensureReleaseBranchExists } from '@ideahub/core';
 import { validateRemoteRepository } from '@ideahub/core';
 import { parseRemoteUrl } from '@ideahub/core';
 import { decideRemoteSetup, describeImmutabilityCheck, describeReleaseImmutability } from '@ideahub/core';
-import type { RemoteSettingsInfo } from './html';
+import type { RemoteSettingsDisplay, RemoteSettingsInfo } from './html';
 import { cloneRemoteRepository, inspectRemoteTarget, removeLocalClone } from '@ideahub/core';
 import {
   runRemoteSetupFlow,
@@ -94,36 +96,71 @@ async function exists(target: string): Promise<boolean> {
   }
 }
 
-const REMOTE_SETUP_STEP_MESSAGES: Record<RemoteSetupStep, string> = {
-  validate: '步骤 1/2：正在校验远程创意仓库…',
-  persist: '步骤 1/2：校验通过，正在保存配置与 hook…',
-  clone: '步骤 2/2：正在克隆远程创意仓库…'
-};
+function remoteSetupStepMessage(step: RemoteSetupStep, t: Translator): string {
+  switch (step) {
+    case 'validate':
+      return t('Step 1/2: validating the remote idea repository…');
+    case 'persist':
+      return t('Step 1/2: validation passed, saving configuration and hook…');
+    case 'clone':
+      return t('Step 2/2: cloning the remote idea repository…');
+  }
+}
 
-function formatRemoteSetupResult(result: RemoteSetupFlowResult): OpResult {
+function withDisplay(
+  info: Omit<RemoteSettingsInfo, 'display'>,
+  t: Translator
+): RemoteSettingsInfo {
+  const display: RemoteSettingsDisplay = {
+    url: info.url || t('Not configured'),
+    ownerRepo:
+      info.owner && info.repo ? `${info.owner}/${info.repo}` : t('Not configured'),
+    host: info.host ?? t('Unknown'),
+    branch: info.branch ?? t('Unknown')
+  };
+  return { ...info, display };
+}
+
+function formatRemoteSetupResult(
+  result: RemoteSetupFlowResult,
+  t: Translator
+): OpResult {
   if (result.ok) {
-    const target = `${result.remote.owner}/${result.remote.repo}（分支 ${result.branch}）`;
+    const target = `${result.remote.owner}/${result.remote.repo}`;
     const cloneStep =
       result.clone === 'cloned'
-        ? `步骤 2/2：远程创意仓库已克隆（分支 ${result.branch}）。`
-        : '步骤 2/2：检测到 .ideahub/remote/ 已是有效 Git 仓库，已跳过克隆；若与新地址不一致，请使用“重新克隆”。';
+        ? t(
+            'Step 2/2: the remote idea repository was cloned (branch {0}).',
+            result.branch
+          )
+        : t(
+            'Step 2/2: .ideahub/remote/ is already a valid Git repository, so cloning was skipped; if it does not match the new URL, use "Re-clone".'
+          );
     return {
       ok: true,
-      message: `步骤 1/2：远程地址校验通过，配置与 hook 已保存。\n${cloneStep}\n远程创意仓库：${target}\n${result.immutabilityMessage}`
+      message: t(
+        'Step 1/2: remote URL validation passed; configuration and hook saved.\n{0}\nRemote idea repository: {1} (branch {2})\n{3}',
+        cloneStep,
+        target,
+        result.branch,
+        result.immutabilityMessage
+      )
     };
   }
 
   const stageLabels = {
-    validation: '步骤 1/2（校验）',
-    config: '步骤 1/2（保存配置）',
-    clone: '步骤 2/2（克隆）'
+    validation: t('Step 1/2 (validation)'),
+    config: t('Step 1/2 (save configuration)'),
+    clone: t('Step 2/2 (clone)')
   } as const;
   const retry = result.retryClone
-    ? '\n克隆入口已保留，可点击“克隆远程仓库”重试；如需清空并重来，请使用“重新克隆”。'
+    ? t(
+        '\nThe clone entry is still available; click "Clone remote repository" to retry. To start over, use "Re-clone".'
+      )
     : '';
   return {
     ok: false,
-    message: `${stageLabels[result.stage]}失败：${result.message}${retry}`
+    message: `${stageLabels[result.stage]}${t(' failed: {0}{1}', result.message, retry)}`
   };
 }
 
@@ -132,11 +169,16 @@ export class IdeahubController {
   private readonly operationGuard = new ProjectOperationGuard();
   /** Last fully resolved settings snapshot, reused for instant rendering. */
   private remoteSettingsCache: RemoteSettingsInfo | null = null;
+  /** Language of `remoteSettingsCache`; a language change discards translated text. */
+  private remoteSettingsLanguage: string | null = null;
   /** Section 8.7: parsed `ideas.md` summaries, scoped to the current repo root. */
   private projectCache: ProjectParseCache | null = null;
   private projectCacheRoot: string | null = null;
 
-  constructor(private readonly output: vscode.OutputChannel) {}
+  constructor(
+    private readonly output: vscode.OutputChannel,
+    private readonly t: Translator = translate
+  ) {}
 
   private log(message: string): void {
     this.output.appendLine(`[${new Date().toISOString()}] ${message}`);
@@ -169,12 +211,24 @@ export class IdeahubController {
   public async refresh(): Promise<WorkspaceState> {
     const root = this.workspaceRoot();
     const cache = root ? this.cacheFor(root) : undefined;
-    const state = await detectWorkspace(root, cache);
+    const language = vscode.env.language;
+    if (
+      this.remoteSettingsLanguage !== null &&
+      this.remoteSettingsLanguage !== language
+    ) {
+      this.remoteSettingsCache = null;
+      this.remoteSettingsLanguage = null;
+    }
+    const state = await detectWorkspace(root, cache, this.t);
     if (state.kind === 'local' && state.remote) {
       state.remoteStatus = await this.loadRemoteStatus(state);
     }
     this.currentState = state;
     return state;
+  }
+
+  private githubClient(token: string | null): GitHubClient {
+    return new GitHubClient(async () => token, fetch, this.t);
   }
 
   /**
@@ -208,7 +262,7 @@ export class IdeahubController {
     }
     const remote = state.remote;
     const token = await getGitHubToken(false);
-    const client = new GitHubClient(async () => token);
+    const client = this.githubClient(token);
 
     try {
       const releases = await client.listReleases(remote.owner, remote.repo);
@@ -254,40 +308,58 @@ export class IdeahubController {
     const state = this.currentState;
     if (allowNonEmpty) {
       if (state.kind !== 'not-ideahub') {
-        return { ok: false, message: '当前状态不允许初始化。' };
+        return {
+          ok: false,
+          message: this.t('Initialization is not allowed in the current state.')
+        };
       }
       const hasGit = await hasGitDirectory(state.root);
       const hasReadme = await hasReadmeFile(state.root);
       const readmeLine = hasReadme
-        ? 'README.md 已存在，将保留现有 README.md。'
-        : '将创建 README.md。';
-      const common = `.ideahub/ 已有内容会被复用；${readmeLine} 不会覆盖任何已有文件，也不会自动推送或公开；仅本次新建的 .ideahub/config.json 会自动提交到本地仓库。\n仍要在此文件夹初始化创意仓库吗？`;
+        ? this.t('README.md already exists, so the existing README.md will be kept.')
+        : this.t('README.md will be created.');
+      const common = this.t(
+        'Existing .ideahub/ content will be reused; {0} No existing files will be overwritten, and nothing will be pushed or published automatically; only the newly created .ideahub/config.json will be committed to the local repository.\nInitialize the idea repository in this folder anyway?',
+        readmeLine
+      );
       const confirmation = hasGit
-        ? `检测到现有 .git/，初始化将沿用该仓库，不会重新初始化或覆盖它。\n${common}`
-        : `将在此文件夹创建 .git/，并创建 .ideahub/。\n${common}`;
+        ? this.t(
+            'Detected an existing .git/; initialization will reuse it and will not reinitialize or overwrite it.\n{0}',
+            common
+          )
+        : this.t('A .git/ will be created in this folder, along with .ideahub/.\n{0}', common);
+      const confirm = this.t('Initialize anyway');
       const choice = await vscode.window.showWarningMessage(
         confirmation,
         { modal: true },
-        '仍要初始化'
+        confirm
       );
-      if (choice !== '仍要初始化') {
+      if (choice !== confirm) {
         return { ok: false, message: '', silent: true };
       }
     } else if (state.kind !== 'empty-folder') {
-      return { ok: false, message: '当前状态不允许初始化。' };
+      return {
+        ok: false,
+        message: this.t('Initialization is not allowed in the current state.')
+      };
     }
     const result = await vscode.window.withProgress(
-      { location: vscode.ProgressLocation.Notification, title: '正在初始化本地创意仓库…' },
-      () => initializeLocalRepository(state.root, { allowNonEmpty })
+      {
+        location: vscode.ProgressLocation.Notification,
+        title: this.t('Initializing the local idea repository…')
+      },
+      () => initializeLocalRepository(state.root, { allowNonEmpty, t: this.t })
     );
     if (result.ok) {
       return {
         ok: true,
-        message: ['本地创意仓库已初始化。', ...result.notes].join('\n')
+        message: [this.t('The local idea repository has been initialized.'), ...result.notes].join(
+          '\n'
+        )
       };
     }
     const steps = result.completedSteps.length
-      ? `\n已完成的步骤：${result.completedSteps.join('、')}`
+      ? this.t('\nCompleted steps: {0}', result.completedSteps.join(', '))
       : '';
     return { ok: false, message: `${result.error}${steps}` };
   }
@@ -295,27 +367,33 @@ export class IdeahubController {
   public async initGit(): Promise<OpResult> {
     const root = this.requireLocalRoot();
     if (!root) {
-      return { ok: false, message: '当前状态不允许执行该操作。' };
+      return {
+        ok: false,
+        message: this.t('This operation is not allowed in the current state.')
+      };
     }
-    const result = await ensureLocalGitRepository(root);
+    const result = await ensureLocalGitRepository(root, this.t);
     if (!result.ok) {
       return { ok: false, message: result.error };
     }
-    return { ok: true, message: '已初始化本地 Git 仓库。' };
+    return { ok: true, message: this.t('The local Git repository has been initialized.') };
   }
 
   public async installHook(): Promise<OpResult> {
     const root = this.requireLocalRoot();
     if (!root) {
-      return { ok: false, message: '当前状态不允许执行该操作。' };
+      return {
+        ok: false,
+        message: this.t('This operation is not allowed in the current state.')
+      };
     }
     const state = this.currentState;
     const remote = state.kind === 'local' ? state.remote : null;
-    const result = await installPrePushHook(root, remote);
+    const result = await installPrePushHook(root, remote, this.t);
     if (!result.ok) {
       return { ok: false, message: result.error };
     }
-    return { ok: true, message: 'pre-push hook 已安装 / 更新。' };
+    return { ok: true, message: this.t('The pre-push hook was installed / updated.') };
   }
 
   public async setRemote(
@@ -325,20 +403,26 @@ export class IdeahubController {
   ): Promise<OpResult> {
     const root = this.requireLocalRoot();
     if (!root) {
-      return { ok: false, message: '当前状态不允许执行该操作。' };
+      return {
+        ok: false,
+        message: this.t('This operation is not allowed in the current state.')
+      };
     }
 
-    const parsed = parseRemoteUrl(url);
+    const parsed = parseRemoteUrl(url, this.t);
     if (!parsed.ok) {
       return { ok: false, message: parsed.error };
     }
 
     const token = await getGitHubToken(true);
     if (!token) {
-      return { ok: false, message: '需要登录 GitHub 才能校验远程创意仓库。' };
+      return {
+        ok: false,
+        message: this.t('You must sign in to GitHub to validate the remote idea repository.')
+      };
     }
 
-    const client = new GitHubClient(async () => token);
+    const client = this.githubClient(token);
     const settingsUrl = `https://${parsed.value.host}/${parsed.value.owner}/${parsed.value.repo}/settings`;
     const state = this.currentState;
     const previous = state.kind === 'local' ? state.remote : null;
@@ -347,14 +431,15 @@ export class IdeahubController {
     const result = await vscode.window.withProgress(
       {
         location: vscode.ProgressLocation.Notification,
-        title: '配置远程创意仓库（1/2 校验 → 2/2 克隆）',
+        title: this.t('Configuring the remote idea repository (1/2 validate → 2/2 clone)'),
         cancellable: false
       },
       (progress) =>
         runRemoteSetupFlow({
-          validate: () => validateRemoteRepository(url, client, branch),
+          t: this.t,
+          validate: () => validateRemoteRepository(url, client, branch, this.t),
           decideImmutability: (check) =>
-            decideRemoteSetup(check, immutabilityConfirmed, settingsUrl),
+            decideRemoteSetup(check, immutabilityConfirmed, settingsUrl, this.t),
           confirmChange: async (next) => {
             const sameRepo =
               previous !== null &&
@@ -363,41 +448,55 @@ export class IdeahubController {
             if (!previous || sameRepo) {
               return true;
             }
+            const confirm = this.t('Change');
             const choice = await vscode.window.showWarningMessage(
-              '更换远程创意仓库地址会影响已有证明的可验证性；已有证明仍然保留在原远程仓库中。确认更换吗？',
+              this.t(
+                'Changing the remote idea repository URL affects the verifiability of existing proofs; existing proofs remain in the previous remote repository. Change it anyway?'
+              ),
               { modal: true },
-              '确认更换'
+              confirm
             );
-            return choice === '确认更换';
+            return choice === confirm;
           },
           persist: async (remote) => {
             await writeConfig(root, { version: 1, remote });
-            const hookResult = await installPrePushHook(root, {
-              owner: remote.owner,
-              repo: remote.repo
-            });
+            const hookResult = await installPrePushHook(
+              root,
+              {
+                owner: remote.owner,
+                repo: remote.repo
+              },
+              this.t
+            );
             if (!hookResult.ok) {
               return { ok: false, error: hookResult.error };
             }
             const commit = await commitSingleFile({
               root,
               filePath: configPath(root),
-              message: CONFIG_REMOTE_COMMIT_MESSAGE
+              message: CONFIG_REMOTE_COMMIT_MESSAGE,
+              t: this.t
             });
             if (commit.status === 'committed') {
-              configCommitNote = '已自动提交 .ideahub/config.json 到本地仓库（未推送）。';
+              configCommitNote = this.t(
+                'Automatically committed .ideahub/config.json to the local repository (not pushed).'
+              );
             } else if (commit.status === 'failed') {
-              configCommitNote = `.ideahub/config.json 已保存，但自动提交失败：${commit.reason}`;
+              configCommitNote = this.t(
+                '.ideahub/config.json was saved, but the automatic commit failed: {0}',
+                commit.reason
+              );
             }
             return { ok: true };
           },
-          inspect: () => inspectRemoteTarget(root),
-          clone: (remote) => cloneRemoteRepository(root, remote),
-          onStep: (step) => progress.report({ message: REMOTE_SETUP_STEP_MESSAGES[step] })
+          inspect: () => inspectRemoteTarget(root, this.t),
+          clone: (remote) => cloneRemoteRepository(root, remote, this.t),
+          onStep: (step) =>
+            progress.report({ message: remoteSetupStepMessage(step, this.t) })
         })
     );
 
-    const formatted = formatRemoteSetupResult(result);
+    const formatted = formatRemoteSetupResult(result, this.t);
     if (formatted.ok && configCommitNote) {
       return { ok: true, message: `${formatted.message}\n${configCommitNote}` };
     }
@@ -408,32 +507,43 @@ export class IdeahubController {
     const root = this.requireLocalRoot();
     const state = this.currentState;
     if (!root || state.kind !== 'local' || !state.remote) {
-      return { ok: false, message: '请先填写并保存远程仓库地址。' };
+      return {
+        ok: false,
+        message: this.t('Enter and save the remote repository URL first.')
+      };
     }
 
     if (reclone) {
+      const confirm = this.t('Delete and re-clone');
       const choice = await vscode.window.showWarningMessage(
-        '将删除 .ideahub/remote/ 并从远程创意仓库重新克隆。该目录内未提交的变更会丢失，确认继续吗？',
+        this.t(
+          'This will delete .ideahub/remote/ and clone the remote idea repository again. Uncommitted changes in that directory will be lost. Continue?'
+        ),
         { modal: true },
-        '删除并重新克隆'
+        confirm
       );
-      if (choice !== '删除并重新克隆') {
-        return { ok: false, message: '已取消重新克隆。' };
+      if (choice !== confirm) {
+        return { ok: false, message: this.t('Re-clone cancelled.') };
       }
-      const removed = await removeLocalClone(root);
+      const removed = await removeLocalClone(root, this.t);
       if (!removed.ok) {
         return { ok: false, message: removed.error };
       }
     } else if (state.remoteDirExists) {
       return {
         ok: false,
-        message: '.ideahub/remote/ 已存在；如需重新克隆，请使用“重新克隆”操作。'
+        message: this.t(
+          '.ideahub/remote/ already exists; use "Re-clone" to clone it again.'
+        )
       };
     }
 
     const result = await vscode.window.withProgress(
-      { location: vscode.ProgressLocation.Notification, title: '正在克隆远程创意仓库…' },
-      () => cloneRemoteRepository(root, state.remote!)
+      {
+        location: vscode.ProgressLocation.Notification,
+        title: this.t('Cloning the remote idea repository…')
+      },
+      () => cloneRemoteRepository(root, state.remote!, this.t)
     );
     if (!result.ok) {
       this.log(
@@ -441,11 +551,18 @@ export class IdeahubController {
       );
       return { ok: false, message: result.error };
     }
-    return { ok: true, message: `远程创意仓库已克隆（分支 ${result.branch}）。` };
+    return {
+      ok: true,
+      message: this.t(
+        'The remote idea repository was cloned (branch {0}).',
+        result.branch
+      )
+    };
   }
 
   private rememberSettings(info: RemoteSettingsInfo): RemoteSettingsInfo {
     this.remoteSettingsCache = info;
+    this.remoteSettingsLanguage = vscode.env.language;
     return info;
   }
 
@@ -458,126 +575,185 @@ export class IdeahubController {
   public currentRemoteSettingsInfo(): RemoteSettingsInfo {
     const state = this.currentState;
     if (state.kind !== 'local') {
-      return this.rememberSettings({
-        url: '',
-        owner: null,
-        repo: null,
-        host: null,
-        branch: null,
-        visibility: '未知',
-        immutability: '未知',
-        error: '当前没有打开的本地创意仓库。'
-      });
+      return this.rememberSettings(
+        withDisplay(
+          {
+            url: '',
+            owner: null,
+            repo: null,
+            host: null,
+            branch: null,
+            visibility: this.t('Unknown'),
+            immutability: this.t('Unknown'),
+            error: this.t('There is no local idea repository open.')
+          },
+          this.t
+        )
+      );
     }
     if (!state.remote) {
-      return this.rememberSettings({
-        url: '',
-        owner: null,
-        repo: null,
-        host: null,
-        branch: null,
-        visibility: '未知',
-        immutability: '未知',
-        error: '尚未配置远程创意仓库。'
-      });
+      return this.rememberSettings(
+        withDisplay(
+          {
+            url: '',
+            owner: null,
+            repo: null,
+            host: null,
+            branch: null,
+            visibility: this.t('Unknown'),
+            immutability: this.t('Unknown'),
+            error: this.t('No remote idea repository is configured yet.')
+          },
+          this.t
+        )
+      );
     }
 
     const remote = state.remote;
     const cached = this.remoteSettingsCache;
-    if (cached && cached.url === remote.url) {
+    if (
+      cached &&
+      cached.url === remote.url &&
+      this.remoteSettingsLanguage === vscode.env.language
+    ) {
       return cached;
     }
-    const parsed = parseRemoteUrl(remote.url);
-    return {
-      url: remote.url,
-      owner: remote.owner,
-      repo: remote.repo,
-      host: parsed.ok ? parsed.value.host : null,
-      branch: remote.branch,
-      visibility: '读取中…',
-      immutability: '读取中…',
-      error: null
-    };
+    const parsed = parseRemoteUrl(remote.url, this.t);
+    return withDisplay(
+      {
+        url: remote.url,
+        owner: remote.owner,
+        repo: remote.repo,
+        host: parsed.ok ? parsed.value.host : null,
+        branch: remote.branch,
+        visibility: this.t('Loading…'),
+        immutability: this.t('Loading…'),
+        error: null
+      },
+      this.t
+    );
   }
 
   public async getRemoteSettingsInfo(): Promise<RemoteSettingsInfo> {
     const state = this.currentState;
     if (state.kind !== 'local') {
-      return this.rememberSettings({
-        url: '',
-        owner: null,
-        repo: null,
-        host: null,
-        branch: null,
-        visibility: '未知',
-        immutability: '未知',
-        error: '当前没有打开的本地创意仓库。'
-      });
+      return this.rememberSettings(
+        withDisplay(
+          {
+            url: '',
+            owner: null,
+            repo: null,
+            host: null,
+            branch: null,
+            visibility: this.t('Unknown'),
+            immutability: this.t('Unknown'),
+            error: this.t('There is no local idea repository open.')
+          },
+          this.t
+        )
+      );
     }
     if (!state.remote) {
-      return this.rememberSettings({
-        url: '',
-        owner: null,
-        repo: null,
-        host: null,
-        branch: null,
-        visibility: '未知',
-        immutability: '未知',
-        error: '尚未配置远程创意仓库。'
-      });
+      return this.rememberSettings(
+        withDisplay(
+          {
+            url: '',
+            owner: null,
+            repo: null,
+            host: null,
+            branch: null,
+            visibility: this.t('Unknown'),
+            immutability: this.t('Unknown'),
+            error: this.t('No remote idea repository is configured yet.')
+          },
+          this.t
+        )
+      );
     }
 
     const remote = state.remote;
-    const parsed = parseRemoteUrl(remote.url);
-    const base: RemoteSettingsInfo = {
+    const parsed = parseRemoteUrl(remote.url, this.t);
+    const base = {
       url: remote.url,
       owner: remote.owner,
       repo: remote.repo,
       host: parsed.ok ? parsed.value.host : null,
       branch: remote.branch,
-      visibility: '未知',
-      immutability: '未知',
-      error: null
+      visibility: this.t('Unknown'),
+      immutability: this.t('Unknown'),
+      error: null as string | null
     };
 
     const token = await getGitHubToken(false);
     if (!token) {
-      return this.rememberSettings({
-        ...base,
-        immutability: '未知（未登录 GitHub，无法通过 API 检查）'
-      });
+      return this.rememberSettings(
+        withDisplay(
+          {
+            ...base,
+            immutability: this.t(
+              'Unknown (not signed in to GitHub, so the API check is unavailable)'
+            )
+          },
+          this.t
+        )
+      );
     }
 
-    const client = new GitHubClient(async () => token);
+    const client = this.githubClient(token);
     try {
       const repository = await client.getRepository(remote.owner, remote.repo);
       if (!repository) {
-        return this.rememberSettings({
-          ...base,
-          error: '无法读取远程仓库信息（仓库不存在或没有访问权限）。'
-        });
+        return this.rememberSettings(
+          withDisplay(
+            {
+              ...base,
+              error: this.t(
+                'Unable to read remote repository information (the repository does not exist or there is no access).'
+              )
+            },
+            this.t
+          )
+        );
       }
       const immutability = await client.getImmutableReleasesStatus(
         remote.owner,
         remote.repo,
         parsed.ok ? parsed.value.host : undefined
       );
-      return this.rememberSettings({
-        ...base,
-        branch: repository.defaultBranch || remote.branch,
-        visibility: repository.isPrivate ? '私有（不符合要求，必须为公开仓库）' : '公开',
-        immutability: describeImmutabilityCheck(immutability)
-      });
+      return this.rememberSettings(
+        withDisplay(
+          {
+            ...base,
+            branch: repository.defaultBranch || remote.branch,
+            visibility: repository.isPrivate
+              ? this.t('Private (does not meet the requirement; it must be public)')
+              : this.t('Public'),
+            immutability: describeImmutabilityCheck(immutability, this.t)
+          },
+          this.t
+        )
+      );
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
-      return this.rememberSettings({ ...base, error: `无法读取远程仓库信息：${reason}` });
+      return this.rememberSettings(
+        withDisplay(
+          {
+            ...base,
+            error: this.t('Unable to read remote repository information: {0}', reason)
+          },
+          this.t
+        )
+      );
     }
   }
 
   public async createProject(): Promise<OpResult> {
     const root = this.requireLocalRoot();
     if (!root) {
-      return { ok: false, message: '当前状态不允许执行该操作。' };
+      return {
+        ok: false,
+        message: this.t('This operation is not allowed in the current state.')
+      };
     }
 
     const state = this.currentState;
@@ -588,16 +764,17 @@ export class IdeahubController {
         : [];
 
     const name = await vscode.window.showInputBox({
-      title: '新建项目',
-      prompt: '输入项目名称，将创建 <项目名>/ideas.md',
-      placeHolder: '例如 MyGame',
-      validateInput: (value) => validateProjectName(value, existingProjects, remoteProjects) ?? ''
+      title: this.t('New project'),
+      prompt: this.t('Enter a project name; <project>/ideas.md will be created'),
+      placeHolder: this.t('For example MyGame'),
+      validateInput: (value) =>
+        validateProjectName(value, existingProjects, remoteProjects, this.t) ?? ''
     });
     if (name === undefined) {
-      return { ok: false, message: '已取消新建项目。' };
+      return { ok: false, message: this.t('Project creation cancelled.') };
     }
 
-    const result = await createProjectOnDisk(root, name, remoteProjects);
+    const result = await createProjectOnDisk(root, name, remoteProjects, this.t);
     if (!result.ok) {
       return { ok: false, message: result.error };
     }
@@ -606,33 +783,46 @@ export class IdeahubController {
     try {
       const document = await vscode.workspace.openTextDocument(vscode.Uri.file(result.ideasPath));
       await vscode.window.showTextDocument(document);
-      openNote = '\n已打开 ideas.md。';
+      openNote = this.t('\nideas.md was opened.');
     } catch (error) {
-      openNote = `\n项目已创建，但自动打开 ideas.md 失败：${
+      openNote = this.t(
+        '\nThe project was created, but opening ideas.md automatically failed: {0}',
         error instanceof Error ? error.message : String(error)
-      }`;
+      );
     }
 
     return {
       ok: true,
-      message: `已创建项目“${name}”（${name}/ideas.md）。\n使用最小模板（文档未定义 ideas.md 模板）：${result.content.trim()}${openNote}`
+      message: this.t(
+        'Created project "{0}" ({1}/ideas.md).\nUsing the minimal template (the documentation does not define an ideas.md template): {2}{3}',
+        name,
+        name,
+        result.content.trim(),
+        openNote
+      )
     };
   }
 
   public async openProject(project: string): Promise<OpResult> {
     const root = this.requireLocalRoot();
     if (!root) {
-      return { ok: false, message: '当前状态不允许执行该操作。' };
+      return {
+        ok: false,
+        message: this.t('This operation is not allowed in the current state.')
+      };
     }
     const uri = vscode.Uri.file(path.join(root, project, 'ideas.md'));
     try {
       const document = await vscode.workspace.openTextDocument(uri);
       await vscode.window.showTextDocument(document);
-      return { ok: true, message: `已打开 ${project}/ideas.md。` };
+      return { ok: true, message: this.t('Opened {0}/ideas.md.', project) };
     } catch (error) {
       return {
         ok: false,
-        message: `无法打开项目 ideas.md：${error instanceof Error ? error.message : String(error)}`
+        message: this.t(
+          'Unable to open the project ideas.md: {0}',
+          error instanceof Error ? error.message : String(error)
+        )
       };
     }
   }
@@ -645,7 +835,10 @@ export class IdeahubController {
   public async copyProjectUrl(project: string): Promise<OpResult> {
     const state = this.currentState;
     if (state.kind !== 'local' || !state.remote) {
-      return { ok: false, message: '请先完成远程仓库配置。' };
+      return {
+        ok: false,
+        message: this.t('Complete the remote repository configuration first.')
+      };
     }
     const url = remoteProjectUrl(
       state.remote.owner,
@@ -658,10 +851,13 @@ export class IdeahubController {
     } catch (error) {
       return {
         ok: false,
-        message: `复制项目地址失败：${error instanceof Error ? error.message : String(error)}`
+        message: this.t(
+          'Failed to copy the project URL: {0}',
+          error instanceof Error ? error.message : String(error)
+        )
       };
     }
-    return { ok: true, message: `已复制项目地址：${url}` };
+    return { ok: true, message: this.t('Copied project URL: {0}', url) };
   }
 
   /**
@@ -671,7 +867,10 @@ export class IdeahubController {
   public async editProjectTags(project: string): Promise<OpResult> {
     const root = this.requireLocalRoot();
     if (!root) {
-      return { ok: false, message: '当前状态不允许执行该操作。' };
+      return {
+        ok: false,
+        message: this.t('This operation is not allowed in the current state.')
+      };
     }
     const uri = vscode.Uri.file(path.join(root, project, 'ideas.md'));
     let document;
@@ -680,17 +879,22 @@ export class IdeahubController {
     } catch (error) {
       return {
         ok: false,
-        message: `无法读取项目 ideas.md：${error instanceof Error ? error.message : String(error)}`
+        message: this.t(
+          'Unable to read the project ideas.md: {0}',
+          error instanceof Error ? error.message : String(error)
+        )
       };
     }
 
     const text = document.getText();
     const current = parseTags(text);
     const input = await vscode.window.showInputBox({
-      title: '编辑标签',
-      prompt: '用逗号分隔多个标签（支持中文逗号和顿号）；留空表示清除全部标签。',
+      title: this.t('Edit tags'),
+      prompt: this.t(
+        'Separate multiple tags with commas (Chinese commas and enumeration commas are supported); leave empty to clear all tags.'
+      ),
       value: current.join(', '),
-      placeHolder: '例如 游戏, 写作'
+      placeHolder: this.t('For example game, writing')
     });
     if (input === undefined) {
       return { ok: false, message: '', silent: true };
@@ -699,7 +903,7 @@ export class IdeahubController {
     const next = parseTagInput(input);
     const updated = updateTags(text, next);
     if (updated === text) {
-      return { ok: true, message: '标签未变化。' };
+      return { ok: true, message: this.t('Tags did not change.') };
     }
 
     const edit = new vscode.WorkspaceEdit();
@@ -710,17 +914,26 @@ export class IdeahubController {
     );
     const applied = await vscode.workspace.applyEdit(edit);
     if (!applied) {
-      return { ok: false, message: '写入标签失败，请检查文件是否可编辑。' };
+      return {
+        ok: false,
+        message: this.t('Failed to write tags. Check whether the file is editable.')
+      };
     }
     const saved = await document.save();
     if (!saved) {
-      return { ok: false, message: '标签已写入编辑器，但文件保存失败。' };
+      return {
+        ok: false,
+        message: this.t('Tags were written to the editor, but saving the file failed.')
+      };
     }
 
     this.invalidateProject(project);
     return {
       ok: true,
-      message: next.length > 0 ? `已更新标签：${next.join(', ')}` : '已清除全部标签。'
+      message:
+        next.length > 0
+          ? this.t('Updated tags: {0}', next.join(', '))
+          : this.t('Cleared all tags.')
     };
   }
 
@@ -770,7 +983,11 @@ export class IdeahubController {
     );
     if (outcome.ignored) {
       this.log(`mark: ignored duplicate request for ${project}`);
-      return { ok: true, message: '操作进行中，已忽略重复请求。', silent: true };
+      return {
+        ok: true,
+        message: this.t('An operation is in progress; the duplicate request was ignored.'),
+        silent: true
+      };
     }
     return outcome.value!;
   }
@@ -778,10 +995,18 @@ export class IdeahubController {
   private async markProjectUnlocked(project: string): Promise<OpResult> {
     const state = this.currentState;
     if (state.kind !== 'local' || !state.remote) {
-      return { ok: false, message: '请先完成本地仓库与远程仓库配置。' };
+      return {
+        ok: false,
+        message: this.t('Complete the local and remote repository configuration first.')
+      };
     }
     if (state.issues.length > 0) {
-      return { ok: false, message: '请先完成界面列出的配置，再生成证明。' };
+      return {
+        ok: false,
+        message: this.t(
+          'Complete the configuration listed in the view before generating a proof.'
+        )
+      };
     }
     const remote = state.remote;
 
@@ -792,14 +1017,20 @@ export class IdeahubController {
     } catch (error) {
       return {
         ok: false,
-        message: `无法读取项目 ideas.md：${error instanceof Error ? error.message : String(error)}`
+        message: this.t(
+          'Unable to read the project ideas.md: {0}',
+          error instanceof Error ? error.message : String(error)
+        )
       };
     }
 
     const text = document.getText();
     const parsed = parseIdeas(text);
     if (!parsed.hasUnsealedContent) {
-      return { ok: true, message: '没有需要生成证明的新内容。' };
+      return {
+        ok: true,
+        message: this.t('There is no new content that needs a proof.')
+      };
     }
 
     this.log(`mark: release branch config: release_branch=${RELEASE_BRANCH} source=build`);
@@ -809,7 +1040,8 @@ export class IdeahubController {
       project,
       text: parsed.tailAfterLastMarker,
       projectDir: path.join(state.root, project),
-      repoRoot: state.root
+      repoRoot: state.root,
+      t: this.t
     });
     if (!fingerprint.ok) {
       this.log(`mark: fingerprint aborted: ${fingerprint.code}: ${fingerprint.message}`);
@@ -820,7 +1052,7 @@ export class IdeahubController {
     const proofTimeText = formatMarkerTime(proofTime);
     const markerLine = formatMarkerLine('proof', proofTimeText);
     const tag = buildReleaseTag(contentHash).tag;
-    const tagError = validateTagName(tag);
+    const tagError = validateTagName(tag, this.t);
     if (tagError) {
       this.log(
         [
@@ -831,30 +1063,43 @@ export class IdeahubController {
       );
       return {
         ok: false,
-        message: `无法创建 Release（tag_name=${tag}，target_commitish=${RELEASE_BRANCH}）：${tagError}`
+        message: this.t(
+          'Unable to create the Release (tag_name={0}, target_commitish={1}): {2}',
+          tag,
+          RELEASE_BRANCH,
+          tagError
+        )
       };
     }
 
     const token = await getGitHubToken(true);
     if (!token) {
-      return { ok: false, message: '需要登录 GitHub 才能创建证明 Release。' };
+      return {
+        ok: false,
+        message: this.t('You must sign in to GitHub to create proof Releases.')
+      };
     }
 
-    const client = new GitHubClient(async () => token);
+    const client = this.githubClient(token);
     const innerPath = remoteRepoPath(state.root);
     const targetResult = await vscode.window.withProgress(
-      { location: vscode.ProgressLocation.Notification, title: '正在检查远程 release 分支…' },
+      {
+        location: vscode.ProgressLocation.Notification,
+        title: this.t('Checking the remote release branch…')
+      },
       () =>
         ensureReleaseTarget(
           {
             getRepository: (owner, repo) => client.getRepository(owner, repo),
-            lookupBranch: (branch) => lookupRemoteBranch(state.root, remote.url, branch),
+            lookupBranch: (branch) =>
+              lookupRemoteBranch(state.root, remote.url, branch, this.t),
             createBranch: async (branch) => {
               const created = await ensureReleaseBranchExists(
                 innerPath,
                 remote.url,
                 branch,
-                token
+                token,
+                this.t
               );
               if (!created.ok) {
                 return created;
@@ -872,7 +1117,8 @@ export class IdeahubController {
           },
           remote.owner,
           remote.repo,
-          RELEASE_BRANCH
+          RELEASE_BRANCH,
+          this.t
         )
     );
     if (!targetResult.ok) {
@@ -887,7 +1133,12 @@ export class IdeahubController {
       );
       return {
         ok: false,
-        message: `无法创建 Release（tag_name=${tag}，target_commitish=${RELEASE_BRANCH}）：${targetResult.error}`
+        message: this.t(
+          'Unable to create the Release (tag_name={0}, target_commitish={1}): {2}',
+          tag,
+          RELEASE_BRANCH,
+          targetResult.error
+        )
       };
     }
     const target = targetResult.target;
@@ -919,7 +1170,10 @@ export class IdeahubController {
     let release;
     try {
       release = await vscode.window.withProgress(
-        { location: vscode.ProgressLocation.Notification, title: '正在创建证明 Release…' },
+        {
+          location: vscode.ProgressLocation.Notification,
+          title: this.t('Creating the proof Release…')
+        },
         async () => {
           // Section 7.4: idempotency is decided by querying the tag first.
           const existing = await client.getReleaseByTag(remote.owner, remote.repo, tag);
@@ -939,9 +1193,13 @@ export class IdeahubController {
       });
       return {
         ok: false,
-        message: `创建 Release 失败（tag_name=${tag}，target_commitish=${target.sha}（分支 ${target.branch}）），未写入任何标记：${
+        message: this.t(
+          'Failed to create the Release (tag_name={0}, target_commitish={1} (branch {2})). No marker was written: {3}',
+          tag,
+          target.sha,
+          target.branch,
           error instanceof Error ? error.message : String(error)
-        }`
+        )
       };
     }
 
@@ -950,11 +1208,19 @@ export class IdeahubController {
     edit.replace(uri, new vscode.Range(new vscode.Position(0, 0), document.positionAt(text.length)), updated);
     const applied = await vscode.workspace.applyEdit(edit);
     if (!applied) {
-      return { ok: false, message: 'Release 已创建，但写入 ideas.md 标记失败，请手动添加标记。' };
+      return {
+        ok: false,
+        message: this.t(
+          'The Release was created, but writing the marker to ideas.md failed. Add the marker manually.'
+        )
+      };
     }
     const saved = await document.save();
     if (!saved) {
-      return { ok: false, message: '标记已写入编辑器，但文件保存失败。' };
+      return {
+        ok: false,
+        message: this.t('The marker was written to the editor, but saving the file failed.')
+      };
     }
 
     const commitNote = await this.autoCommitMarker(
@@ -965,17 +1231,22 @@ export class IdeahubController {
       'proof'
     );
 
-    const time = release.release?.publishedAt ? `，发布时间 ${release.release.publishedAt}` : '';
-    const immutability = describeReleaseImmutability(release.release?.immutable);
+    const time = release.release?.publishedAt
+      ? this.t(', published at {0}', release.release.publishedAt)
+      : '';
+    const immutability = describeReleaseImmutability(release.release?.immutable, this.t);
     // Section 7.7: external links never abort, but the proof does not cover
     // their content; report the unique count.
     const externalNote =
       fingerprint.externalLinks.length > 0
-        ? `\n检测到 ${fingerprint.externalLinks.length} 个外部链接（去重）；本证明不保证这些外部链接指向的内容。`
+        ? this.t(
+            '\n{0} external links detected (deduplicated); this proof does not guarantee their content.',
+            fingerprint.externalLinks.length
+          )
         : '';
     return {
       ok: true,
-      message: `${release.created ? '证明已生成' : '证明已存在，已补写本地标记'}：\n${tag}${time}\n${immutability}${commitNote}${externalNote}`
+      message: `${release.created ? this.t('Proof created') : this.t('Proof already existed; the local marker was added')}:\n${tag}${time}\n${immutability}${commitNote}${externalNote}`
     };
   }
 
@@ -1009,10 +1280,11 @@ export class IdeahubController {
       project,
       markerLine,
       message,
-      enabled
+      enabled,
+      t: this.t
     });
 
-    const label = kind === 'proof' ? '标记' : '发布标记';
+    const label = kind === 'proof' ? this.t('marker') : this.t('publish marker');
     return this.describeCommitResult(result, label, message);
   }
 
@@ -1026,14 +1298,22 @@ export class IdeahubController {
         `mark: auto commit succeeded: ${result.commit ?? '(unknown)'} message=${message}`
       );
       const short = result.commit ? result.commit.slice(0, 7) : '(unknown)';
-      return `\n已自动提交${label}行（仅本地，未推送）：${short}`;
+      return this.t(
+        '\nAuto-committed the {0} line (local only, not pushed): {1}',
+        label,
+        short
+      );
     }
     if (result.status === 'skipped') {
       this.log(`mark: auto commit skipped: ${result.reason}`);
-      return result.silent ? '' : `\n自动提交已跳过：${result.reason}`;
+      return result.silent ? '' : this.t('\nAuto-commit skipped: {0}', result.reason);
     }
     this.log(`mark: auto commit failed: ${result.reason}`);
-    return `\n${label}已写入，但自动提交失败：${result.reason}`;
+    return this.t(
+      '\n{0} written, but auto-commit failed: {1}',
+      label,
+      result.reason
+    );
   }
 
   public async publishProject(project: string): Promise<OpResult> {
@@ -1042,7 +1322,11 @@ export class IdeahubController {
     );
     if (outcome.ignored) {
       this.log(`publish: ignored duplicate request for ${project}`);
-      return { ok: true, message: '操作进行中，已忽略重复请求。', silent: true };
+      return {
+        ok: true,
+        message: this.t('An operation is in progress; the duplicate request was ignored.'),
+        silent: true
+      };
     }
     return outcome.value!;
   }
@@ -1050,10 +1334,18 @@ export class IdeahubController {
   private async publishProjectUnlocked(project: string): Promise<OpResult> {
     const state = this.currentState;
     if (state.kind !== 'local' || !state.remote) {
-      return { ok: false, message: '请先完成本地仓库与远程仓库配置。' };
+      return {
+        ok: false,
+        message: this.t('Complete the local and remote repository configuration first.')
+      };
     }
     if (state.issues.length > 0) {
-      return { ok: false, message: '请先完成界面列出的配置，再发布项目。' };
+      return {
+        ok: false,
+        message: this.t(
+          'Complete the configuration listed in the view before publishing the project.'
+        )
+      };
     }
 
     // Section 8.10: block before any write, commit, copy or push.
@@ -1066,19 +1358,23 @@ export class IdeahubController {
     } catch (error) {
       return {
         ok: false,
-        message: `无法读取项目 ideas.md：${
+        message: this.t(
+          'Unable to read the project ideas.md: {0}',
           error instanceof Error ? error.message : String(error)
-        }`
+        )
       };
     }
     if (parseIdeas(currentText).hasUnsealedContent) {
-      return { ok: false, message: '存在未证明的新内容，请先证明' };
+      return {
+        ok: false,
+        message: this.t('There is new unproven content. Prove it first.')
+      };
     }
 
     // Section 8.10 preflight: avoid offering "publish" when the inner clone
     // has no usable HEAD (empty or interrupted clone).
     const innerPath = remoteRepoPath(state.root);
-    const innerHead = await checkInnerRepositoryHead(innerPath);
+    const innerHead = await checkInnerRepositoryHead(innerPath, this.t);
     if (!innerHead.ok) {
       this.log(
         `publish: inner repository preflight failed: ${innerHead.error}\n${innerHead.detail}`
@@ -1087,11 +1383,14 @@ export class IdeahubController {
     }
 
     const projectDir = path.join(state.root, project);
-    const scan = await scanProjectDirectory(projectDir);
+    const scan = await scanProjectDirectory(projectDir, this.t);
     if (scan.blocked.length > 0) {
       return {
         ok: false,
-        message: `检测到无法安全发布的文件，已停止发布：\n${scan.blocked.join('\n')}`
+        message: this.t(
+          'Files that cannot be published safely were detected; publishing stopped:\n{0}',
+          scan.blocked.join('\n')
+        )
       };
     }
 
@@ -1102,52 +1401,75 @@ export class IdeahubController {
     const visibleFiles = scan.files.filter((file) => file !== 'ideas.md');
     const fileList =
       visibleFiles.length === 0
-        ? '（项目目录中没有其他文件）'
+        ? this.t('(the project directory contains no other files)')
         : visibleFiles.join('\n');
-    const detail = `将公开的文件夹：${project}\n文件清单：\n${fileList}${
-      targetExists ? '\n\n远程创意仓库已存在同名目录，本次发布将覆盖该目录。' : ''
-    }`;
-
-    const first = await vscode.window.showWarningMessage(
-      `您的创意“${project}”将发布到您的远程创意仓库并公开，确认吗？`,
-      { modal: true, detail },
-      targetExists ? '覆盖并继续' : '确认发布',
-      '取消'
+    const detail = this.t(
+      'Folder to be published: {0}\nFile list:\n{1}{2}',
+      project,
+      fileList,
+      targetExists
+        ? this.t(
+            '\n\nA directory with the same name already exists in the remote idea repository; this publish will overwrite it.'
+          )
+        : ''
     );
-    if (first === undefined || first === '取消') {
-      return { ok: false, message: '已取消发布。' };
+
+    const publish = this.t('Publish');
+    const cancel = this.t('Cancel');
+    const first = await vscode.window.showWarningMessage(
+      this.t(
+        'Your idea "{0}" will be published to your remote idea repository and made public. Continue?',
+        project
+      ),
+      { modal: true, detail },
+      targetExists ? this.t('Overwrite and continue') : publish,
+      cancel
+    );
+    if (first === undefined || first === cancel) {
+      return { ok: false, message: this.t('Publish cancelled.') };
     }
 
     const second = await vscode.window.showWarningMessage(
-      '为防止项目正式发布前误操作公开创意，请再确认一次！',
-      { modal: true, detail: `项目：${project}` },
-      '确认发布',
-      '取消'
+      this.t(
+        'To prevent accidentally publishing an idea before it is ready, please confirm once more!'
+      ),
+      { modal: true, detail: this.t('Project: {0}', project) },
+      publish,
+      cancel
     );
-    if (second === undefined || second === '取消') {
-      return { ok: false, message: '已取消发布。' };
+    if (second === undefined || second === cancel) {
+      return { ok: false, message: this.t('Publish cancelled.') };
     }
 
     const token = await getGitHubToken(true);
     if (!token) {
-      return { ok: false, message: '需要登录 GitHub 才能发布到远程创意仓库。' };
+      return {
+        ok: false,
+        message: this.t(
+          'You must sign in to GitHub to publish to the remote idea repository.'
+        )
+      };
     }
 
     return vscode.window.withProgress(
-      { location: vscode.ProgressLocation.Notification, title: '正在发布项目…' },
+      {
+        location: vscode.ProgressLocation.Notification,
+        title: this.t('Publishing the project…')
+      },
       async (progress) => {
         const remote = state.remote!;
 
         // Section 7.6: recompute every proof fingerprint and compare its tag
         // with the paginated remote release list before any write or copy.
-        progress.report({ message: '校验已有证明…' });
+        progress.report({ message: this.t('Validating existing proofs…') });
         const checkTargets: ProofCheckTarget[] = [];
         for (const block of extractProofBlocks(currentText)) {
           const blockFingerprint = await buildFingerprint({
             project,
             text: block.rawText,
             projectDir,
-            repoRoot: state.root
+            repoRoot: state.root,
+            t: this.t
           });
           if (!blockFingerprint.ok) {
             this.log(
@@ -1161,14 +1483,17 @@ export class IdeahubController {
           });
         }
 
-        const client = new GitHubClient(async () => token);
+        const client = this.githubClient(token);
         let releases;
         try {
           releases = await client.listAllReleases(remote.owner, remote.repo);
         } catch (error) {
           const detail = error instanceof Error ? error.message : String(error);
           this.log(`publish: list releases failed: ${detail}`);
-          return { ok: false, message: `无法读取远程仓库的 Release 列表：${detail}` };
+          return {
+            ok: false,
+            message: this.t('Failed to read the remote Release list: {0}', detail)
+          };
         }
         const missing = findMissingProofReleases(checkTargets, releases);
         if (missing.length > 0) {
@@ -1177,11 +1502,14 @@ export class IdeahubController {
               .map((item) => item.time ?? '(unknown)')
               .join('\n')}`
           );
-          return { ok: false, message: describeMissingProofReleases(missing) };
+          return {
+            ok: false,
+            message: describeMissingProofReleases(missing, this.t)
+          };
         }
 
-        progress.report({ message: '同步远程创意仓库…' });
-        const sync = await syncInnerRepository(innerPath, remote.branch);
+        progress.report({ message: this.t('Synchronizing the remote idea repository…') });
+        const sync = await syncInnerRepository(innerPath, remote.branch, this.t);
         if (!sync.ok) {
           this.log(
             `publish: inner repository sync failed: ${sync.error}${
@@ -1191,7 +1519,7 @@ export class IdeahubController {
           return { ok: false, message: sync.error };
         }
 
-        const beforeHead = await readInnerRepositoryHead(innerPath);
+        const beforeHead = await readInnerRepositoryHead(innerPath, this.t);
         if (!beforeHead.ok) {
           this.log(
             `publish: inner repository HEAD read failed: ${beforeHead.error}\n${beforeHead.detail}`
@@ -1199,7 +1527,7 @@ export class IdeahubController {
           return { ok: false, message: beforeHead.error };
         }
 
-        progress.report({ message: '写入发布标记…' });
+        progress.report({ message: this.t('Writing the publish marker…') });
         const publishedTime = formatMarkerTime(new Date());
         const publishedMarker = formatMarkerLine('published', publishedTime);
         const markerWrite = await this.appendLocalMarker(
@@ -1217,20 +1545,25 @@ export class IdeahubController {
           publishedTime,
           'publish'
         );
-        const localMarkerNote = `\n本地 Published 标记已写入。${commitNote}`;
+        const localMarkerNote = this.t(
+          '\nThe local Published marker was written.{0}',
+          commitNote
+        );
 
         // Section 7.8: generate the English proof file from the updated
         // ideas.md; the published copy contains README.md instead of ideas.md.
-        progress.report({ message: '生成证明文件…' });
+        progress.report({ message: this.t('Generating the proof file…') });
         let updatedText: string;
         try {
           updatedText = await fs.readFile(path.join(projectDir, 'ideas.md'), 'utf8');
         } catch (error) {
           return {
             ok: false,
-            message: `发布已停止：无法读取写入标记后的 ideas.md（${
-              error instanceof Error ? error.message : String(error)
-            }）。${localMarkerNote}`
+            message: this.t(
+              'Publishing stopped: unable to read ideas.md after writing the marker ({0}).{1}',
+              error instanceof Error ? error.message : String(error),
+              localMarkerNote
+            )
           };
         }
         const proofFileBlocks: ProofFileBlock[] = [];
@@ -1239,7 +1572,8 @@ export class IdeahubController {
             project,
             text: block.rawText,
             projectDir,
-            repoRoot: state.root
+            repoRoot: state.root,
+            t: this.t
           });
           if (!blockFingerprint.ok) {
             return { ok: false, message: `${blockFingerprint.message}${localMarkerNote}` };
@@ -1259,43 +1593,64 @@ export class IdeahubController {
         ).size;
         const externalNote =
           externalLinkCount > 0
-            ? `\n检测到 ${externalLinkCount} 个外部链接（去重）；本证明不保证这些外部链接指向的内容。`
+            ? this.t(
+                '\n{0} external links detected (deduplicated); this proof does not guarantee their content.',
+                externalLinkCount
+              )
             : '';
 
-        progress.report({ message: '复制项目文件…' });
+        progress.report({ message: this.t('Copying project files…') });
         const copy = await copyProjectIntoInnerRepository(
           innerPath,
           project,
           projectDir,
-          proofFile
+          proofFile,
+          this.t
         );
         if (!copy.ok) {
           return { ok: false, message: `${copy.error}${localMarkerNote}` };
         }
 
-        progress.report({ message: '提交并推送内层仓库…' });
-        const push = await commitAndPushInnerRepository(innerPath, {
-          url: remote.url,
-          branch: remote.branch,
-          projectName: project,
-          token
-        });
+        progress.report({ message: this.t('Committing and pushing the inner repository…') });
+        const push = await commitAndPushInnerRepository(
+          innerPath,
+          {
+            url: remote.url,
+            branch: remote.branch,
+            projectName: project,
+            token
+          },
+          this.t
+        );
         if (!push.ok) {
-          const rollback = await restoreInnerRepository(innerPath, beforeHead.head, project);
+          const rollback = await restoreInnerRepository(
+            innerPath,
+            beforeHead.head,
+            project,
+            this.t
+          );
           this.log(
             `publish: ${push.stage} failed: ${push.error}\nrollback: ${
               rollback.ok ? 'ok' : rollback.error
             }`
           );
           const rollbackNote = rollback.ok
-            ? '\n已复原本地 remote，远端未变更。'
-            : `\n回滚本地 remote 失败：${rollback.error}`;
+            ? this.t('\nRestored the local remote; the remote was unchanged.')
+            : this.t('\nFailed to roll back the local remote: {0}', rollback.error);
           return { ok: false, message: `${push.error}${rollbackNote}${localMarkerNote}` };
         }
 
         return {
           ok: true,
-          message: `${push.pushed ? '发布成功' : '项目已是最新状态，无需推送'}。\n远程项目地址：${projectUrl}${localMarkerNote}${externalNote}`
+          message: this.t(
+            '{0}.\nRemote project URL: {1}{2}{3}',
+            push.pushed
+              ? this.t('Publish succeeded')
+              : this.t('The project is already up to date; nothing was pushed'),
+            projectUrl,
+            localMarkerNote,
+            externalNote
+          )
         };
       }
     );
@@ -1313,9 +1668,10 @@ export class IdeahubController {
     } catch (error) {
       return {
         ok: false,
-        message: `发布已停止：无法读取项目 ideas.md（${
+        message: this.t(
+          'Publishing stopped: unable to read the project ideas.md ({0}).',
           error instanceof Error ? error.message : String(error)
-        }）。`
+        )
       };
     }
 
@@ -1329,11 +1685,19 @@ export class IdeahubController {
     );
     const applied = await vscode.workspace.applyEdit(edit);
     if (!applied) {
-      return { ok: false, message: '发布已停止：写入 Published 标记失败。' };
+      return {
+        ok: false,
+        message: this.t('Publishing stopped: failed to write the Published marker.')
+      };
     }
     const saved = await document.save();
     if (!saved) {
-      return { ok: false, message: '发布已停止：Published 标记已写入编辑器，但文件保存失败。' };
+      return {
+        ok: false,
+        message: this.t(
+          'Publishing stopped: the Published marker was written to the editor, but saving the file failed.'
+        )
+      };
     }
     return { ok: true, message: '' };
   }

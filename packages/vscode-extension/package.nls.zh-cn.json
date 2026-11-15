@@ -1,0 +1,12 @@
+{
+  "ideahub.displayName": "创意仓库 / IdeaHub",
+  "ideahub.description": "你的创意。你的历史。你的证明。",
+  "ideahub.viewContainerTitle": "创意仓库",
+  "ideahub.viewName": "创意仓库",
+  "ideahub.command.refresh": "创意仓库: 刷新状态",
+  "ideahub.command.openMain": "创意仓库: 打开主界面",
+  "ideahub.configuration.title": "创意仓库",
+  "ideahub.configuration.proofAutoCommit.description": "插入证明或发布标记后自动提交该行到本地 git（不会推送）。",
+  "ideahub.configuration.proofCommitMessage.description": "证明标记自动提交信息模板，支持 {project}、{time} 占位符；未知占位符原样保留，空值回落默认值。",
+  "ideahub.configuration.publishCommitMessage.description": "发布标记自动提交信息模板，支持 {project}、{time} 占位符；未知占位符原样保留，空值回落默认值。"
+}

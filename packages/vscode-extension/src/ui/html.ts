@@ -1,5 +1,17 @@
 import * as crypto from 'node:crypto';
-import type { ProjectSummary, WorkspaceState } from '@ideahub/core';
+import {
+  translate,
+  type ProjectSummary,
+  type Translator,
+  type WorkspaceState
+} from '@ideahub/core';
+
+export interface RemoteSettingsDisplay {
+  url: string;
+  ownerRepo: string;
+  host: string;
+  branch: string;
+}
 
 export interface RemoteSettingsInfo {
   url: string;
@@ -10,6 +22,8 @@ export interface RemoteSettingsInfo {
   visibility: string;
   immutability: string;
   error: string | null;
+  /** Pre-translated values rendered in the settings view and sent to the webview. */
+  display: RemoteSettingsDisplay;
 }
 
 export interface WebviewAssets {
@@ -301,22 +315,23 @@ function renderScript(nonce: string): string {
     window.addEventListener('error', function (event) {
       vscode.postMessage({
         type: 'uiError',
-        message: String((event && event.message) || '未知的前端错误')
+        message: String((event && event.message) || '')
       });
     });
 
     function applySettingsInfo(info) {
+      var display = info.display || {};
       const fields = [
-        ['settings-url', info.url || '未配置'],
-        ['settings-owner-repo', info.owner && info.repo ? info.owner + '/' + info.repo : '未配置'],
-        ['settings-host', info.host || '未知'],
-        ['settings-branch', info.branch || '未知'],
+        ['settings-url', display.url],
+        ['settings-owner-repo', display.ownerRepo],
+        ['settings-host', display.host],
+        ['settings-branch', display.branch],
         ['settings-visibility', info.visibility],
         ['settings-immutability', info.immutability]
       ];
       for (const entry of fields) {
         const el = document.getElementById(entry[0]);
-        if (el) { el.textContent = entry[1]; }
+        if (el && entry[1]) { el.textContent = entry[1]; }
       }
       const errorEl = document.getElementById('settings-error');
       if (errorEl) {
@@ -578,7 +593,7 @@ const STYLES = `
     background: var(--vscode-badge-background);
     color: var(--vscode-badge-foreground);
   }
-  /* Section 8.7: the "未证明" badge uses the theme warning palette so it stays
+  /* Section 8.7: the "Unproven" badge uses the theme warning palette so it stays
      legible in both light and dark themes and stands out from the other badges. */
   .badge.badge-warning {
     background: var(--vscode-inputValidation-warningBackground, rgba(191, 136, 3, 0.18));
@@ -594,69 +609,112 @@ const STYLES = `
 
 function renderIssueActions(
   issueId: string,
-  remoteDirExists: boolean
+  remoteDirExists: boolean,
+  t: Translator
 ): string {
   switch (issueId) {
     case 'local-git':
-      return `<div class="actions"><button data-action="initGit">初始化 Git 仓库</button></div>`;
+      return `<div class="actions"><button data-action="initGit">${escapeHtml(
+        t('Initialize Git repository')
+      )}</button></div>`;
     case 'remote-url':
       return `<input type="text" id="remote-url" placeholder="https://github.com/owner/repo" />
-        <input type="text" id="remote-branch" placeholder="分支（留空自动使用远程默认分支）" />
+        <input type="text" id="remote-branch" placeholder="${escapeHtml(
+          t('Branch (leave empty to use the remote default branch)')
+        )}" />
         <label class="check"><input type="checkbox" id="immutability-confirm" />
-        <span>我已确认仓库启用了 <code>Enable release immutability</code>。扩展会先通过 GitHub API 检测；只有无法读取（需要仓库 admin 读权限）时才以此手动确认为准。</span></label>
-        <p class="muted">远程创意仓库必须由你手动创建，且为公开仓库。分支留空时会自动使用远程默认分支并显示在设置中。校验通过后会自动克隆到 .ideahub/remote/；配置只自动提交到本地仓库，不会推送或公开任何内容。</p>
-        <div class="actions"><button data-action="setRemote">保存、校验并克隆</button></div>`;
+        <span>${escapeHtml(
+          t(
+            'I have confirmed that Enable release immutability is enabled for the repository. The extension checks it through the GitHub API first; this manual confirmation is only used when the check cannot be read (repository admin read permission is required).'
+          )
+        )}</span></label>
+        <p class="muted">${escapeHtml(
+          t(
+            'The remote idea repository must be created manually by you and must be public. When the branch is left empty, the remote default branch is used automatically and shown in settings. After validation the repository is cloned into .ideahub/remote/; the configuration is only committed to the local repository and nothing is pushed or published.'
+          )
+        )}</p>
+        <div class="actions"><button data-action="setRemote">${escapeHtml(
+          t('Save, validate and clone')
+        )}</button></div>`;
     case 'remote-dir':
       return `<div class="actions">
-        <button data-action="clone">克隆远程仓库</button>
-        ${remoteDirExists ? `<button class="secondary" data-action="reclone">重新克隆（删除现有 remote/）</button>` : ''}
+        <button data-action="clone">${escapeHtml(t('Clone remote repository'))}</button>
+        ${remoteDirExists ? `<button class="secondary" data-action="reclone">${escapeHtml(
+          t('Re-clone (delete the existing remote/)')
+        )}</button>` : ''}
       </div>`;
     case 'remote-mismatch':
-      return `<div class="actions"><button data-action="reclone">重新克隆（删除现有 remote/）</button></div>`;
+      return `<div class="actions"><button data-action="reclone">${escapeHtml(
+        t('Re-clone (delete the existing remote/)')
+      )}</button></div>`;
     case 'hook':
-      return `<div class="actions"><button data-action="installHook">安装 / 修复 hook</button></div>`;
+      return `<div class="actions"><button data-action="installHook">${escapeHtml(
+        t('Install / fix hook')
+      )}</button></div>`;
     default:
       return '';
   }
 }
 
-function renderMain(state: WorkspaceState): string {
+function renderMain(state: WorkspaceState, t: Translator): string {
   switch (state.kind) {
     case 'no-folder':
       return `
-        <h1>创意仓库</h1>
-        <div class="card"><p>您尚未打开任何文件夹。</p>
-        <p class="muted">请先在 VS Code 中打开一个文件夹，再回到这里。</p></div>`;
+        <h1>${escapeHtml(t('IdeaHub'))}</h1>
+        <div class="card"><p>${escapeHtml(t('You have not opened any folder yet.'))}</p>
+        <p class="muted">${escapeHtml(
+          t('Open a folder in VS Code first, then come back here.')
+        )}</p></div>`;
     case 'empty-folder':
       return `
-        <h1>创意仓库</h1>
+        <h1>${escapeHtml(t('IdeaHub'))}</h1>
         <div class="card">
-          <p>当前文件夹为空，可以初始化本地创意仓库。</p>
-          <p class="muted">初始化只会创建 Git 仓库、.ideahub 配置、pre-push hook 与 README，不会提交或推送任何内容。</p>
+          <p>${escapeHtml(
+            t('The current folder is empty and can be initialized as a local idea repository.')
+          )}</p>
+          <p class="muted">${escapeHtml(
+            t(
+              'Initialization only creates a Git repository, the .ideahub configuration, the pre-push hook and README. It commits and pushes nothing.'
+            )
+          )}</p>
           <div class="actions">
-            <button data-action="init">初始化本地仓库</button>
-            <button class="secondary" data-action="refresh">重新检测</button>
+            <button data-action="init">${escapeHtml(t('Initialize local repository'))}</button>
+            <button class="secondary" data-action="refresh">${escapeHtml(t('Check again'))}</button>
           </div>
         </div>`;
     case 'not-ideahub':
       return `
-        <h1>创意仓库</h1>
+        <h1>${escapeHtml(t('IdeaHub'))}</h1>
         <div class="card warn">
-          <div class="title">未识别到创意仓库</div>
-          <p>当前文件夹不为空，但没有 .ideahub 目录，因此不会自动初始化，以免覆盖已有内容。</p>
-          <p class="muted">如果你确定要从头开始，请换一个空文件夹；也可以点击「仍要初始化」在当前文件夹补齐所需结构，已存在的文件不会被覆盖。</p>
+          <div class="title">${escapeHtml(t('No idea repository detected'))}</div>
+          <p>${escapeHtml(
+            t(
+              'The current folder is not empty and has no .ideahub directory, so it is not initialized automatically to avoid overwriting existing content.'
+            )
+          )}</p>
+          <p class="muted">${escapeHtml(
+            t(
+              'If you really want to start from scratch, use an empty folder. You can also click "Initialize anyway" to add the required structure to the current folder; existing files are never overwritten.'
+            )
+          )}</p>
           <div class="actions">
-            <button class="secondary" data-action="initNonEmpty">仍要初始化</button>
-            <button class="secondary" data-action="refresh">重新检测</button>
+            <button class="secondary" data-action="initNonEmpty">${escapeHtml(
+              t('Initialize anyway')
+            )}</button>
+            <button class="secondary" data-action="refresh">${escapeHtml(t('Check again'))}</button>
           </div>
         </div>`;
     case 'error':
       return `
-        <h1>创意仓库</h1>
-        <div class="card error"><div class="title">检测失败</div><p>${escapeHtml(state.message)}</p>
-        <div class="actions"><button class="secondary" data-action="refresh">重新检测</button></div></div>`;
+        <h1>${escapeHtml(t('IdeaHub'))}</h1>
+        <div class="card error"><div class="title">${escapeHtml(
+          t('Detection failed')
+        )}</div><p>${escapeHtml(state.message)}</p>
+        <div class="actions"><button class="secondary" data-action="refresh">${escapeHtml(
+          t('Check again')
+        )}</button></div></div>`;
     case 'local':
-      return renderLocal(state);
+      return renderLocal(state, t);
   }
 }
 
@@ -666,18 +724,38 @@ interface Badge {
   variant?: 'warning';
 }
 
-export function renderProjectBadges(project: ProjectSummary): string {
+export function renderProjectBadges(
+  project: ProjectSummary,
+  t: Translator = translate
+): string {
+  const proofBadge =
+    project.proofCount === 1
+      ? t('1 proof')
+      : t('{0} proofs', project.proofCount);
   const badges: Badge[] = [
-    { text: `${project.proofCount}个证明`, title: '已生成的证明数量' }
+    { text: proofBadge, title: t('Number of generated proofs') }
   ];
   if (project.hasNewContent) {
-    badges.push({ text: '未证明', title: '存在尚未证明的新内容', variant: 'warning' });
+    badges.push({
+      text: t('Unproven'),
+      title: t('There is new content that has not been proven yet'),
+      variant: 'warning'
+    });
   }
   if (project.publishedCount > 0) {
-    badges.push({ text: `发布${project.publishedCount}次`, title: '已发布的次数' });
+    badges.push({
+      text:
+        project.publishedCount === 1
+          ? t('Published 1 time')
+          : t('Published {0} times', project.publishedCount),
+      title: t('Number of publishes')
+    });
   }
   if (project.canPublish) {
-    badges.push({ text: '可发布', title: '已证明的内容可以发布' });
+    badges.push({
+      text: t('Publishable'),
+      title: t('The proven content can be published')
+    });
   }
   return badges
     .map((badge) =>
@@ -762,25 +840,29 @@ function renderTagRow(projects: ProjectSummary[]): string {
 
 function renderProjectFilters(
   projects: ProjectSummary[],
-  withInput: boolean
+  withInput: boolean,
+  t: Translator
 ): string {
   const total = projects.length;
   const fresh = projects.filter((project) => project.hasNewContent).length;
   const publishable = projects.filter((project) => project.canPublish).length;
   const unpublished = projects.filter((project) => project.publishedCount === 0).length;
+  const searchLabel = escapeHtml(t('Search by name'));
   const input = withInput
-    ? `<input id="project-filter" class="project-filter" type="text" placeholder="按名称搜索" aria-label="按名称搜索" />`
+    ? `<input id="project-filter" class="project-filter" type="text" placeholder="${searchLabel}" aria-label="${searchLabel}" />`
     : '';
   const hint = withInput
-    ? `<p class="muted project-filter-empty" id="project-filter-empty" hidden>没有匹配的项目</p>`
+    ? `<p class="muted project-filter-empty" id="project-filter-empty" hidden>${escapeHtml(
+        t('No matching projects')
+      )}</p>`
     : '';
   return `<div class="project-filters">
       ${input}
       <div class="project-chips">
-        ${renderChip('all', '全部', total, true)}
-        ${renderChip('new', '未证明', fresh, false, 'warning')}
-        ${renderChip('publishable', '可发布', publishable, false)}
-        ${renderChip('unpublished', '未发布', unpublished, false)}
+        ${renderChip('all', t('All'), total, true)}
+        ${renderChip('new', t('Unproven'), fresh, false, 'warning')}
+        ${renderChip('publishable', t('Publishable'), publishable, false)}
+        ${renderChip('unpublished', t('Unpublished'), unpublished, false)}
       </div>
       ${renderTagRow(projects)}
       ${hint}
@@ -788,24 +870,33 @@ function renderProjectFilters(
 }
 
 function refreshTooltip(
-  state: Extract<WorkspaceState, { kind: 'local' }>
+  state: Extract<WorkspaceState, { kind: 'local' }>,
+  t: Translator
 ): string {
-  const parts = [`工作区：${state.root}`];
+  const parts = [t('Workspace: {0}', state.root)];
   if (state.remote) {
     parts.push(
-      `远程创意仓库：${state.remote.owner}/${state.remote.repo}（分支 ${state.remote.branch}）`
+      t(
+        'Remote idea repository: {0}/{1} (branch {2})',
+        state.remote.owner,
+        state.remote.repo,
+        state.remote.branch
+      )
     );
   } else {
-    parts.push('远程创意仓库：未配置');
+    parts.push(t('Remote idea repository: not configured'));
   }
   if (state.remoteStatus && !state.remoteStatus.available && state.remoteStatus.error) {
-    parts.push(`远程状态暂不可用：${state.remoteStatus.error}`);
+    parts.push(
+      t('Remote status is temporarily unavailable: {0}', state.remoteStatus.error)
+    );
   }
   return parts.join(' | ');
 }
 
 function renderLocal(
-  state: Extract<WorkspaceState, { kind: 'local' }>
+  state: Extract<WorkspaceState, { kind: 'local' }>,
+  t: Translator
 ): string {
   const hasIssues = state.issues.length > 0;
   const issues = state.issues
@@ -813,7 +904,7 @@ function renderLocal(
       return `<div class="card warn">
         <div class="title">${escapeHtml(issue.title)}</div>
         <p>${escapeHtml(issue.message)}</p>
-        ${renderIssueActions(issue.id, state.remoteDirExists)}
+        ${renderIssueActions(issue.id, state.remoteDirExists, t)}
       </div>`;
     })
     .join('');
@@ -824,16 +915,23 @@ function renderLocal(
       ? ''
       : renderProjectFilters(
           sortedProjects,
-          state.projects.length > PROJECT_FILTER_THRESHOLD
+          state.projects.length > PROJECT_FILTER_THRESHOLD,
+          t
         );
 
   const projects = hasIssues
     ? ''
     : state.projects.length === 0
       ? `<div class="card">
-          <div class="title">还没有项目</div>
-          <p>点击标题栏的 + 按钮，在仓库根目录创建 <code>&lt;项目名&gt;/ideas.md</code>。</p>
-          <p class="muted">也可以手动新建文件夹并放入 ideas.md；只有包含 ideas.md 的根目录一级文件夹会被识别为项目。</p>
+          <div class="title">${escapeHtml(t('No projects yet'))}</div>
+          <p>${t(
+            'Click the + button in the title bar to create <code>&lt;project&gt;/ideas.md</code> in the repository root.'
+          )}</p>
+          <p class="muted">${escapeHtml(
+            t(
+              'You can also create a folder and add ideas.md manually; only top-level folders containing ideas.md are recognized as projects.'
+            )
+          )}</p>
         </div>`
       : `<ul class="projects">${sortedProjects
           .map(
@@ -850,15 +948,22 @@ function renderLocal(
                 )}" data-project-menu="${escapeHtml(project.name)}">${escapeHtml(
                   project.name
                 )}</div>
-                <span class="project-badges" data-project-badges>${renderProjectBadges(project)}</span>
+                <span class="project-badges" data-project-badges>${renderProjectBadges(
+                  project,
+                  t
+                )}</span>
               </div>
               <div class="project-actions">
                 <button class="secondary" data-action="mark" data-project="${escapeHtml(
                   project.name
-                )}" title="发布新增内容的时间证明">证明</button>
+                )}" title="${escapeHtml(
+                  t('Publish a time proof for the new content')
+                )}">${escapeHtml(t('Prove'))}</button>
                 <button class="secondary" data-action="publish" data-project="${escapeHtml(
                   project.name
-                )}" title="发布创意原文">发布</button>
+                )}" title="${escapeHtml(
+                  t('Publish the original idea text')
+                )}">${escapeHtml(t('Publish'))}</button>
               </div>
             </li>`
           )
@@ -866,51 +971,54 @@ function renderLocal(
 
   const createButton = hasIssues
     ? ''
-    : `<button class="icon" data-action="createProject" title="新建项目">${icon('add')}</button>`;
+    : `<button class="icon" data-action="createProject" title="${escapeHtml(
+        t('New project')
+      )}">${icon('add')}</button>`;
 
   // Section 6.9: the webview has no native context menu, so the project-name
   // right click uses this fixed overlay.
   const menu = hasIssues
     ? ''
     : `<div class="project-menu" id="project-menu" hidden>
-        <button data-menu-action="open">打开</button>
-        <button data-menu-action="editTags">编辑标签</button>
-        <button data-menu-action="copyUrl">复制项目地址</button>
+        <button data-menu-action="open">${escapeHtml(t('Open'))}</button>
+        <button data-menu-action="editTags">${escapeHtml(t('Edit tags'))}</button>
+        <button data-menu-action="copyUrl">${escapeHtml(t('Copy project URL'))}</button>
       </div>`;
 
   return `
     <div class="header">
-      <h1>创意项目</h1>
+      <h1>${escapeHtml(t('Idea projects'))}</h1>
       <div class="header-actions">
         ${createButton}
         <button class="icon" data-action="refresh" title="${escapeHtml(
-          refreshTooltip(state)
+          refreshTooltip(state, t)
         )}">${icon('refresh')}</button>
-        <button class="icon" data-action="openSettings" title="设置">${icon(
-          'settings-gear'
-        )}</button>
+        <button class="icon" data-action="openSettings" title="${escapeHtml(
+          t('Settings')
+        )}">${icon('settings-gear')}</button>
       </div>
     </div>
-    ${hasIssues ? `<h2>需要完成的配置</h2>${issues}` : `${filters}${projects}`}
+    ${hasIssues ? `<h2>${escapeHtml(t('Configuration required'))}</h2>${issues}` : `${filters}${projects}`}
     ${menu}`;
 }
 
 function renderDocument(
   title: string,
   body: string,
-  assets: WebviewAssets = DEFAULT_WEBVIEW_ASSETS
+  assets: WebviewAssets = DEFAULT_WEBVIEW_ASSETS,
+  lang = 'en'
 ): string {
   const nonce = crypto.randomBytes(16).toString('base64');
   const codiconLink = assets.codiconCssUri
     ? `<link rel="stylesheet" href="${escapeHtml(assets.codiconCssUri)}" />\n`
     : '';
   return `<!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="${escapeHtml(lang)}">
 <head>
 <meta charset="UTF-8" />
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${assets.cspSource} 'unsafe-inline'; font-src ${assets.cspSource}; script-src 'nonce-${nonce}';" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>${title}</title>
+<title>${escapeHtml(title)}</title>
 ${codiconLink}<style>${STYLES}</style>
 </head>
 <body>
@@ -922,60 +1030,71 @@ ${renderScript(nonce)}
 
 export function renderMainHtml(
   state: WorkspaceState,
-  assets: WebviewAssets = DEFAULT_WEBVIEW_ASSETS
+  assets: WebviewAssets = DEFAULT_WEBVIEW_ASSETS,
+  t: Translator = translate,
+  lang = 'en'
 ): string {
-  return renderDocument('创意仓库', renderMain(state), assets);
+  return renderDocument(t('IdeaHub'), renderMain(state, t), assets, lang);
 }
 
 function settingRow(label: string, value: string, id: string): string {
-  return `<p><span class="muted">${escapeHtml(label)}：</span><span id="${id}">${escapeHtml(
+  return `<p><span class="muted">${escapeHtml(label)}: </span><span id="${id}">${escapeHtml(
     value
   )}</span></p>`;
 }
 
 export function renderSettingsHtml(
   info: RemoteSettingsInfo,
-  assets: WebviewAssets = DEFAULT_WEBVIEW_ASSETS
+  assets: WebviewAssets = DEFAULT_WEBVIEW_ASSETS,
+  t: Translator = translate,
+  lang = 'en'
 ): string {
-  const ownerRepo = info.owner && info.repo ? `${info.owner}/${info.repo}` : '未配置';
   const error = `<p class="muted" id="settings-error"${
     info.error ? '' : ' hidden'
   }>${escapeHtml(info.error ?? '')}</p>`;
   const body = `
     <div class="header">
-      <h1>设置</h1>
+      <h1>${escapeHtml(t('Settings'))}</h1>
       <div class="header-actions">
-        <button class="icon" data-action="closeSettings" title="返回创意仓库">${icon(
-          'arrow-left'
-        )}</button>
+        <button class="icon" data-action="closeSettings" title="${escapeHtml(
+          t('Back to IdeaHub')
+        )}">${icon('arrow-left')}</button>
       </div>
     </div>
     <div class="card">
-      <div class="title">远程创意仓库</div>
-      ${settingRow('地址', info.url || '未配置', 'settings-url')}
-      ${settingRow('owner/repo', ownerRepo, 'settings-owner-repo')}
-      ${settingRow('host', info.host ?? '未知', 'settings-host')}
-      ${settingRow('分支', info.branch ?? '未知', 'settings-branch')}
-      ${settingRow('是否公开', info.visibility, 'settings-visibility')}
-      ${settingRow('不可变性', info.immutability, 'settings-immutability')}
+      <div class="title">${escapeHtml(t('Remote idea repository'))}</div>
+      ${settingRow(t('URL'), info.display.url, 'settings-url')}
+      ${settingRow('owner/repo', info.display.ownerRepo, 'settings-owner-repo')}
+      ${settingRow('host', info.display.host, 'settings-host')}
+      ${settingRow(t('Branch'), info.display.branch, 'settings-branch')}
+      ${settingRow(t('Public'), info.visibility, 'settings-visibility')}
+      ${settingRow(t('Immutability'), info.immutability, 'settings-immutability')}
       ${error}
     </div>
     <div class="card">
-      <div class="title">修改远程仓库地址</div>
+      <div class="title">${escapeHtml(t('Change remote repository URL'))}</div>
       <input id="remote-url" type="text" value="${escapeHtml(
         info.url
       )}" placeholder="https://github.com/owner/repo" />
       <input id="remote-branch" type="text" value="${escapeHtml(
         info.branch ?? ''
-      )}" placeholder="分支（留空自动使用远程默认分支）" />
-      <label class="check"><input id="immutability-confirm" type="checkbox" /> 我已在 GitHub 启用 Release 不可变性</label>
+      )}" placeholder="${escapeHtml(
+        t('Branch (leave empty to use the remote default branch)')
+      )}" />
+      <label class="check"><input id="immutability-confirm" type="checkbox" /> ${escapeHtml(
+        t('I have enabled Release immutability in GitHub')
+      )}</label>
       <div class="actions">
-        <button data-action="setRemote">校验、保存并克隆</button>
+        <button data-action="setRemote">${escapeHtml(t('Validate, save and clone'))}</button>
       </div>
-      <p class="muted">修改后走既有的校验 → 保存配置 → 自动克隆/重新克隆流程；配置只自动提交到本地仓库，不会推送或公开任何内容。</p>
+      <p class="muted">${escapeHtml(
+        t(
+          'Changes go through the existing validate → save configuration → automatic clone/re-clone flow; the configuration is only committed to the local repository and nothing is pushed or published.'
+        )
+      )}</p>
     </div>
     <div class="actions">
-      <button class="secondary" data-action="closeSettings">返回</button>
+      <button class="secondary" data-action="closeSettings">${escapeHtml(t('Back'))}</button>
     </div>`;
-  return renderDocument('创意仓库 - 设置', body, assets);
+  return renderDocument(t('IdeaHub - Settings'), body, assets, lang);
 }

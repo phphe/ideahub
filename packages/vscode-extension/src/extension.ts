@@ -1,11 +1,12 @@
 import * as vscode from 'vscode';
+import { l10n } from './i18n';
 import { IdeahubController } from './ui/controller';
 import { MainViewProvider } from './ui/main-view';
 
 export function activate(context: vscode.ExtensionContext): void {
   const output = vscode.window.createOutputChannel('IdeaHub');
-  const controller = new IdeahubController(output);
-  const provider = new MainViewProvider(controller, output, context.extensionUri);
+  const controller = new IdeahubController(output, l10n);
+  const provider = new MainViewProvider(controller, output, context.extensionUri, l10n);
 
   const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '(none)';
   output.appendLine(`[${new Date().toISOString()}] IdeaHub activated; workspace: ${workspaceRoot}`);
