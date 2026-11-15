@@ -33,19 +33,19 @@ describe('parseProofFile', () => {
   it('fails when there is no proof block', () => {
     const parsed = parseProofFile('---\nversion: "0"\n---\n\n> - Proofs: 0\n\n---\n');
     expect(parsed.problems.map((problem) => problem.severity)).toContain('FAIL');
-    expect(parsed.problems.map((problem) => problem.message).join('\n')).toContain('空证明');
+    expect(parsed.problems.map((problem) => problem.message).join('\n')).toContain('empty proof');
   });
 
   it('fails on a malformed locked marker', () => {
     const text = proofFile('x').replace(MARKER, '## 🔏 Proof without backticks');
     const parsed = parseProofFile(text);
-    expect(parsed.problems.map((problem) => problem.message).join('\n')).toContain('语法不合规');
+    expect(parsed.problems.map((problem) => problem.message).join('\n')).toContain('Invalid proof marker syntax');
   });
 
   it('fails on stray content between the separator and the first marker', () => {
     const text = proofFile('x').replace('\n---\n\n' + MARKER, '\n---\n\nstray\n\n' + MARKER);
     const parsed = parseProofFile(text);
-    expect(parsed.problems.map((problem) => problem.message).join('\n')).toContain('多余内容');
+    expect(parsed.problems.map((problem) => problem.message).join('\n')).toContain('Unexpected content');
   });
 
   it('ignores the reserved character in the header region', () => {

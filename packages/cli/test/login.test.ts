@@ -61,10 +61,10 @@ describe('runLogin device flow', () => {
     const result = await runLogin([], fetchImpl, (message) => reported.push(message), CLIENT_ID);
 
     expect(result.code).toBe(0);
-    expect(reported[0]).toContain('正在向 GitHub 申请设备授权码');
+    expect(reported[0]).toContain('Requesting a GitHub device code');
     expect(reported[1]).toContain('ABCD-1234');
     expect(reported[1]).toContain('https://github.com/login/device');
-    expect(reported[2]).toContain('等待授权中');
+    expect(reported[2]).toContain('Waiting for authorization');
     expect(result.messages.join('\n')).toContain('octocat');
 
     const credentials = JSON.parse(
@@ -82,8 +82,8 @@ describe('runLogin device flow', () => {
     const result = await runLogin([], fetchImpl, (message) => reported.push(message), CLIENT_ID);
 
     expect(result.code).toBe(2);
-    expect(reported[0]).toContain('正在向 GitHub 申请设备授权码');
-    expect(result.messages.join('\n')).toContain('超时');
+    expect(reported[0]).toContain('Requesting a GitHub device code');
+    expect(result.messages.join('\n')).toContain('timed out');
     expect(result.messages.join('\n')).toContain('--token');
   });
 });

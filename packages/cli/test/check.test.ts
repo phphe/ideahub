@@ -148,7 +148,7 @@ describe('runCheck', () => {
     });
 
     expect(result.status).toBe('FAIL');
-    expect(result.messages.join('\n')).toContain('缺少 🔏');
+    expect(result.messages.join('\n')).toContain('Missing 🔏');
   });
 
   it('returns FAIL for a mutable release and ERROR when immutable is missing', async () => {
@@ -177,7 +177,7 @@ describe('runCheck', () => {
     });
 
     expect(result.status).toBe('FAIL');
-    expect(result.messages.join('\n')).toContain('1 小时');
+    expect(result.messages.join('\n')).toContain('1 hour');
   });
 
   it('returns FAIL when a referenced file is missing from the published tree', async () => {
@@ -190,7 +190,7 @@ describe('runCheck', () => {
     });
 
     expect(result.status).toBe('FAIL');
-    expect(result.messages.join('\n')).toContain('不存在');
+    expect(result.messages.join('\n')).toContain('does not exist');
   });
 
   it('returns ERROR for a truncated tree and for a missing repository', async () => {
