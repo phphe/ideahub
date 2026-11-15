@@ -951,6 +951,7 @@ https://github.com/<远程仓库用户>/<远程仓库名字>/tree/<远程仓库�
 ### 11.5 CLI
 
 - `ideahub check <project-url>` 对合规证明输出 `PASS` 并以 0 退出；对确定不合规的证明输出 `FAIL` 并以 1 退出；执行错误（限流、网络、仓库不可访问等）不输出 `PASS`/`FAIL`，以 2 退出（见 13.1、13.6）。
+- CLI 使用 `@ideahub/core` 的英文默认文案，不读取扩展的 `package.nls.*.json` 或 `l10n/` 语言包（见第十四章）。
 - `ideahub login` 成功后，`check` 的配额从匿名的 60 次/小时提升到 5000 次/小时。
 - CLI 与扩展对同一份证明文件的判定一致：结构、块指纹、不可变校验、时间窗口、`🔏` 规则均由 `@ideahub/core` 的同一套实现承担（见 13.4）。
 - 每个证明块只消耗一次列表请求的量级：整份文件固定为「README 1 次 + git tree 1 次 + releases 列表 1 次起」，不随块数线性增长（见 13.3）。
@@ -1078,3 +1079,56 @@ packages/
 - `ideahub login` 使用 GitHub OAuth device flow，client id 来自构建期注入的 `oauthClientId`（见 6.7）；client id 为空时该方式不可用，只支持手动粘贴 token。client secret 与 token 均不得进入源码或构建产物。
 - 凭据保存在用户配置目录，文件权限 `0600`；任何输出、日志、错误信息都**不得**回显 token。
 - 登录只影响配额，不改变任何判定规则；匿名与登录状态下对同一份证明的结论必须一致（配额错误除外）。
+
+---
+
+## 十四、界面语言与国际化（i18n）
+
+### 14.1 目标与范围
+
+- VS Code 扩展（`packages/vscode-extension`）接入 VS Code 内置国际化：跟随 VS Code 当前语言，当前支持英文（`en`）与简体中文（`zh-cn`），**默认英文**。
+- 无匹配语言包时必须回退到英文原文，不得出现空白、`%key%` 占位符或缺失文案。
+- CLI 与扩展共用 `@ideahub/core`，但 CLI 始终输出英文，不加载扩展语言包（见 11.5、13.1）。
+
+### 14.2 清单文案（`package.json`）
+
+- `package.json` 中所有面向用户的清单文案改用 `%key%` 引用，包括 `displayName`、`description`、活动栏标题、视图名称、命令标题、配置区标题与设置项名称/描述。
+- 英文原文放在 `package.nls.json`，中文放在 `package.nls.zh-cn.json`；两个文件的 key 集合必须完全一致。
+- 命令 ID、配置键、配置默认值、视图 ID 等标识符**不得**翻译，也不通过 nls 引用。
+
+### 14.3 运行时文案
+
+- 运行时代码使用 `vscode.l10n.t(message, ...args)`；`package.json` 声明 `"l10n": "./l10n"`，中文翻译放在 `l10n/bundle.l10n.zh-cn.json`。
+- 源码中的英文实参即回退值；不得使用 `t('Failed: ') + reason` 之类的拼接，必须整句传入并把变量作为 `{0}`、`{1}` 参数，保证语言包 key 可精确匹配。
+- webview 的 HTML 由扩展侧拼装，因此由扩展侧调用 `vscode.l10n.t` 翻译；内联 `<script>` 不持有词典，文案随渲染结果或 `postMessage` 下发。
+- `data-*` 属性值、消息 `type`、命令/配置 ID、CSS class 等协议值不翻译。
+
+### 14.4 `@ideahub/core` 的翻译注入
+
+- core 不 import `vscode`，导出：
+
+```ts
+export type Translator = (message: string, ...args: unknown[]) => string;
+```
+
+- core 自带英文默认实现：对 `{0}`、`{1}` 等占位符做插值后原样返回英文；面向 UI 的函数接受可选 `t`，缺省使用英文默认。
+- 扩展侧只构造一次 `(message, ...args) => vscode.l10n.t(message, ...args)`，从扩展入口传给 controller，再传给 core 调用；CLI 不注入，直接使用英文默认。
+- core 只返回结构化状态（如证明数、是否可发布、发布次数、布尔标志），状态标签的文案由扩展渲染；不得在 core 内拼装已翻译的标签。
+
+### 14.5 不翻译的内容（固定英文或原样）
+
+以下内容即使切换语言也必须保持原样：
+
+- 初始化时写入用户仓库的 `README.md` 内容。
+- 自动提交的默认文案（`ideahub: record proof`、`ideahub: mark published` 等）与 `{project}` / `{time}` 模板。
+- 日志与遥测字段。
+- 证明标记语法、`Published:`、`🔏`、Front Matter 键名、Release tag 形态。
+- 文件与目录名（`ideas.md`、`README.md`、`.ideahub/config.json`、`remote`、`empty`）。
+- 命令 ID、视图 ID、配置键、`data-*` 协议值。
+- GitHub / git 原样透传的错误文本，以及开发者 `config.mjs` 配置的证明文件 header 文案。
+
+### 14.6 语言切换与打包
+
+- 语言切换（VS Code 重载窗口）后，webview 必须按新语言重新渲染；不得长期缓存已翻译的字符串（例如设置页的“未知”“读取中…”）。刷新/重新打开视图时按当前 `vscode.env.language` 重新取数并渲染。
+- `l10n/**` 与 `package.nls*.json` 必须进入 VSIX；`.vscodeignore` 不得排除这些路径。
+- 新增或修改用户可见文案时，必须同时更新英文源码、`package.nls.json` / `package.nls.zh-cn.json`（如属清单）以及 `l10n/bundle.l10n.zh-cn.json`。
