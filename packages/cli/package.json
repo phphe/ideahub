@@ -1,15 +1,37 @@
 {
-  "name": "@ideahub/cli",
+  "name": "ideahub",
   "version": "0.1.0",
-  "private": true,
-  "description": "IdeaHub command line checker (check / login).",
+  "description": "Command line tool that verifies IdeaHub proofs of when an idea was created.",
+  "license": "MIT",
+  "keywords": [
+    "ideahub",
+    "idea",
+    "proof",
+    "timestamp",
+    "verification",
+    "github",
+    "cli"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/phphe/ideahub.git",
+    "directory": "packages/cli"
+  },
+  "homepage": "https://github.com/phphe/ideahub#readme",
+  "bugs": {
+    "url": "https://github.com/phphe/ideahub/issues"
+  },
+  "engines": {
+    "node": ">=18"
+  },
   "bin": {
     "ideahub": "./dist/index.js"
   },
   "main": "./dist/index.js",
   "files": [
     "dist",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
   "scripts": {
     "build": "node build.mjs",
@@ -17,10 +39,8 @@
     "lint": "eslint src test",
     "test": "vitest run"
   },
-  "dependencies": {
-    "@ideahub/core": "workspace:*"
-  },
   "devDependencies": {
+    "@ideahub/core": "workspace:*",
     "@types/node": "^24.10.1",
     "esbuild": "^0.25.12",
     "typescript": "^5.9.3",

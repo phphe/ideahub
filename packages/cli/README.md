@@ -1,4 +1,4 @@
-# @ideahub/cli
+# ideahub
 
 IdeaHub 命令行校验工具，按 `requirement.md` 第十三章实现。
 
@@ -27,8 +27,8 @@ ideahub login [--token <token>]
 ## 开发
 
 ```bash
-pnpm --filter @ideahub/cli build
-pnpm --filter @ideahub/cli test
+pnpm --filter ideahub build
+pnpm --filter ideahub test
 ```
 
 `config.mjs` 的 `oauthClientId` 为空时，`login` 只支持手动粘贴 token 或 `--token`。

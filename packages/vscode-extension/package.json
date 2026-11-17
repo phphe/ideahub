@@ -1,11 +1,28 @@
 {
-  "name": "ideahub",
+  "name": "ideahub-vscode",
   "displayName": "%ideahub.displayName%",
   "description": "%ideahub.description%",
   "version": "0.1.0",
   "publisher": "ideahub-dev",
-  "license": "UNLICENSED",
+  "license": "MIT",
   "private": true,
+  "keywords": [
+    "ideahub",
+    "idea",
+    "proof",
+    "timestamp",
+    "git",
+    "github"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/phphe/ideahub.git",
+    "directory": "packages/vscode-extension"
+  },
+  "homepage": "https://github.com/phphe/ideahub#readme",
+  "bugs": {
+    "url": "https://github.com/phphe/ideahub/issues"
+  },
   "engines": {
     "vscode": "^1.85.0"
   },

@@ -180,11 +180,10 @@ importers:
         version: 8.72.1(eslint@9.39.4(supports-color@7.2.0))(supports-color@7.2.0)(typescript@5.9.3)
 
   packages/cli:
-    dependencies:
+    devDependencies:
       '@ideahub/core':
         specifier: workspace:*
         version: link:../core
-    devDependencies:
       '@types/node':
         specifier: ^24.10.1
         version: 24.19.2
