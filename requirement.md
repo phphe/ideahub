@@ -90,7 +90,7 @@
 | 证明文件 | 发布时根据 `ideas.md` 生成的英文 `README.md`，包含时间跨度、各类数量、按时间升序排列的证明块与校验指引（见 7.8）。 |
 | 保留字符 | `🔏`。只由扩展插入到参与哈希的项目内图片/链接之前；用户原文不得包含它；`ideas.md` 永不写入扩展插入的该字符（见 7.3）。 |
 | release 分支 | 远程创意仓库中用于确定 Release 源码快照的分支，只包含一个空文件；名称来自扩展工程的开发者配置 `releaseBranch`，在构建期注入，默认 `main`；远程不存在时扩展在生成证明前自动创建并只推送一个名为 `empty` 的空文件（见 5.5、6.7）。 |
-| CLI | 命令行校验工具（包 `@ideahub/cli`），提供 `check` 与 `login` 两个命令，供拿到项目网址的第三方查看者独立校验证明；与 VS Code 扩展无运行时依赖（见第十三章）。 |
+| CLI | 命令行校验工具（npm 包 `ideahub`），提供 `check` 与 `login` 两个命令，供拿到项目网址的第三方查看者独立校验证明；与 VS Code 扩展无运行时依赖（见第十三章）。 |
 | 证明块 | 证明文件中由一条 `` ## 🔏 `Proof: ...` `` 标记开头、到下一个证明标记或文件末尾为止的内容；`ideas.md` 中对应的是该标记**之前**、上一条证明标记之后的内容（见 7.8、13.2）。 |
 
 ---
@@ -969,12 +969,12 @@ https://github.com/<远程仓库用户>/<远程仓库名字>/tree/<远程仓库�
 ```text
 packages/
 ├── core/                 # @ideahub/core：纯逻辑库，不发布
-├── vscode-extension/     # ideahub：VS Code 扩展（发布为 VSIX）
-└── cli/                  # @ideahub/cli：CLI 工具（需求见第十三章）
+├── vscode-extension/     # ideahub-vscode：VS Code 扩展（发布为 VSIX）
+└── cli/                  # ideahub：CLI 工具（发布到 npm，需求见第十三章）
 ```
 
-- `packages/core`、`packages/vscode-extension` 均 `private: true`，不发布到 npm。
-- `packages/cli` 用 esbuild 打包为 `dist/index.js`，`private: true`，不发布到 npm；自带 `config.mjs` 与 `.env`，构建期注入 `oauthClientId`。
+- `packages/core`、`packages/vscode-extension` 均 `private: true`，不发布到 npm；VS Code 扩展的包名必须保持合法的扩展名（小写字母与连字符），因此使用 `ideahub-vscode`，避免与 CLI 的 npm 包名 `ideahub` 冲突。
+- `packages/cli` 用 esbuild 打包为 `dist/index.js`，以 npm 包名 `ideahub` 发布（`license: MIT`，`bin` 暴露 `ideahub` 命令）；`@ideahub/core` 在构建时被打包进 `dist`，只作为 `devDependencies` 存在，不要求消费者安装。自带 `config.mjs` 与 `.env`，构建期注入 `oauthClientId`。
 
 ### 12.2 packages/core
 
@@ -986,10 +986,10 @@ packages/
 ### 12.3 packages/vscode-extension
 
 - 只保留 VS Code 相关部分：扩展入口、命令注册、webview UI、状态检测、watcher、认证与设置读写等。
-- `package.json` 即扩展清单（`name` 仍为 `ideahub`，`main` 指向 `dist/extension.js`），并声明 `private: true`。
+- `package.json` 即扩展清单（`name` 为 `ideahub-vscode`，`main` 指向 `dist/extension.js`），并声明 `private: true`。
 - `config.mjs`（开发者配置，见 6.7）位于本包根目录；构建脚本从本包运行时读取该文件与 `.env`，`.env` 覆盖与逐字段回落逻辑不变。
 - `.vscodeignore` 位于本包根目录；`config.mjs`、`.env`、`.env.*`、`scripts/**`、源码与测试不得进入 VSIX。
-- VSIX 产物生成在本包目录下：`packages/vscode-extension/ideahub-<version>.vsix`。
+- VSIX 产物生成在本包目录下：`packages/vscode-extension/ideahub-vscode-<version>.vsix`。
 
 ### 12.4 工作区配置
 
@@ -1009,7 +1009,7 @@ packages/
 
 ---
 
-## 十三、CLI 校验工具（`@ideahub/cli`）
+## 十三、CLI 校验工具（`ideahub`）
 
 ### 13.1 命令与退出码
 
