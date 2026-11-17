@@ -34,7 +34,7 @@ const proofFileHeader = `
 
 export default {
   releaseBranch: 'main',
-  proofFileVersion: '0',
+  proofFileVersion: '1',
   // GitHub OAuth App client id, reserved for the future CLI `ideahub login`
   // (device flow). The extension itself never uses it. An empty string is a
   // valid value and must not warn; the client secret never belongs here.
