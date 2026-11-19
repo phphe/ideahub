@@ -371,7 +371,6 @@ describe('renderSettingsHtml', () => {
     host: 'github.com',
     branch: 'main',
     visibility: 'Public',
-    immutability: 'Release immutability is enabled',
     error: null,
     display: {
       url: 'https://github.com/phphe/test_1027e9ad9a',
@@ -391,9 +390,7 @@ describe('renderSettingsHtml', () => {
     expect(html).toContain('host: </span><span id="settings-host">github.com');
     expect(html).toContain('Branch: </span><span id="settings-branch">main');
     expect(html).toContain('Public: </span><span id="settings-visibility">Public');
-    expect(html).toContain(
-      'Immutability: </span><span id="settings-immutability">Release immutability is enabled'
-    );
+    expect(html).not.toContain('settings-immutability');
     expect(html).toContain('codicon codicon-arrow-left');
     expect(html).toContain('title="Back to IdeaHub"');
     expect(html).toContain('<title>IdeaHub - Settings</title>');
@@ -405,12 +402,12 @@ describe('renderSettingsHtml', () => {
     const html = renderSettingsHtml(info);
     expect(html).toContain('id="remote-url"');
     expect(html).toContain('value="https://github.com/phphe/test_1027e9ad9a"');
-    expect(html).toContain('id="immutability-confirm"');
+    expect(html).not.toContain('id="remote-branch"');
+    expect(html).not.toContain('immutability-confirm');
     expect(html).toContain('class="actions">\n        <button data-action="setRemote">');
     expect(html).toContain('data-action="closeSettings"');
     expect(html).not.toContain('data-action="clone"');
     expect(html).not.toContain('data-action="publish"');
-    expect(html).toContain('id="remote-branch"');
     expect(html).toContain('only committed to the local repository');
   });
 
@@ -423,7 +420,6 @@ describe('renderSettingsHtml', () => {
       host: null,
       branch: null,
       visibility: 'Unknown',
-      immutability: 'Unknown (not signed in to GitHub, so the API check is unavailable)',
       error: 'No remote idea repository is configured yet.',
       display: {
         url: 'Not configured',
@@ -434,9 +430,6 @@ describe('renderSettingsHtml', () => {
     });
     expect(html).toContain('URL: </span><span id="settings-url">Not configured');
     expect(html).toContain('owner/repo: </span><span id="settings-owner-repo">Not configured');
-    expect(html).toContain(
-      'Immutability: </span><span id="settings-immutability">Unknown (not signed in to GitHub, so the API check is unavailable)'
-    );
     expect(html).toContain('No remote idea repository is configured yet.');
   });
 });

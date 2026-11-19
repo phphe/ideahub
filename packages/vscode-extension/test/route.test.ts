@@ -54,14 +54,12 @@ describe('routeMessage', () => {
     expect(handlers.initialize).not.toHaveBeenCalled();
   });
 
-  it('passes the remote url, branch and immutability confirmation to setRemote', async () => {
+  it('passes only the remote url to setRemote', async () => {
     const handlers = createHandlers();
     const route = routeMessage(
       {
         type: 'setRemote',
-        url: 'https://github.com/owner/repo',
-        branch: 'dev',
-        immutabilityConfirmed: true
+        url: 'https://github.com/owner/repo'
       },
       handlers
     );
@@ -71,20 +69,7 @@ describe('routeMessage', () => {
       throw new Error('expected setRemote to be routed as an operation');
     }
     await route.run();
-    expect(handlers.setRemote).toHaveBeenCalledWith('https://github.com/owner/repo', true, 'dev');
-  });
-
-  it('passes an empty branch when the optional branch field is omitted', async () => {
-    const handlers = createHandlers();
-    const route = routeMessage(
-      { type: 'setRemote', url: 'https://github.com/owner/repo' },
-      handlers
-    );
-    if (route.kind !== 'operation') {
-      throw new Error('expected setRemote to be routed as an operation');
-    }
-    await route.run();
-    expect(handlers.setRemote).toHaveBeenCalledWith('https://github.com/owner/repo', false, '');
+    expect(handlers.setRemote).toHaveBeenCalledWith('https://github.com/owner/repo');
   });
 
   it('routes createProject and treats opening a file as a silent success', async () => {

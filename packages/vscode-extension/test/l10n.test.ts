@@ -64,7 +64,6 @@ describe('zh-cn l10n bundle', () => {
         host: 'github.com',
         branch: 'main',
         visibility: '公开',
-        immutability: '已启用 Release 不可变性',
         error: null,
         display: {
           url: 'https://github.com/phphe/demo',

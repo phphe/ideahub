@@ -54,7 +54,6 @@ const CACHED: RemoteSettingsInfo = {
   host: 'github.com',
   branch: 'main',
   visibility: 'Public',
-  immutability: 'Release immutability is enabled',
   error: null,
   display: {
     url: REMOTE.url,
@@ -66,8 +65,7 @@ const CACHED: RemoteSettingsInfo = {
 
 const PLACEHOLDER: RemoteSettingsInfo = {
   ...CACHED,
-  visibility: 'Loading…',
-  immutability: 'Loading…'
+  visibility: 'Loading…'
 };
 
 function outputChannel(): import('vscode').OutputChannel {
@@ -158,7 +156,7 @@ describe('settings view switching', () => {
     // The message handler must render settings before returning to the event loop.
     handler()({ type: 'openSettings' });
     expect(webview.html).toContain('<h1>Settings</h1>');
-    expect(webview.html).toContain('Release immutability is enabled');
+    expect(webview.html).toContain('Remote idea repository');
     expect(controller.currentRemoteSettingsInfo).toHaveBeenCalledTimes(1);
 
     handler()({ type: 'closeSettings' });
@@ -286,13 +284,12 @@ describe('busy state recovery', () => {
 
     handler()({
       type: 'setRemote',
-      url: 'https://github.com/phphe/other',
-      immutabilityConfirmed: true
+      url: 'https://github.com/phphe/other'
     });
     await vi.waitFor(() =>
       expect(webview.postMessage).toHaveBeenCalledWith({ type: 'resetBusy' })
     );
-    expect(controller.setRemote).toHaveBeenCalledWith('https://github.com/phphe/other', true);
+    expect(controller.setRemote).toHaveBeenCalledWith('https://github.com/phphe/other');
     expect(htmlSets.length).toBe(2);
     expect(webview.html).toContain('<h1>Settings</h1>');
   });
