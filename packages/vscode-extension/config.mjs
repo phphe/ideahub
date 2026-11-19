@@ -35,7 +35,7 @@ const proofFileHeader = `
 export default {
   // Preferred Release target commit. Empty means "use the remote default
   // branch head"; a non-empty value must be a 7-64 character hex commit id.
-  releaseCommit: '',
+  releaseCommit: '5f24c3aa6be27eb3175d588f9342968d1508f57d',
   proofFileVersion: '1',
   // GitHub OAuth App client id, reserved for the future CLI `ideahub login`
   // (device flow). The extension itself never uses it. An empty string is a
