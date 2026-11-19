@@ -117,6 +117,41 @@ describe('GitHubClient.createRelease', () => {
   });
 });
 
+describe('GitHubClient.getCommit', () => {
+  it('returns the commit SHA when the remote has it', async () => {
+    const urls: string[] = [];
+    const fetchMock = vi.fn(async (input: string) => {
+      urls.push(String(input));
+      return jsonResponse(200, { sha: 'abcdef1234567890abcdef1234567890abcdef12' });
+    });
+    const client = new GitHubClient(
+      async () => 'token',
+      fetchMock as unknown as typeof fetch
+    );
+
+    const result = await client.getCommit(
+      'owner',
+      'repo',
+      'abcdef1234567890abcdef1234567890abcdef12'
+    );
+
+    expect(result).toEqual({ sha: 'abcdef1234567890abcdef1234567890abcdef12' });
+    expect(urls[0]).toBe(
+      'https://api.github.com/repos/owner/repo/commits/abcdef1234567890abcdef1234567890abcdef12'
+    );
+  });
+
+  it('returns null when the commit is unknown so the caller can fall back', async () => {
+    const fetchMock = vi.fn(async () => new Response('{"message":"Not Found"}', { status: 404 }));
+    const client = new GitHubClient(
+      async () => 'token',
+      fetchMock as unknown as typeof fetch
+    );
+
+    await expect(client.getCommit('owner', 'repo', 'deadbeef')).resolves.toBeNull();
+  });
+});
+
 describe('GitHubClient.listAllReleases', () => {
   it('pages through the release list until a short page arrives', async () => {
     const firstPage = Array.from({ length: 100 }, (_value, index) => ({

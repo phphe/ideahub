@@ -2,19 +2,9 @@ import { promises as fs } from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import { buildCloneArgs } from '../src/clone';
 import { isShallowRepository, runGit, unshallowRepository } from '../src/git';
-import { ensureReleaseBranchExists } from '../src/release-branch';
-
-// `ensureReleaseBranchExists` normally derives the clone URL from a GitHub
-// URL; the integration test uses local file remotes instead.
-vi.mock('../src/remote-url', () => ({
-  parseRemoteUrl: (url: string) =>
-    url.startsWith('file://')
-      ? { ok: true, value: { owner: 'owner', repo: 'repo', cloneUrl: url, host: 'github.com' } }
-      : { ok: false, error: 'unsupported' }
-}));
 
 const roots: string[] = [];
 
@@ -94,42 +84,5 @@ describe('shallow clone and push', { timeout: 60000 }, () => {
 
     const retried = await runGit(inner, ['push', remote.emptyUrl, 'HEAD:main']);
     expect(retried.code).toBe(0);
-  });
-
-  it('creates the missing release branch with only an empty file', async () => {
-    const remote = await makeRemote();
-    const inner = await shallowClone(remote.url, remote.base);
-
-    const result = await ensureReleaseBranchExists(inner, remote.url, 'release', 'token');
-    expect(result.ok).toBe(true);
-    if (!result.ok) {
-      return;
-    }
-
-    expect(await isShallowRepository(inner)).toBe(false);
-
-    const ref = await runGit(inner, ['ls-remote', remote.url, 'refs/heads/release']);
-    expect(ref.code).toBe(0);
-    expect(ref.stdout).toContain(result.commit);
-
-    expect((await runGit(inner, ['ls-tree', '-r', '--name-only', result.commit])).stdout.trim()).toBe(
-      'empty'
-    );
-    expect((await runGit(inner, ['cat-file', '-p', `${result.commit}:empty`])).stdout).toBe('');
-    expect((await runGit(inner, ['rev-list', '--count', result.commit])).stdout.trim()).toBe('1');
-  });
-
-  it('rejects an illegal release branch name before pushing', async () => {
-    const remote = await makeRemote();
-    const inner = await shallowClone(remote.url, remote.base);
-
-    const result = await ensureReleaseBranchExists(inner, remote.url, 'bad name', 'token');
-
-    expect(result.ok).toBe(false);
-    if (!result.ok) {
-      expect(result.error).toContain('release branch name');
-    }
-    const ref = await runGit(inner, ['ls-remote', remote.url, 'refs/heads/release']);
-    expect(ref.stdout.trim()).toBe('');
   });
 });
