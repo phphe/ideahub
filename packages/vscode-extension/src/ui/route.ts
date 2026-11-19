@@ -4,8 +4,6 @@ export interface WebviewMessage {
   type?: string;
   project?: string;
   url?: string;
-  branch?: string;
-  immutabilityConfirmed?: boolean;
   message?: string;
 }
 
@@ -16,7 +14,7 @@ export interface RouteHandlers {
   initGit(): Promise<OpResult>;
   installHook(): Promise<OpResult>;
   createProject(): Promise<OpResult>;
-  setRemote(url: string, immutabilityConfirmed: boolean, branch?: string): Promise<OpResult>;
+  setRemote(url: string): Promise<OpResult>;
   cloneRemote(reclone: boolean): Promise<OpResult>;
   openProject(project: string): Promise<OpResult>;
   editTags(project: string): Promise<OpResult>;
@@ -56,12 +54,7 @@ export function routeMessage(message: WebviewMessage, handlers: RouteHandlers): 
       return {
         kind: 'operation',
         name: 'setRemote',
-        run: () =>
-          handlers.setRemote(
-            message.url ?? '',
-            message.immutabilityConfirmed === true,
-            message.branch ?? ''
-          )
+        run: () => handlers.setRemote(message.url ?? '')
       };
     case 'clone':
       return { kind: 'operation', name: 'clone', run: () => handlers.cloneRemote(false) };

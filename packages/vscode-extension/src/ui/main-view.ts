@@ -349,8 +349,7 @@ export class MainViewProvider implements vscode.WebviewViewProvider, vscode.Disp
       initGit: () => this.controller.initGit(),
       installHook: () => this.controller.installHook(),
       createProject: () => this.controller.createProject(),
-      setRemote: (url, immutabilityConfirmed) =>
-        this.controller.setRemote(url, immutabilityConfirmed),
+      setRemote: (url) => this.controller.setRemote(url),
       cloneRemote: (reclone) => this.controller.cloneRemote(reclone),
       openProject: (project) => this.controller.openProject(project),
       editTags: (project) => this.controller.editProjectTags(project),

@@ -28,7 +28,7 @@ import {
 } from '@ideahub/core';
 import { validateRemoteRepository } from '@ideahub/core';
 import { parseRemoteUrl } from '@ideahub/core';
-import { decideRemoteSetup, describeImmutabilityCheck, describeReleaseImmutability } from '@ideahub/core';
+import { describeReleaseImmutability } from '@ideahub/core';
 import type { RemoteSettingsDisplay, RemoteSettingsInfo } from './html';
 import { cloneRemoteRepository, inspectRemoteTarget, removeLocalClone } from '@ideahub/core';
 import {
@@ -137,11 +137,10 @@ function formatRemoteSetupResult(
     return {
       ok: true,
       message: t(
-        'Step 1/2: remote URL validation passed; configuration and hook saved.\n{0}\nRemote idea repository: {1} (branch {2})\n{3}',
+        'Step 1/2: remote URL validation passed; configuration and hook saved.\n{0}\nRemote idea repository: {1} (branch {2})',
         cloneStep,
         target,
-        result.branch,
-        result.immutabilityMessage
+        result.branch
       )
     };
   }
@@ -394,11 +393,7 @@ export class IdeahubController {
     return { ok: true, message: this.t('The pre-push hook was installed / updated.') };
   }
 
-  public async setRemote(
-    url: string,
-    immutabilityConfirmed: boolean,
-    branch: string = ''
-  ): Promise<OpResult> {
+  public async setRemote(url: string): Promise<OpResult> {
     const root = this.requireLocalRoot();
     if (!root) {
       return {
@@ -421,9 +416,12 @@ export class IdeahubController {
     }
 
     const client = this.githubClient(token);
-    const settingsUrl = `https://${parsed.value.host}/${parsed.value.owner}/${parsed.value.repo}/settings`;
     const state = this.currentState;
     const previous = state.kind === 'local' ? state.remote : null;
+    // Section 6.3: the branch is no longer edited in the webview; the existing
+    // configuration stays authoritative and an empty value means "remote
+    // default branch", which validateRemoteRepository resolves as before.
+    const configuredBranch = previous?.branch ?? '';
     let configCommitNote = '';
 
     const result = await vscode.window.withProgress(
@@ -435,9 +433,7 @@ export class IdeahubController {
       (progress) =>
         runRemoteSetupFlow({
           t: this.t,
-          validate: () => validateRemoteRepository(url, client, branch, this.t),
-          decideImmutability: (check) =>
-            decideRemoteSetup(check, immutabilityConfirmed, settingsUrl, this.t),
+          validate: () => validateRemoteRepository(url, client, configuredBranch, this.t),
           confirmChange: async (next) => {
             const sameRepo =
               previous !== null &&
@@ -582,7 +578,6 @@ export class IdeahubController {
             host: null,
             branch: null,
             visibility: this.t('Unknown'),
-            immutability: this.t('Unknown'),
             error: this.t('There is no local idea repository open.')
           },
           this.t
@@ -599,7 +594,6 @@ export class IdeahubController {
             host: null,
             branch: null,
             visibility: this.t('Unknown'),
-            immutability: this.t('Unknown'),
             error: this.t('No remote idea repository is configured yet.')
           },
           this.t
@@ -625,7 +619,6 @@ export class IdeahubController {
         host: parsed.ok ? parsed.value.host : null,
         branch: remote.branch,
         visibility: this.t('Loading…'),
-        immutability: this.t('Loading…'),
         error: null
       },
       this.t
@@ -644,7 +637,6 @@ export class IdeahubController {
             host: null,
             branch: null,
             visibility: this.t('Unknown'),
-            immutability: this.t('Unknown'),
             error: this.t('There is no local idea repository open.')
           },
           this.t
@@ -661,7 +653,6 @@ export class IdeahubController {
             host: null,
             branch: null,
             visibility: this.t('Unknown'),
-            immutability: this.t('Unknown'),
             error: this.t('No remote idea repository is configured yet.')
           },
           this.t
@@ -678,7 +669,6 @@ export class IdeahubController {
       host: parsed.ok ? parsed.value.host : null,
       branch: remote.branch,
       visibility: this.t('Unknown'),
-      immutability: this.t('Unknown'),
       error: null as string | null
     };
 
@@ -687,10 +677,7 @@ export class IdeahubController {
       return this.rememberSettings(
         withDisplay(
           {
-            ...base,
-            immutability: this.t(
-              'Unknown (not signed in to GitHub, so the API check is unavailable)'
-            )
+            ...base
           },
           this.t
         )
@@ -713,11 +700,6 @@ export class IdeahubController {
           )
         );
       }
-      const immutability = await client.getImmutableReleasesStatus(
-        remote.owner,
-        remote.repo,
-        parsed.ok ? parsed.value.host : undefined
-      );
       return this.rememberSettings(
         withDisplay(
           {
@@ -725,8 +707,7 @@ export class IdeahubController {
             branch: repository.defaultBranch || remote.branch,
             visibility: repository.isPrivate
               ? this.t('Private (does not meet the requirement; it must be public)')
-              : this.t('Public'),
-            immutability: describeImmutabilityCheck(immutability, this.t)
+              : this.t('Public')
           },
           this.t
         )

@@ -20,7 +20,6 @@ export interface RemoteSettingsInfo {
   host: string | null;
   branch: string | null;
   visibility: string;
-  immutability: string;
   error: string | null;
   /** Pre-translated values rendered in the settings view and sent to the webview. */
   display: RemoteSettingsDisplay;
@@ -326,8 +325,7 @@ function renderScript(nonce: string): string {
         ['settings-owner-repo', display.ownerRepo],
         ['settings-host', display.host],
         ['settings-branch', display.branch],
-        ['settings-visibility', info.visibility],
-        ['settings-immutability', info.immutability]
+        ['settings-visibility', info.visibility]
       ];
       for (const entry of fields) {
         const el = document.getElementById(entry[0]);
@@ -341,10 +339,6 @@ function renderScript(nonce: string): string {
       const urlInput = document.getElementById('remote-url');
       if (urlInput && document.activeElement !== urlInput && info.url) {
         urlInput.value = info.url;
-      }
-      const branchInput = document.getElementById('remote-branch');
-      if (branchInput && document.activeElement !== branchInput) {
-        branchInput.value = info.branch || '';
       }
     }
 
@@ -415,14 +409,10 @@ function renderScript(nonce: string): string {
       const action = target.dataset.action;
       if (action === 'setRemote') {
         const urlInput = document.getElementById('remote-url');
-        const branchInput = document.getElementById('remote-branch');
-        const confirmInput = document.getElementById('immutability-confirm');
         lockButtons(target);
         vscode.postMessage({
           type: 'setRemote',
-          url: urlInput ? urlInput.value : '',
-          branch: branchInput ? branchInput.value : '',
-          immutabilityConfirmed: !!(confirmInput && confirmInput.checked)
+          url: urlInput ? urlInput.value : ''
         });
         return;
       }
@@ -518,7 +508,6 @@ const STYLES = `
     background: var(--vscode-input-background);
     font-family: inherit;
   }
-  label.check { display: flex; gap: 6px; align-items: flex-start; margin: 8px 0; line-height: 1.4; }
   ul.projects { list-style: none; padding: 0; margin: 0; }
   li.project {
     display: flex;
@@ -619,18 +608,9 @@ function renderIssueActions(
       )}</button></div>`;
     case 'remote-url':
       return `<input type="text" id="remote-url" placeholder="https://github.com/owner/repo" />
-        <input type="text" id="remote-branch" placeholder="${escapeHtml(
-          t('Branch (leave empty to use the remote default branch)')
-        )}" />
-        <label class="check"><input type="checkbox" id="immutability-confirm" />
-        <span>${escapeHtml(
-          t(
-            'I have confirmed that Enable release immutability is enabled for the repository. The extension checks it through the GitHub API first; this manual confirmation is only used when the check cannot be read (repository admin read permission is required).'
-          )
-        )}</span></label>
         <p class="muted">${escapeHtml(
           t(
-            'The remote idea repository must be created manually by you and must be public. When the branch is left empty, the remote default branch is used automatically and shown in settings. After validation the repository is cloned into .ideahub/remote/; the configuration is only committed to the local repository and nothing is pushed or published.'
+            'The remote idea repository must be created manually by you and must be public. The remote default branch is used automatically and shown in settings. After validation the repository is cloned into .ideahub/remote/; the configuration is only committed to the local repository and nothing is pushed or published.'
           )
         )}</p>
         <div class="actions"><button data-action="setRemote">${escapeHtml(
@@ -1068,7 +1048,6 @@ export function renderSettingsHtml(
       ${settingRow('host', info.display.host, 'settings-host')}
       ${settingRow(t('Branch'), info.display.branch, 'settings-branch')}
       ${settingRow(t('Public'), info.visibility, 'settings-visibility')}
-      ${settingRow(t('Immutability'), info.immutability, 'settings-immutability')}
       ${error}
     </div>
     <div class="card">
@@ -1076,14 +1055,6 @@ export function renderSettingsHtml(
       <input id="remote-url" type="text" value="${escapeHtml(
         info.url
       )}" placeholder="https://github.com/owner/repo" />
-      <input id="remote-branch" type="text" value="${escapeHtml(
-        info.branch ?? ''
-      )}" placeholder="${escapeHtml(
-        t('Branch (leave empty to use the remote default branch)')
-      )}" />
-      <label class="check"><input id="immutability-confirm" type="checkbox" /> ${escapeHtml(
-        t('I have enabled Release immutability in GitHub')
-      )}</label>
       <div class="actions">
         <button data-action="setRemote">${escapeHtml(t('Validate, save and clone'))}</button>
       </div>
