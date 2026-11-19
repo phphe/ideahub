@@ -114,7 +114,7 @@ vi.mock('@ideahub/core', async (importOriginal) => {
     GitHubApiError,
     resolveReleaseTarget: vi.fn(async () => ({
       ok: true,
-      target: { branch: 'main', sha: 'abc123def456', commitSource: 'branch-head' }
+      target: { branch: 'main', sha: 'abc123def456', commitSource: 'branch-earliest' }
     }))
   };
 });
