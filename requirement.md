@@ -89,7 +89,7 @@
 | 内容指纹 | 一段证明文本与其引用文件的确定性摘要：正常化文本、为项目内引用插入保留字符、记录引用文件的 Git Blob SHA-1，按固定键顺序序列化后取 SHA-256（见 7.3）。 |
 | 证明文件 | 发布时根据 `ideas.md` 生成的英文 `README.md`，包含时间跨度、各类数量、按时间升序排列的证明块与校验指引（见 7.8）。 |
 | 保留字符 | `🔏`。只由扩展插入到参与哈希的项目内图片/链接之前；用户原文不得包含它；`ideas.md` 永不写入扩展插入的该字符（见 7.3）。 |
-| release 分支 | 远程创意仓库中用于确定 Release 源码快照的分支，只包含一个空文件；名称来自扩展工程的开发者配置 `releaseBranch`，在构建期注入，默认 `main`；远程不存在时扩展在生成证明前自动创建并只推送一个名为 `empty` 的空文件（见 5.5、6.7）。 |
+| release 目标提交 | 创建证明 Release 时作为 `target_commitish` 的 commit：优先使用构建期注入的 `releaseCommit`（存在且有效时），否则使用远程仓库默认分支的最新 commit；不再维护专门的 release 分支（见 5.5、6.7）。 |
 | CLI | 命令行校验工具（npm 包 `ideahub`），提供 `check` 与 `login` 两个命令，供拿到项目网址的第三方查看者独立校验证明；与 VS Code 扩展无运行时依赖（见第十三章）。 |
 | 证明块 | 证明文件中由一条 `` ## 🔏 `Proof: ...` `` 标记开头、到下一个证明标记或文件末尾为止的内容；`ideas.md` 中对应的是该标记**之前**、上一条证明标记之后的内容（见 7.8、13.2）。 |
 
@@ -203,19 +203,19 @@ Unless explicitly stated otherwise, all rights are reserved
 by the respective authors.
 ```
 
-### 5.5 发布分支与源码快照
+### 5.5 Release 目标提交与源码快照
 
 GitHub 会为每个 Release 自动生成 tag 指向提交的源码 zip / tar.gz 快照（依据：GitHub Docs《About releases》说明会自动提供 tag 创建点的 zip 与 tarball；《Downloading source code archives》说明快照由 `git archive` 生成，可对应分支、tag 或具体 commit）。
 
-为控制快照体积，远程创意仓库中应保留一个**只包含一个空文件**的分支（下称 release 分支）：
+不再使用专门的 release 分支。创建证明 Release 前，按以下顺序确定目标提交：
 
-- release 分支只用于确定 Release 的目标提交，不存放公开项目内容。
-- 创建证明 Release 前，扩展通过 `git ls-remote <url> refs/heads/<releaseBranch>` 读取该分支最新 commit，并把该 commit SHA 作为 `target_commitish`，使 tag 指向近乎空的快照。
-- **分支缺失时自动创建**：若 `git ls-remote` 确认该分支不存在，扩展会在生成证明前自动创建该分支——从空树创建一个只含名为 `empty` 的空文件的提交并推送该分支。这是首次向用户的公开仓库推送，属于第九章第 1 条红线的例外：**仅在分支缺失时发生**，只推送该分支与该空文件，不推送任何创意内容、不推送其他分支或文件。创建成功后重新读取该分支最新 commit 作为 `target_commitish`。
-- 若自动创建失败（认证、权限、网络、分支保护等），必须明确提示失败原因，并且**不写入任何本地标记**。
-- `releaseBranch` 来自扩展工程的开发者配置，在构建期注入（见 6.7），默认 `main`；最终用户不可见、不可改。
-- 若 `releaseBranch` 与远程仓库的 `default_branch` 不同，日志必须同时记录两者，避免再次出现“分支传错”的 422。
-- 若 release 分支与承载公开项目内容的分支相同，源码快照不会变小；需要小快照时应使用独立分支。
+- 通过 GitHub API 读取远程创意仓库的 `default_branch`，**不得**硬编码 `main`；读取失败时中止，不发送创建 Release 的请求，不写入任何本地标记。
+- `releaseCommit` 来自扩展工程的开发者配置，在构建期注入（见 6.7），默认空字符串表示不指定。
+- `releaseCommit` 非空且通过基本校验（7–64 位十六进制）时，先用 GitHub API 检查该 commit 在远程仓库中是否存在：存在则把它作为 `target_commitish`；不存在则回落到默认分支最新 commit。
+- `releaseCommit` 为空、格式非法或对应 commit 不存在时，通过 `git ls-remote <url> refs/heads/<default_branch>` 读取默认分支最新 commit 作为 `target_commitish`，并在日志中记录回落原因。
+- 默认分支尚无可读 commit（空仓库）或 `git ls-remote` 失败时，明确提示失败原因，不发送创建 Release 的请求，不写入任何本地标记。
+- **一个 commit id 可以被多个 Release 复用**。实现不得假设 commit 与 Release 一一对应，也不得依据目标 commit 复用、跳过或合并 Release；幂等性仍只由 tag `ideahub-<sha256>` 决定（见 7.4）。
+- 日志记录 `default_branch`、`target_commitish` 与目标来源（`config` 或 `branch-head`）。
 
 ---
 
@@ -327,7 +327,7 @@ remote/
 
 ```js
 export default {
-  releaseBranch: 'main',
+  releaseCommit: '',
   proofFileVersion: '0',
   oauthClientId: '',
   proofFileHeader: `> This file is the IdeaHub proof file for this project.
@@ -341,14 +341,14 @@ export default {
 
 说明：
 
-- `releaseBranch`：创建证明 Release 时用作 `target_commitish` 的 release 分支名（见 5.5、8.9），默认 `main`。
+- `releaseCommit`：创建证明 Release 时优先使用的 commit id（见 5.5、8.10），**字符串**，默认空字符串（表示不指定，使用远程默认分支最新 commit）。非空时必须为 7–64 位十六进制；格式非法、为空或远程不存在时回落到默认分支最新 commit。
 - `proofFileVersion`：生成的证明文件 Front Matter 中 `version` 的值，**字符串**，默认 `"0"`。不读取插件版本号、不在代码里硬编码（见 7.8）。
 - `proofFileHeader`：生成的证明文件头部说明文案，**字符串**，默认空字符串。多行文案用**模板字符串**书写，不再用 `\n` 拼接，并按 Markdown 引用块书写（每行以 `> ` 开头，空行写成单独的 `>`）。生成时把其中所有 `<project-url>` 替换为该项目的真实远程地址；缺失、非字符串或空字符串时不写头部说明，并在构建期告警。统计信息列表每行也以 `> ` 开头，与头部说明保持同一个引用块；单独一行 `---` 分隔线保持在引用块之外（不加 `> `）。头部文案中**不得**包含独立的 `---` 行（引用块内的 `> ---` 不算），否则构建期直接失败，原因见 7.8 与 13.2。
 - `oauthClientId`：GitHub OAuth App 的 client id，**字符串**，默认空字符串。预留给 CLI 的 `ideahub login`（device flow）使用，扩展本身不使用该值；空字符串是**合法值**，不告警、不影响其他字段的解析。client id 是公开标识而非凭据；client secret 不得写入本文件，也不得注入构建产物。
 - 两个包**各自持有**自己的开发者配置，互不引用：`packages/vscode-extension/config.mjs` 供扩展构建使用，`packages/cli/config.mjs` 供 CLI 构建使用；两者各自同级放置 `.env`（默认为空文件），读取优先级均为 `.env` > 本包 `config.mjs` > 默认，并在各自构建期注入产物，运行时不再读取环境变量。
-- CLI 的 `config.mjs` 目前只包含 `oauthClientId` 一个字段（空值合法）；扩展的 `config.mjs` 保持 `releaseBranch` / `proofFileVersion` / `proofFileHeader` / `oauthClientId` 不变。
+- CLI 的 `config.mjs` 目前只包含 `oauthClientId` 一个字段（空值合法）；扩展的 `config.mjs` 保持 `releaseCommit` / `proofFileVersion` / `proofFileHeader` / `oauthClientId` 不变。
 - 两个包内的 `.env` 均被 git 忽略、不进入 VSIX；`config.mjs` 与 `.env` 都不进入任何构建产物（扩展 VSIX 与 CLI 的 `dist` 均不含）。
-- 读取优先级：`.env`（`IDEAHUB_RELEASE_BRANCH`、`IDEAHUB_PROOF_FILE_VERSION`、`IDEAHUB_PROOF_FILE_HEADER`、`IDEAHUB_OAUTH_CLIENT_ID`，本地临时覆盖用；已在 `.gitignore` / `.vscodeignore`，不提交、不打包进 vsix）> `config.mjs` 的 `default` 导出 > 内置默认（`main` / `"0"` / 空 / 空）。
+- 读取优先级：`.env`（`IDEAHUB_RELEASE_COMMIT`、`IDEAHUB_PROOF_FILE_VERSION`、`IDEAHUB_PROOF_FILE_HEADER`、`IDEAHUB_OAUTH_CLIENT_ID`，本地临时覆盖用；已在 `.gitignore` / `.vscodeignore`，不提交、不打包进 vsix）> `config.mjs` 的 `default` 导出 > 内置默认（空 / `"0"` / 空 / 空）。
 - 该文件在**构建期**由构建脚本用动态 `import()` 加载，取 `default` 导出，再通过 esbuild `define` 把解析结果注入为常量。构建产物中只有最终值，不包含配置文件；运行时**不会**从用户机器读取 `.env` 或任何外部配置文件。
 - 逐字段校验并在构建期告警回落：模块加载抛错、`default` 缺失或不是对象、字段缺失、字段类型不对、字段为空，都视为该字段非法，分别回落到该字段的默认值；构建继续，扩展也不能崩溃。唯一例外是 `oauthClientId`：空字符串是合法值，不告警。
 - `.env`、`.env.*`、`config.mjs` 均不得打包进 vsix。
@@ -469,8 +469,8 @@ tags: ["游戏", "写作"]
 ### 7.4 Release
 
 - Tag 命名：`ideahub-<sha256>`，哈希口径见 7.3，例如 `ideahub-3f...`（64 位小写十六进制）。
-- `target_commitish` 取 release 分支（见 5.5、6.7）的最新 commit SHA；tag 指向该 commit，GitHub 自动生成的源码快照因此接近空包。
-- 请求前必须校验 tag 与 `target_commitish`：tag 需符合 Git ref 规范；release 分支不存在时按 5.5 自动创建并重新读取 SHA，创建失败或读不到 SHA 时不得发送创建请求。
+- `target_commitish` 取 5.5 的目标提交（优先 `releaseCommit`，否则远程默认分支最新 commit）；tag 指向该 commit。
+- 请求前必须校验 tag 与 `target_commitish`：tag 需符合 Git ref 规范；读取默认分支、检查配置 commit 或 `git ls-remote` 失败时不得发送创建请求。
 - Release 名称/说明**只记录证明时间**，不写 `sha256=`、不写任何内容 Hash、不上传任何证明内容附件。
 - 幂等：创建前按 `ideahub-<hash>` 查询是否已有 Release。同一内容重复证明会命中同一 tag，**不得**视为成功：必须直接提示“相同内容已证明过”并结束，**不追加**新的证明标记、不新建 Release、不覆盖已有 Release（见 8.9、13.3）。
 - Release 创建在远程创意仓库中，依赖已启用的 Release 不可变设置。
@@ -651,7 +651,7 @@ version: "0"
 - 目标目录已存在且非空时，必须停止并提示，不覆盖；若其中已是有效的本扩展克隆，则直接跳过。
 - 重新克隆必须先明确提示会删除 `.ideahub/remote/` 内未提交的变更，并取得用户确认。
 - 克隆失败（网络、权限、地址错误）需给出明确原因提示，并说明失败发生在克隆步骤。
-- **克隆快，发布时补齐历史**：发布（8.10）或首次创建 release 分支（5.5）需要推送时，若内层仓库仍是浅克隆，先执行 `git fetch --unshallow` 补齐历史再推送。实测表明：向缺少所需历史的远端推送时会被拒绝（`shallow update not allowed`）；补齐历史后同一推送成功。因此克隆使用 `--depth 1`，把补齐历史的代价推迟到第一次推送时。
+- **克隆快，发布时补齐历史**：发布（8.10）需要推送时，若内层仓库仍是浅克隆，先执行 `git fetch --unshallow` 补齐历史再推送。实测表明：向缺少所需历史的远端推送时会被拒绝（`shallow update not allowed`）；补齐历史后同一推送成功。因此克隆使用 `--depth 1`，把补齐历史的代价推迟到第一次推送时。
 
 ### 8.6 安装 / 修复 `pre-push` hook
 
@@ -756,10 +756,12 @@ version: "0"
 3. 按 7.3 计算内容指纹（含正常化、引用扫描、`🔏` 插入、引用文件 Blob SHA-1 与规范 JSON）：取当前系统本地时间，格式化为 `YYYY-MM-DD HH:mm:ss (UTC+08:00)`；由指纹生成 Tag `ideahub-<sha256>`。
    - 引用与外部资源的处理按 7.7：项目外/越界/缺失/目录/外部图片/原文含 `🔏`/git 不可用 → 中止，不创建 Release、不写标记。
    - 存在外部链接时继续，但在结果中提示“证明不保证外部内容”并给出按去重后的数量。
-4. 使用构建期注入的 `releaseBranch`（见 6.7），并用 `git ls-remote <远程地址> refs/heads/<releaseBranch>` 读取该分支最新 commit：
-   - 分支名为空或格式非法、`git ls-remote` 失败时，明确提示对应失败原因，**不发送**创建 Release 的请求。
-   - 分支不存在时，按 5.5 **自动创建**该分支并只推送一个名为 `empty` 的空文件（第九章第 1 条的红线例外），然后重新读取该分支最新 commit；创建失败时明确提示失败原因，**不发送**创建 Release 请求，**不写入**任何本地标记。
-   - 取到 commit SHA 后，日志同时记录 `release_branch` 与远端 `default_branch`；两者不同时必须都打印，避免分支传错。
+4. 解析 Release 目标提交（见 5.5）：
+   - 通过 GitHub API 读取远程仓库的 `default_branch`；读取失败时明确提示原因，**不发送**创建 Release 的请求，**不写入**任何本地标记。
+   - `releaseCommit`（构建期注入，见 6.7）非空且格式合法时，先检查该 commit 在远程是否存在；存在则用它作为 `target_commitish`。
+   - 未配置、格式非法或远程不存在时，用 `git ls-remote <远程地址> refs/heads/<默认分支>` 读取该分支最新 commit 作为 `target_commitish`。
+   - `git ls-remote` 失败或默认分支没有 commit 时，明确提示失败原因，**不发送**创建 Release 请求，**不写入**任何本地标记。
+   - 日志记录 `default_branch`、`target_commitish` 与目标来源（`config` / `branch-head`）；同一 commit 可被多个 Release 复用，幂等性只由 tag 判断。
 5. 按 `ideahub-<hash>` 查询远程创意仓库是否已有 Release；同一内容重复证明会命中同一 tag，此时**直接提示“相同内容已证明过”并结束**：不追加标记、不新建 Release、不覆盖已有 Release、不写 `Published:`（见 7.4、13.3）。
 6. Release 不存在时创建：
    - Tag：`ideahub-<sha256>`
@@ -822,7 +824,7 @@ https://github.com/<远程仓库用户>/<远程仓库名字>/tree/<远程仓库�
 
 约束：
 
-- 发布仍推送到 `config.json` 中的 `branch`（远程默认分支）；`releaseBranch` 只用于 Release 目标，不影响发布分支。
+- 发布仍推送到 `config.json` 中的 `branch`（远程默认分支）；Release 目标提交（见 5.5）不影响发布分支。
 - 推送前若内层仓库是浅克隆，先 `git fetch --unshallow` 补齐历史（见 8.5）；发布标记的自动提交信息默认固定为 `ideahub: mark published`。
 - 发布**只**推送内层仓库（`.ideahub/remote/`）；除 6.8 允许的单行 `Published:` 本地提交外，**不得**提交或推送本地仓库。
 - 发布**不**修改已存在的 `Proof:` 标记。
@@ -843,7 +845,6 @@ https://github.com/<远程仓库用户>/<远程仓库名字>/tree/<远程仓库�
 ## 九、安全红线与禁止行为
 
 1. 未经用户确认，不得上传或公开任何本地创意内容。
-   - 例外：生成证明前若远程 release 分支不存在，扩展自动创建该分支并只推送一个名为 `empty` 的空文件（不包含任何创意内容）。该操作**仅在分支缺失时发生**，只推送该分支与该空文件，不推送其他分支或文件（见 5.5、8.9）。创建失败时明确提示且不写入本地标记。
 2. 不得自动提交或推送本地仓库。
    - 例外一：用户开启 `ideahub.proof.autoCommit` 时，证明或发布标记写入成功后仅允许把 `ideas.md` 的标记行提交到本地仓库（见 6.8、8.9、8.10）；绝不 push、绝不 amend、绝不动其他文件。
    - 例外二：git 可用且本地存在创意仓库时，初始化**新建** `.ideahub/config.json`、以及用户通过设置修改远程仓库配置后，只允许把该文件提交到本地仓库（见 2.4、8.3、8.4）；绝不 push、绝不 amend、不暂存或提交其他文件。复用（未修改）的配置文件不提交。
@@ -902,7 +903,7 @@ https://github.com/<远程仓库用户>/<远程仓库名字>/tree/<远程仓库�
 
 ### 11.2 证明
 
-- 计算内容指纹（口径见 7.3，含引用文件 Blob SHA-1 与规范 JSON）→ 读取 release 分支最新 commit（`git ls-remote`）→ 按 Tag `ideahub-<sha256>` 查询或创建 Release → 写入 `` ###### `Proof: ... [ideahub]` ``，顺序严格成立。
+- 计算内容指纹（口径见 7.3，含引用文件 Blob SHA-1 与规范 JSON）→ 解析 Release 目标提交（有效的 `releaseCommit`，否则远程默认分支最新 commit，见 5.5）→ 按 Tag `ideahub-<sha256>` 查询或创建 Release → 写入 `` ###### `Proof: ... [ideahub]` ``，顺序严格成立。
 - 正常化：去空行、去两端空白、统一 `\n`，并排除 `Published:` 标记行；同一内容多次计算结果一致（规范 JSON 键顺序固定、files 键升序）。
 - 项目内图片/链接前插入 `🔏`；外部链接不插入；`ideas.md` 本身不写该字符。
 - 引用式 `[文字][id]` 与 HTML `<img src>` / `<a href>` 均被识别；引用定义行参与解析但不插入 `🔏`。
@@ -914,7 +915,7 @@ https://github.com/<远程仓库用户>/<远程仓库名字>/tree/<远程仓库�
 - 生成的 `README.md` 中证明标记写成 2 个 `#` 并在标记前加 `🔏`（`` ## 🔏 `Proof: ...` ``），并能被 checker 解析；解析**只接受带 `🔏` 的形式**，不带 `🔏` 的标记不被识别、不回退、不兼容。证明文件侧不识别 `######`，`ideas.md` 侧不识别 `## `，两套规则分开且互不兼容。
 - `ideas.md` 的标记输出保持 6 个 `#` 且不加 `🔏`；证明文件中的 `🔏` 只出现在生成侧，不影响 `ideas.md`。
 - Release 说明只记录证明时间，不出现 `sha256=`。
-- release 分支不存在时，自动创建该分支并只推送一个 `empty` 空文件，然后以其最新 commit 作为 `target_commitish`；创建失败时不发送创建请求、不写入标记。
+- 目标提交优先使用有效的 `releaseCommit`，否则使用远程默认分支最新 commit；两者都取不到时不发送创建请求、不写入标记（见 5.5）。
 - 同一内容重复证明命中同一 `ideahub-<sha256>` Tag 时，提示“相同内容已证明过”并结束，不追加标记、不新建或覆盖 Release。
 - Release 创建失败时不产生任何标记。
 - 标记行不含 Hash；修改已证明内容当前不会被识别为验证失败，因为尚未实现校验入口。
@@ -935,13 +936,13 @@ https://github.com/<远程仓库用户>/<远程仓库名字>/tree/<远程仓库�
 - 发布副本**不含 `ideas.md`**；`README.md` 写入项目根目录并覆盖已有同名文件，不提示。
 - 发布后链接可访问，格式为 `https://github.com/<owner>/<repo>/tree/<branch>/<项目名>`。
 - 发布过程仅在本地 `ideas.md` 末尾追加 `Published:` 标记行，不修改已有 `Proof:` 标记；除该单行本地提交外不触碰本地仓库。
-- 发布分支仍为 `config.json` 的 `branch`，不受 `releaseBranch` 影响。
+- 发布分支仍为 `config.json` 的 `branch`，不受 Release 目标提交（5.5）影响。
 - 推送阶段失败后，`.ideahub/remote/` 的文件内容与 HEAD 均恢复到操作前；不删除 `.git`、不清理用户其他文件，提示「已复原本地 remote，远端未变更」。
 
 ### 11.4 开发者配置（构建期）
 
-- `config.mjs` 以 `export default {...}` 提供 `releaseBranch`、`proofFileVersion`、`proofFileHeader`；构建脚本用动态 `import()` 读取 `default` 导出，多行头部文案用模板字符串书写。
-- `releaseBranch`、`proofFileVersion`、`proofFileHeader` 的读取优先级均为 `.env`（`IDEAHUB_RELEASE_BRANCH` / `IDEAHUB_PROOF_FILE_VERSION` / `IDEAHUB_PROOF_FILE_HEADER`）> `config.mjs` > 内置默认（`main` / `"0"` / 空）；`.env` 覆盖对三个字段都生效。
+- `config.mjs` 以 `export default {...}` 提供 `releaseCommit`、`proofFileVersion`、`proofFileHeader`；构建脚本用动态 `import()` 读取 `default` 导出，多行头部文案用模板字符串书写。
+- `releaseCommit`、`proofFileVersion`、`proofFileHeader` 的读取优先级均为 `.env`（`IDEAHUB_RELEASE_COMMIT` / `IDEAHUB_PROOF_FILE_VERSION` / `IDEAHUB_PROOF_FILE_HEADER`）> `config.mjs` > 内置默认（空 / `"0"` / 空）；`.env` 覆盖对三个字段都生效。`releaseCommit` 非空时必须为 7–64 位十六进制，否则构建期告警并回落到空字符串。
 - 模块加载抛错、`default` 缺失或不是对象、字段缺失、类型错误、空字符串或空值时，构建期告警并逐字段回落到默认值，构建不中断。
 - 证明文件 `version` 只来自上述配置，不读取插件版本号，也不在代码里硬编码。
 - `.env`、`.env.*`、`config.mjs` 不进入 vsix；构建产物中只有解析后的最终值。
@@ -1037,7 +1038,7 @@ packages/
 - 证明文件：读取项目根目录的 `README.md`，可通过 `raw.githubusercontent.com` 或 `GET /repos/{owner}/{repo}/contents/...` 获取；优先 raw，避免占用 API 配额。
 - 文件 Blob SHA-1：用 `GET /repos/{owner}/{repo}/git/trees/<分支最新 commit 的树>?recursive=1` **一次**取整棵树，不采用“先根树、再子树”的两步方式；返回 `truncated: true` 时视为 ERROR（退出码 2），不得按缺少文件处理。
 - Release：`GET /repos/{owner}/{repo}/releases?per_page=100` 分页列出全部 release，建立 `tag → release` 集合；**不**逐 tag 单独查询。只接受 `tag_name` 形如 `ideahub-<64 位小写十六进制>` 的项。
-- 项目文件的来源分支是**发布分支（通常即 `default_branch`）的最新提交**；release tag 指向的是只含 `empty` 文件的 release 分支（见 5.5），**不能**从中取项目文件。
+- 项目文件的来源分支是**发布分支（通常即 `default_branch`）的最新提交**；release tag 指向的是 5.5 的目标提交（可能是默认分支最新 commit 或配置的 `releaseCommit`），**不能**假定其中包含项目文件。
 - 因此 CLI 的 PASS 语义是“**当前已发布内容**仍与记录一致”；同一项目后续发布若删除或修改了被旧块引用的文件，旧块会判 FAIL。CLI 输出必须写明实际比对的分支与 commit SHA，不得声称验证了“证明时刻”的内容。
 - 匿名配额为 60 次/小时；收到 429、403 且 `X-RateLimit-Remaining: 0` 或 `Retry-After` 时不判 FAIL，而是报错并提示执行 `ideahub login`（登录后为 5000 次/小时）。
 
