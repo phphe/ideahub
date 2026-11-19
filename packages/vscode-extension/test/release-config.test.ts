@@ -6,15 +6,15 @@ import * as releaseConfig from '../scripts/release-config.js';
 import type { DeveloperConfigResult } from '../scripts/release-config.js';
 
 const {
-  DEFAULT_RELEASE_BRANCH,
+  DEFAULT_RELEASE_COMMIT,
   DEFAULT_PROOF_FILE_VERSION,
   DEFAULT_PROOF_FILE_HEADER,
   DEVELOPER_CONFIG_FILE,
-  RELEASE_BRANCH_ENV_KEY,
+  RELEASE_COMMIT_ENV_KEY,
   PROOF_FILE_VERSION_ENV_KEY,
   PROOF_FILE_HEADER_ENV_KEY,
   loadDeveloperConfig,
-  resolveReleaseBranch,
+  resolveReleaseCommit,
   resolveProofFileVersion,
   resolveProofFileHeader,
   resolveOAuthClientId,
@@ -45,7 +45,7 @@ describe('developer config module loading', () => {
     const { root, file } = await writeTempModule(
       [
         'export default {',
-        "  releaseBranch: 'release/empty',",
+        "  releaseCommit: 'abcdef1',",
         "  proofFileVersion: '2',",
         "  proofFileHeader: 'See <project-url>.'",
         '};'
@@ -56,7 +56,7 @@ describe('developer config module loading', () => {
     expect(result).toEqual({
       ok: true,
       value: {
-        releaseBranch: 'release/empty',
+        releaseCommit: 'abcdef1',
         proofFileVersion: '2',
         proofFileHeader: 'See <project-url>.'
       }
@@ -66,7 +66,7 @@ describe('developer config module loading', () => {
   });
 
   it('reports a missing default export', async () => {
-    const { root, file } = await writeTempModule("export const releaseBranch = 'main';");
+    const { root, file } = await writeTempModule("export const releaseCommit = 'abcdef1';");
 
     const result = await loadDeveloperConfig(file);
     expect(result).toEqual({ ok: false, reason: 'default-missing' });
@@ -108,66 +108,76 @@ describe('developer config module loading', () => {
 });
 
 describe('build-time release config resolution', () => {
-  it('falls back to main when no config is provided', () => {
-    const result = resolveReleaseBranch();
+  it('falls back to an empty commit when no config is provided', () => {
+    const result = resolveReleaseCommit();
 
-    expect(result.branch).toBe(DEFAULT_RELEASE_BRANCH);
+    expect(result.commit).toBe(DEFAULT_RELEASE_COMMIT);
     expect(result.source).toBe('default');
     expect(result.warnings.join('\n')).toContain(DEVELOPER_CONFIG_FILE);
   });
 
-  it('reads releaseBranch from the loaded config', () => {
-    const result = resolveReleaseBranch({
-      config: configOf({ releaseBranch: 'release/empty' })
+  it('reads releaseCommit from the loaded config', () => {
+    const result = resolveReleaseCommit({
+      config: configOf({ releaseCommit: 'abcdef1' })
     });
 
-    expect(result).toEqual({ branch: 'release/empty', source: 'file', warnings: [] });
+    expect(result).toEqual({ commit: 'abcdef1', source: 'file', warnings: [] });
+  });
+
+  it('accepts an empty commit as "not configured" without warnings', () => {
+    const result = resolveReleaseCommit({ config: configOf({ releaseCommit: '  ' }) });
+
+    expect(result).toEqual({ commit: '', source: 'file', warnings: [] });
   });
 
   it('prefers .env content over the config module', () => {
-    const result = resolveReleaseBranch({
-      envText: `${RELEASE_BRANCH_ENV_KEY}=from-env\n`,
-      config: configOf({ releaseBranch: 'from-file' })
+    const result = resolveReleaseCommit({
+      envText: `${RELEASE_COMMIT_ENV_KEY}=1234567\n`,
+      config: configOf({ releaseCommit: 'abcdef1' })
     });
 
-    expect(result.branch).toBe('from-env');
+    expect(result.commit).toBe('1234567');
     expect(result.source).toBe('env');
+    expect(result.warnings).toEqual([]);
   });
 
   it('ignores an empty or invalid .env value and falls through to the config', () => {
-    const emptyEnv = resolveReleaseBranch({
-      envText: `${RELEASE_BRANCH_ENV_KEY}=\n`,
-      config: configOf({ releaseBranch: 'from-file' })
+    const emptyEnv = resolveReleaseCommit({
+      envText: `${RELEASE_COMMIT_ENV_KEY}=\n`,
+      config: configOf({ releaseCommit: 'abcdef1' })
     });
-    expect(emptyEnv.branch).toBe('from-file');
-    expect(emptyEnv.warnings.join('\n')).toContain('为空');
+    expect(emptyEnv.commit).toBe('abcdef1');
 
-    const invalidEnv = resolveReleaseBranch({
-      envText: `${RELEASE_BRANCH_ENV_KEY}=bad branch\n`,
-      config: configOf({ releaseBranch: 'from-file' })
+    const invalidEnv = resolveReleaseCommit({
+      envText: `${RELEASE_COMMIT_ENV_KEY}=not-hex\n`,
+      config: configOf({ releaseCommit: 'abcdef1' })
     });
-    expect(invalidEnv.branch).toBe('from-file');
+    expect(invalidEnv.commit).toBe('abcdef1');
     expect(invalidEnv.warnings.join('\n')).toContain('无效');
   });
 
   it('warns and falls back for module load failures', () => {
-    const loadFailed = resolveReleaseBranch({ config: configFailure('load-failed', 'boom') });
-    expect(loadFailed.branch).toBe(DEFAULT_RELEASE_BRANCH);
+    const loadFailed = resolveReleaseCommit({ config: configFailure('load-failed', 'boom') });
+    expect(loadFailed.commit).toBe(DEFAULT_RELEASE_COMMIT);
     expect(loadFailed.warnings.join('\n')).toContain('加载 config.mjs 失败');
     expect(loadFailed.warnings.join('\n')).toContain('boom');
 
-    const noDefault = resolveReleaseBranch({ config: configFailure('default-missing') });
-    expect(noDefault.branch).toBe(DEFAULT_RELEASE_BRANCH);
+    const noDefault = resolveReleaseCommit({ config: configFailure('default-missing') });
+    expect(noDefault.commit).toBe(DEFAULT_RELEASE_COMMIT);
     expect(noDefault.warnings.join('\n')).toContain('缺少 default 导出');
   });
 
-  it('warns and falls back for empty or illegal branches', () => {
-    const empty = resolveReleaseBranch({ config: configOf({ releaseBranch: '  ' }) });
-    expect(empty.branch).toBe(DEFAULT_RELEASE_BRANCH);
-    expect(empty.warnings.join('\n')).toContain('无效');
+  it('warns and falls back for illegal commits', () => {
+    const invalid = resolveReleaseCommit({ config: configOf({ releaseCommit: 'xyz' }) });
+    expect(invalid.commit).toBe(DEFAULT_RELEASE_COMMIT);
+    expect(invalid.warnings.join('\n')).toContain('无效');
 
-    const wrongType = resolveReleaseBranch({ config: configOf({ releaseBranch: 42 }) });
-    expect(wrongType.branch).toBe(DEFAULT_RELEASE_BRANCH);
+    const tooShort = resolveReleaseCommit({ config: configOf({ releaseCommit: 'abc123' }) });
+    expect(tooShort.commit).toBe(DEFAULT_RELEASE_COMMIT);
+    expect(tooShort.warnings.join('\n')).toContain('无效');
+
+    const wrongType = resolveReleaseCommit({ config: configOf({ releaseCommit: 42 }) });
+    expect(wrongType.commit).toBe(DEFAULT_RELEASE_COMMIT);
     expect(wrongType.warnings.join('\n')).toContain('必须是字符串');
   });
 });
@@ -209,11 +219,10 @@ describe('runtime release config', () => {
     expect(source).not.toContain("'node:fs'");
     expect(source).not.toContain('readFile');
 
-    const { RELEASE_BRANCH, PROOF_FILE_VERSION, PROOF_FILE_HEADER } = await import(
+    const { RELEASE_COMMIT, PROOF_FILE_VERSION, PROOF_FILE_HEADER } = await import(
       '@ideahub/core'
     );
-    expect(typeof RELEASE_BRANCH).toBe('string');
-    expect(RELEASE_BRANCH.length).toBeGreaterThan(0);
+    expect(typeof RELEASE_COMMIT).toBe('string');
     expect(typeof PROOF_FILE_VERSION).toBe('string');
     expect(PROOF_FILE_VERSION.length).toBeGreaterThan(0);
     expect(typeof PROOF_FILE_HEADER).toBe('string');
