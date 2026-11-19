@@ -1,19 +1,18 @@
 import type { GitHubClient } from './github';
 import { translate, type Translator } from './i18n';
-import type { ImmutabilityCheck } from './immutability';
 import { parseRemoteUrl } from './remote-url';
 import type { RemoteConfig } from './config';
 import { validateBranchName } from './release-target';
 
 export type ValidateRemoteResult =
-  | { ok: true; remote: RemoteConfig; immutability: ImmutabilityCheck }
+  | { ok: true; remote: RemoteConfig }
   | { ok: false; error: string };
 
 /**
- * Section 6.3 / 8.4: the branch input is optional. When empty the repository's
- * `default_branch` is used and written back to config; when filled in it must
- * exist on the remote, otherwise the user gets an actionable error and the
- * default branch is never substituted silently.
+ * Section 6.3 / 8.4: the branch comes from the existing configuration. When it
+ * is empty the repository's `default_branch` is used and written back to
+ * config; when filled in it must exist on the remote, otherwise the user gets
+ * an actionable error and the default branch is never substituted silently.
  */
 export async function validateRemoteRepository(
   url: string,
@@ -99,12 +98,6 @@ export async function validateRemoteRepository(
     }
   }
 
-  const immutability = await client.getImmutableReleasesStatus(
-    parsed.value.owner,
-    parsed.value.repo,
-    parsed.value.host
-  );
-
   return {
     ok: true,
     remote: {
@@ -113,7 +106,6 @@ export async function validateRemoteRepository(
       repo: parsed.value.repo,
       url: url.trim(),
       branch
-    },
-    immutability
+    }
   };
 }

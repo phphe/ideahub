@@ -1,20 +1,13 @@
 import type { CloneResult, RemoteTargetInspection } from './clone';
 import type { RemoteConfig } from './config';
 import { translate, type Translator } from './i18n';
-import type { ImmutabilityCheck } from './immutability';
 import type { ValidateRemoteResult } from './remote-setup';
 
 export type RemoteSetupStep = 'validate' | 'persist' | 'clone';
 
-export interface RemoteSetupDecisionLike {
-  ok: boolean;
-  message: string;
-}
-
 export interface RemoteSetupFlowDeps {
   t?: Translator;
   validate(): Promise<ValidateRemoteResult>;
-  decideImmutability(check: ImmutabilityCheck): RemoteSetupDecisionLike;
   confirmChange?(next: RemoteConfig): Promise<boolean>;
   persist(remote: RemoteConfig): Promise<{ ok: true } | { ok: false; error: string }>;
   inspect(): Promise<RemoteTargetInspection>;
@@ -26,7 +19,6 @@ export type RemoteSetupFlowResult =
   | {
       ok: true;
       remote: RemoteConfig;
-      immutabilityMessage: string;
       clone: 'cloned' | 'skipped';
       branch: string;
     }
@@ -68,16 +60,6 @@ export async function runRemoteSetupFlow(
     };
   }
 
-  const immutability = deps.decideImmutability(validation.immutability);
-  if (!immutability.ok) {
-    return {
-      ok: false,
-      stage: 'validation',
-      message: immutability.message,
-      retryClone: false
-    };
-  }
-
   if (deps.confirmChange && !(await deps.confirmChange(validation.remote))) {
     return {
       ok: false,
@@ -103,7 +85,6 @@ export async function runRemoteSetupFlow(
     return {
       ok: true,
       remote: validation.remote,
-      immutabilityMessage: immutability.message,
       clone: 'skipped',
       branch: validation.remote.branch
     };
@@ -132,7 +113,6 @@ export async function runRemoteSetupFlow(
   return {
     ok: true,
     remote,
-    immutabilityMessage: immutability.message,
     clone: 'cloned',
     branch: cloned.branch
   };

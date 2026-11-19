@@ -1,10 +1,4 @@
 import { translate, type Translator } from './i18n';
-import {
-  classifyImmutabilityProbe,
-  GITHUB_COM_HOST,
-  type ImmutabilityCheck
-} from './immutability';
-
 export interface GitHubRepositoryInfo {
   fullName: string;
   isPrivate: boolean;
@@ -284,57 +278,6 @@ export class GitHubClient {
       }
       throw error;
     }
-  }
-
-  async getImmutableReleasesStatus(
-    owner: string,
-    repo: string,
-    host: string = GITHUB_COM_HOST
-  ): Promise<ImmutabilityCheck> {
-    if (host.toLowerCase() !== GITHUB_COM_HOST) {
-      return { kind: 'unknown', reason: 'non-github-host' };
-    }
-
-    const token = await this.tokenProvider();
-    const headers: Record<string, string> = {
-      Accept: 'application/vnd.github+json',
-      'X-GitHub-Api-Version': '2022-11-28',
-      'User-Agent': 'ideahub-vscode'
-    };
-    if (token) {
-      headers.Authorization = `Bearer ${token}`;
-    }
-
-    let response: Response;
-    try {
-      response = await this.fetchImpl(
-        `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(
-          repo
-        )}/immutable-releases`,
-        { method: 'GET', headers }
-      );
-    } catch (error) {
-      return classifyImmutabilityProbe({
-        type: 'network-error',
-        message: error instanceof Error ? error.message : String(error)
-      });
-    }
-
-    let body: unknown;
-    if (response.status === 200) {
-      try {
-        body = await response.json();
-      } catch {
-        body = undefined;
-      }
-    }
-
-    return classifyImmutabilityProbe({
-      type: 'response',
-      host,
-      status: response.status,
-      body
-    });
   }
 
   async getReleaseByTag(
