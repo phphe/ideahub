@@ -58,6 +58,48 @@ interface RawRelease {
   immutable?: boolean;
 }
 
+interface RawCommit {
+  sha?: string;
+}
+
+/**
+ * Section 5.5: reads the `page` of the `rel="last"` entry from a GitHub `Link`
+ * header. Returns `null` when the header is absent or has no usable page.
+ */
+function parseLastPage(link: string | null): number | null {
+  if (!link) {
+    return null;
+  }
+  for (const part of link.split(',')) {
+    const rel = part.match(/;\s*rel="?([^";]+)"?/);
+    if (!rel) {
+      continue;
+    }
+    if (!rel[1].split(/\s+/).includes('last')) {
+      continue;
+    }
+    const url = part.match(/<([^>]+)>/);
+    if (!url) {
+      return null;
+    }
+    try {
+      const page = Number(new URL(url[1]).searchParams.get('page'));
+      return Number.isInteger(page) && page > 0 ? page : null;
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
+function earliestSha(commits: RawCommit[] | null): { sha: string } | null {
+  if (!commits || commits.length === 0) {
+    return null;
+  }
+  const sha = commits[commits.length - 1]?.sha;
+  return typeof sha === 'string' && sha.length > 0 ? { sha } : null;
+}
+
 function releaseFromRaw(raw: RawRelease): GitHubReleaseInfo {
   return {
     tagName: raw.tag_name ?? '',
@@ -79,6 +121,15 @@ export class GitHubClient {
     body?: unknown,
     allowNotFound = false
   ): Promise<T | null> {
+    return (await this.requestDetailed<T>(method, apiPath, body, allowNotFound)).data;
+  }
+
+  private async requestDetailed<T>(
+    method: string,
+    apiPath: string,
+    body?: unknown,
+    allowNotFound = false
+  ): Promise<{ data: T | null; link: string | null }> {
     const token = await this.tokenProvider();
     const headers: Record<string, string> = {
       Accept: 'application/vnd.github+json',
@@ -109,7 +160,7 @@ export class GitHubClient {
     }
 
     if (allowNotFound && response.status === 404) {
-      return null;
+      return { data: null, link: null };
     }
 
     if (!response.ok) {
@@ -126,9 +177,9 @@ export class GitHubClient {
     }
 
     if (response.status === 204) {
-      return null;
+      return { data: null, link: response.headers.get('link') };
     }
-    return (await response.json()) as T;
+    return { data: (await response.json()) as T, link: response.headers.get('link') };
   }
 
   async getRepository(owner: string, repo: string): Promise<GitHubRepositoryInfo | null> {
@@ -191,6 +242,39 @@ export class GitHubClient {
       );
       const sha = raw?.sha;
       return typeof sha === 'string' && sha.length > 0 ? { sha } : null;
+    } catch (error) {
+      if (
+        error instanceof GitHubApiError &&
+        (error.status === 404 || error.status === 409 || error.status === 422)
+      ) {
+        return null;
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Section 5.5: returns the earliest commit of `branch`. GitHub lists commits
+   * newest-first, so the last item of the last page is the earliest. The last
+   * page is taken from the `Link` header's `rel="last"` entry; without it the
+   * first page is also the last page.
+   */
+  async getEarliestCommit(
+    owner: string,
+    repo: string,
+    branch: string
+  ): Promise<{ sha: string } | null> {
+    const basePath =
+      `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/commits` +
+      `?sha=${encodeURIComponent(branch)}&per_page=100`;
+    try {
+      const first = await this.requestDetailed<RawCommit[]>('GET', basePath);
+      const lastPage = parseLastPage(first.link);
+      if (lastPage === null || lastPage <= 1) {
+        return earliestSha(first.data);
+      }
+      const last = await this.requestDetailed<RawCommit[]>('GET', `${basePath}&page=${lastPage}`);
+      return earliestSha(last.data);
     } catch (error) {
       if (
         error instanceof GitHubApiError &&

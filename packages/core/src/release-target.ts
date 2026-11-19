@@ -1,4 +1,3 @@
-import { runGit } from './git';
 import { translate, type Translator } from './i18n';
 
 const MAX_REF_LENGTH = 120;
@@ -152,62 +151,13 @@ export function buildReleaseTag(hash: string): ReleaseTagResult {
   return { tag: `ideahub-${hash.trim().toLowerCase()}` };
 }
 
-export type BranchLookup =
-  | { ok: true; sha: string }
-  | { ok: false; missing: boolean; error: string };
-
-/**
- * Reads `<sha>\trefs/heads/<branch>` from `git ls-remote` output.
- */
-export function parseLsRemoteRef(stdout: string, ref: string): string | null {
-  for (const line of stdout.split(/\r?\n/)) {
-    const match = line.trim().match(/^([0-9a-f]{40}|[0-9a-f]{64})\s+(\S+)$/i);
-    if (match && match[2] === ref) {
-      return match[1];
-    }
-  }
-  return null;
-}
-
-/**
- * Reads the latest commit SHA of a remote branch without fetching the whole
- * repository. Returns `missing: true` when ls-remote succeeded but the branch
- * does not exist, so callers can tell it apart from a network/URL failure.
- */
-export async function lookupRemoteBranch(
-  root: string,
-  url: string,
-  branch: string,
-  t: Translator = translate
-): Promise<BranchLookup> {
-  const ref = `refs/heads/${branch}`;
-  const result = await runGit(root, ['ls-remote', url, ref], { timeoutMs: 60_000 });
-  if (result.code !== 0) {
-    const detail = result.stderr.trim() || result.stdout.trim() || t('exit code {0}', result.code);
-    return {
-      ok: false,
-      missing: false,
-      error: t('Unable to read the remote branch (git ls-remote failed): {0}', detail)
-    };
-  }
-  const sha = parseLsRemoteRef(result.stdout, ref);
-  if (!sha) {
-    return {
-      ok: false,
-      missing: true,
-      error: t('The remote branch does not exist: {0} ({1}).', branch, ref)
-    };
-  }
-  return { ok: true, sha };
-}
-
 export interface ReleaseTarget {
   /** Remote default branch, read from the repository API. */
   branch: string;
   /** Commit used as `target_commitish`. */
   sha: string;
-  /** Whether the SHA came from the configured commit or the branch head. */
-  commitSource: 'config' | 'branch-head';
+  /** Whether the SHA came from the configured commit or the earliest fallback. */
+  commitSource: 'config' | 'branch-earliest';
   /** Why a configured commit was not used, when applicable. */
   releaseCommitFallback?: 'invalid' | 'missing';
 }
@@ -219,12 +169,16 @@ export type ReleaseTargetResult =
 export interface ReleaseTargetDeps {
   getRepository: (owner: string, repo: string) => Promise<{ defaultBranch: string } | null>;
   getCommit: (owner: string, repo: string, commit: string) => Promise<{ sha: string } | null>;
-  lookupBranch: (branch: string) => Promise<BranchLookup>;
+  getEarliestCommit: (
+    owner: string,
+    repo: string,
+    branch: string
+  ) => Promise<{ sha: string } | null>;
 }
 
 /**
  * Section 5.5: the Release target is the configured `releaseCommit` when it
- * exists on the remote, otherwise the latest commit of the repository's
+ * exists on the remote, otherwise the *earliest* commit of the repository's
  * `default_branch` (never a hard-coded `main`). The same commit may back many
  * Releases, so this resolver never consults or caches Releases by commit.
  */
@@ -274,18 +228,27 @@ export async function resolveReleaseTarget(
     }
   }
 
-  const lookup = await deps.lookupBranch(branch);
-  if (!lookup.ok) {
-    if (lookup.missing) {
-      return {
-        ok: false,
-        error: t(
-          'The default branch {0} has no commits. Push at least one commit to the remote repository first.',
-          branch
-        )
-      };
-    }
-    return { ok: false, error: lookup.error };
+  let earliest: { sha: string } | null;
+  try {
+    earliest = await deps.getEarliestCommit(owner, repo, branch);
+  } catch (error) {
+    return {
+      ok: false,
+      error: t(
+        'Unable to read the earliest commit of the default branch {0}: {1}',
+        branch,
+        error instanceof Error ? error.message : String(error)
+      )
+    };
+  }
+  if (!earliest || earliest.sha.length === 0) {
+    return {
+      ok: false,
+      error: t(
+        'The default branch {0} has no commits. Push at least one commit to the remote repository first.',
+        branch
+      )
+    };
   }
 
   const fallback: ReleaseTarget['releaseCommitFallback'] =
@@ -294,8 +257,8 @@ export async function resolveReleaseTarget(
     ok: true,
     target: {
       branch,
-      sha: lookup.sha,
-      commitSource: 'branch-head',
+      sha: earliest.sha,
+      commitSource: 'branch-earliest',
       ...(fallback ? { releaseCommitFallback: fallback } : {})
     }
   };
