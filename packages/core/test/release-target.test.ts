@@ -1,15 +1,13 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   buildReleaseTag,
-  parseLsRemoteRef,
   resolveReleaseTarget,
   validateBranchName,
-  validateTagName,
-  type BranchLookup
+  validateTagName
 } from '../src/release-target';
 
 const CONFIGURED = 'a'.repeat(40);
-const OTHER = 'b'.repeat(40);
+const EARLIEST = 'b'.repeat(40);
 
 describe('buildReleaseTag / validateTagName', () => {
   it('derives ideahub-<64hex> from the content hash', () => {
@@ -51,27 +49,14 @@ describe('validateBranchName', () => {
   });
 });
 
-describe('parseLsRemoteRef', () => {
-  it('returns the SHA only for the exact ref', () => {
-    const stdout = [
-      'abc123abc123abc123abc123abc123abc123abcd\trefs/heads/main',
-      'def456def456def456def456def456def456def4\trefs/heads/release'
-    ].join('\n');
-    expect(parseLsRemoteRef(stdout, 'refs/heads/main')).toBe(
-      'abc123abc123abc123abc123abc123abc123abcd'
-    );
-    expect(parseLsRemoteRef(stdout, 'refs/heads/missing')).toBeNull();
-    expect(parseLsRemoteRef('', 'refs/heads/main')).toBeNull();
-  });
-});
-
 describe('resolveReleaseTarget', () => {
   function deps(options: {
     defaultBranch?: string | null;
     commit?: { sha: string } | null;
-    lookup: BranchLookup;
+    earliest?: { sha: string } | null;
     repositoryError?: Error;
     commitError?: Error;
+    earliestError?: Error;
   }) {
     const getRepository = vi.fn(async () => {
       if (options.repositoryError) {
@@ -87,15 +72,17 @@ describe('resolveReleaseTarget', () => {
       }
       return options.commit ?? null;
     });
-    const lookupBranch = vi.fn(async () => options.lookup);
-    return { getRepository, getCommit, lookupBranch };
+    const getEarliestCommit = vi.fn(async () => {
+      if (options.earliestError) {
+        throw options.earliestError;
+      }
+      return options.earliest === undefined ? { sha: EARLIEST } : options.earliest;
+    });
+    return { getRepository, getCommit, getEarliestCommit };
   }
 
   it('uses the configured commit when it exists on the remote', async () => {
-    const target = deps({
-      commit: { sha: CONFIGURED },
-      lookup: { ok: true, sha: OTHER }
-    });
+    const target = deps({ commit: { sha: CONFIGURED } });
 
     const result = await resolveReleaseTarget(target, 'owner', 'repo', CONFIGURED);
 
@@ -104,11 +91,11 @@ describe('resolveReleaseTarget', () => {
       target: { branch: 'trunk', sha: CONFIGURED, commitSource: 'config' }
     });
     expect(target.getCommit).toHaveBeenCalledWith('owner', 'repo', CONFIGURED);
-    expect(target.lookupBranch).not.toHaveBeenCalled();
+    expect(target.getEarliestCommit).not.toHaveBeenCalled();
   });
 
-  it('falls back to the default branch head when the configured commit is missing', async () => {
-    const target = deps({ commit: null, lookup: { ok: true, sha: OTHER } });
+  it('falls back to the earliest commit when the configured commit is missing', async () => {
+    const target = deps({ commit: null });
 
     const result = await resolveReleaseTarget(target, 'owner', 'repo', CONFIGURED);
 
@@ -116,43 +103,43 @@ describe('resolveReleaseTarget', () => {
       ok: true,
       target: {
         branch: 'trunk',
-        sha: OTHER,
-        commitSource: 'branch-head',
+        sha: EARLIEST,
+        commitSource: 'branch-earliest',
         releaseCommitFallback: 'missing'
       }
     });
-    expect(target.lookupBranch).toHaveBeenCalledWith('trunk');
+    expect(target.getEarliestCommit).toHaveBeenCalledWith('owner', 'repo', 'trunk');
   });
 
-  it('uses the default branch head when no commit is configured', async () => {
-    const target = deps({ lookup: { ok: true, sha: OTHER } });
+  it('uses the earliest commit when no commit is configured', async () => {
+    const target = deps({});
 
     const result = await resolveReleaseTarget(target, 'owner', 'repo', '');
 
     expect(result).toEqual({
       ok: true,
-      target: { branch: 'trunk', sha: OTHER, commitSource: 'branch-head' }
+      target: { branch: 'trunk', sha: EARLIEST, commitSource: 'branch-earliest' }
     });
     expect(target.getCommit).not.toHaveBeenCalled();
-    expect(target.lookupBranch).toHaveBeenCalledWith('trunk');
+    expect(target.getEarliestCommit).toHaveBeenCalledWith('owner', 'repo', 'trunk');
   });
 
-  it('treats an invalid commit id as unset and uses the default branch head', async () => {
-    const target = deps({ lookup: { ok: true, sha: OTHER } });
+  it('treats an invalid commit id as unset and uses the earliest commit', async () => {
+    const target = deps({});
 
     const result = await resolveReleaseTarget(target, 'owner', 'repo', 'not-a-commit');
 
     expect(result.ok).toBe(true);
     if (result.ok) {
-      expect(result.target.sha).toBe(OTHER);
-      expect(result.target.commitSource).toBe('branch-head');
+      expect(result.target.sha).toBe(EARLIEST);
+      expect(result.target.commitSource).toBe('branch-earliest');
       expect(result.target.releaseCommitFallback).toBe('invalid');
     }
     expect(target.getCommit).not.toHaveBeenCalled();
   });
 
   it('reads the default branch through the API instead of assuming main', async () => {
-    const target = deps({ defaultBranch: 'stable', lookup: { ok: true, sha: OTHER } });
+    const target = deps({ defaultBranch: 'stable' });
 
     const result = await resolveReleaseTarget(target, 'owner', 'repo', '');
 
@@ -160,11 +147,11 @@ describe('resolveReleaseTarget', () => {
     if (result.ok) {
       expect(result.target.branch).toBe('stable');
     }
-    expect(target.lookupBranch).toHaveBeenCalledWith('stable');
+    expect(target.getEarliestCommit).toHaveBeenCalledWith('owner', 'repo', 'stable');
   });
 
   it('reuses the same commit for repeated resolutions without consulting Releases', async () => {
-    const target = deps({ commit: { sha: CONFIGURED }, lookup: { ok: true, sha: OTHER } });
+    const target = deps({ commit: { sha: CONFIGURED } });
 
     const first = await resolveReleaseTarget(target, 'owner', 'repo', CONFIGURED);
     const second = await resolveReleaseTarget(target, 'owner', 'repo', CONFIGURED);
@@ -174,10 +161,7 @@ describe('resolveReleaseTarget', () => {
   });
 
   it('aborts when the repository API cannot be read', async () => {
-    const target = deps({
-      repositoryError: new Error('network down'),
-      lookup: { ok: true, sha: OTHER }
-    });
+    const target = deps({ repositoryError: new Error('network down') });
 
     const result = await resolveReleaseTarget(target, 'owner', 'repo', '');
 
@@ -186,11 +170,11 @@ describe('resolveReleaseTarget', () => {
       expect(result.error).toContain('default branch');
       expect(result.error).toContain('network down');
     }
-    expect(target.lookupBranch).not.toHaveBeenCalled();
+    expect(target.getEarliestCommit).not.toHaveBeenCalled();
   });
 
   it('aborts when the repository API returns no default branch', async () => {
-    const target = deps({ defaultBranch: null, lookup: { ok: true, sha: OTHER } });
+    const target = deps({ defaultBranch: null });
 
     const result = await resolveReleaseTarget(target, 'owner', 'repo', '');
 
@@ -201,9 +185,7 @@ describe('resolveReleaseTarget', () => {
   });
 
   it('aborts when the default branch has no commits', async () => {
-    const target = deps({
-      lookup: { ok: false, missing: true, error: 'The remote branch does not exist: trunk.' }
-    });
+    const target = deps({ earliest: null });
 
     const result = await resolveReleaseTarget(target, 'owner', 'repo', '');
 
@@ -213,29 +195,20 @@ describe('resolveReleaseTarget', () => {
     }
   });
 
-  it('rejects when git ls-remote fails', async () => {
-    const target = deps({
-      lookup: {
-        ok: false,
-        missing: false,
-        error: 'Unable to read the remote branch (git ls-remote failed): connection reset'
-      }
-    });
+  it('aborts when reading the earliest commit fails', async () => {
+    const target = deps({ earliestError: new Error('connection reset') });
 
     const result = await resolveReleaseTarget(target, 'owner', 'repo', '');
 
     expect(result.ok).toBe(false);
     if (!result.ok) {
-      expect(result.error).toContain('ls-remote failed');
+      expect(result.error).toContain('earliest commit');
       expect(result.error).toContain('connection reset');
     }
   });
 
   it('aborts when checking the configured commit fails', async () => {
-    const target = deps({
-      commitError: new Error('boom'),
-      lookup: { ok: true, sha: OTHER }
-    });
+    const target = deps({ commitError: new Error('boom') });
 
     const result = await resolveReleaseTarget(target, 'owner', 'repo', CONFIGURED);
 
@@ -244,6 +217,6 @@ describe('resolveReleaseTarget', () => {
       expect(result.error).toContain('configured release commit');
       expect(result.error).toContain('boom');
     }
-    expect(target.lookupBranch).not.toHaveBeenCalled();
+    expect(target.getEarliestCommit).not.toHaveBeenCalled();
   });
 });

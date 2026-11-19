@@ -152,6 +152,85 @@ describe('GitHubClient.getCommit', () => {
   });
 });
 
+describe('GitHubClient.getEarliestCommit', () => {
+  const latest = '1111111111111111111111111111111111111111';
+  const middle = '2222222222222222222222222222222222222222';
+  const oldest = '3333333333333333333333333333333333333333';
+
+  it('takes the last item of the first page when there is no Link header', async () => {
+    const urls: string[] = [];
+    const fetchMock = vi.fn(async (input: string) => {
+      urls.push(String(input));
+      return jsonResponse(200, [{ sha: latest }, { sha: middle }, { sha: oldest }]);
+    });
+    const client = new GitHubClient(
+      async () => 'token',
+      fetchMock as unknown as typeof fetch
+    );
+
+    const result = await client.getEarliestCommit('owner', 'repo', 'trunk');
+
+    expect(result).toEqual({ sha: oldest });
+    expect(urls).toHaveLength(1);
+    expect(urls[0]).toBe(
+      'https://api.github.com/repos/owner/repo/commits?sha=trunk&per_page=100'
+    );
+  });
+
+  it('reads the last page from the Link header and takes its last item', async () => {
+    const urls: string[] = [];
+    const firstPage = new Response(JSON.stringify([{ sha: latest }, { sha: middle }]), {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/json',
+        Link:
+          '<https://api.github.com/repositories/1/commits?sha=trunk&per_page=100&page=2>; rel="next", ' +
+          '<https://api.github.com/repositories/1/commits?sha=trunk&per_page=100&page=4>; rel="last"'
+      }
+    });
+    const lastPage = new Response(JSON.stringify([{ sha: oldest }]), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' }
+    });
+    const fetchMock = vi.fn(async (input: string) => {
+      urls.push(String(input));
+      return urls.length === 1 ? firstPage : lastPage;
+    });
+    const client = new GitHubClient(
+      async () => 'token',
+      fetchMock as unknown as typeof fetch
+    );
+
+    const result = await client.getEarliestCommit('owner', 'repo', 'trunk');
+
+    expect(result).toEqual({ sha: oldest });
+    expect(urls).toHaveLength(2);
+    expect(urls[1]).toContain('page=4');
+  });
+
+  it('returns null when the branch has no commits', async () => {
+    const fetchMock = vi.fn(async () => jsonResponse(200, []));
+    const client = new GitHubClient(
+      async () => 'token',
+      fetchMock as unknown as typeof fetch
+    );
+
+    await expect(client.getEarliestCommit('owner', 'repo', 'trunk')).resolves.toBeNull();
+  });
+
+  it('returns null for an empty repository (409)', async () => {
+    const fetchMock = vi.fn(
+      async () => new Response('{"message":"Git Repository is empty."}', { status: 409 })
+    );
+    const client = new GitHubClient(
+      async () => 'token',
+      fetchMock as unknown as typeof fetch
+    );
+
+    await expect(client.getEarliestCommit('owner', 'repo', 'trunk')).resolves.toBeNull();
+  });
+});
+
 describe('GitHubClient.listAllReleases', () => {
   it('pages through the release list until a short page arrives', async () => {
     const firstPage = Array.from({ length: 100 }, (_value, index) => ({
