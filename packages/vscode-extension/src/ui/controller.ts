@@ -20,14 +20,13 @@ import {
 import { installPrePushHook } from '@ideahub/core';
 import { configPath, remoteRepoPath, writeConfig } from '@ideahub/core';
 import { GitHubApiError, GitHubClient } from '@ideahub/core';
-import { RELEASE_BRANCH } from '@ideahub/core';
+import { RELEASE_COMMIT } from '@ideahub/core';
 import {
   buildReleaseTag,
-  ensureReleaseTarget,
   lookupRemoteBranch,
+  resolveReleaseTarget,
   validateTagName
 } from '@ideahub/core';
-import { ensureReleaseBranchExists } from '@ideahub/core';
 import { validateRemoteRepository } from '@ideahub/core';
 import { parseRemoteUrl } from '@ideahub/core';
 import { decideRemoteSetup, describeImmutabilityCheck, describeReleaseImmutability } from '@ideahub/core';
@@ -1033,7 +1032,9 @@ export class IdeahubController {
       };
     }
 
-    this.log(`mark: release branch config: release_branch=${RELEASE_BRANCH} source=build`);
+    this.log(
+      `mark: release config: release_commit=${RELEASE_COMMIT || '(default branch head)'} source=build`
+    );
 
     // Section 7.3: fingerprint the sealed text plus referenced project files.
     const fingerprint = await buildFingerprint({
@@ -1058,17 +1059,12 @@ export class IdeahubController {
         [
           'mark: release preflight failed (no request sent)',
           `tag_name=${tag}`,
-          `target_commitish=${RELEASE_BRANCH}`
+          `release_commit=${RELEASE_COMMIT || '(default branch head)'}`
         ].join('\n')
       );
       return {
         ok: false,
-        message: this.t(
-          'Unable to create the Release (tag_name={0}, target_commitish={1}): {2}',
-          tag,
-          RELEASE_BRANCH,
-          tagError
-        )
+        message: this.t('Unable to create the Release (tag_name={0}): {1}', tag, tagError)
       };
     }
 
@@ -1081,43 +1077,22 @@ export class IdeahubController {
     }
 
     const client = this.githubClient(token);
-    const innerPath = remoteRepoPath(state.root);
     const targetResult = await vscode.window.withProgress(
       {
         location: vscode.ProgressLocation.Notification,
-        title: this.t('Checking the remote release branch…')
+        title: this.t('Resolving the Release target…')
       },
       () =>
-        ensureReleaseTarget(
+        resolveReleaseTarget(
           {
             getRepository: (owner, repo) => client.getRepository(owner, repo),
+            getCommit: (owner, repo, commit) => client.getCommit(owner, repo, commit),
             lookupBranch: (branch) =>
-              lookupRemoteBranch(state.root, remote.url, branch, this.t),
-            createBranch: async (branch) => {
-              const created = await ensureReleaseBranchExists(
-                innerPath,
-                remote.url,
-                branch,
-                token,
-                this.t
-              );
-              if (!created.ok) {
-                return created;
-              }
-              this.log(
-                [
-                  'mark: release branch created automatically',
-                  `release_branch=${branch}`,
-                  `commit=${created.commit}`,
-                  'pushed_file=empty'
-                ].join('\n')
-              );
-              return { ok: true };
-            }
+              lookupRemoteBranch(state.root, remote.url, branch, this.t)
           },
           remote.owner,
           remote.repo,
-          RELEASE_BRANCH,
+          RELEASE_COMMIT,
           this.t
         )
     );
@@ -1127,33 +1102,26 @@ export class IdeahubController {
           'mark: release preflight failed (no request sent)',
           `POST https://api.github.com/repos/${remote.owner}/${remote.repo}/releases`,
           `tag_name=${tag}`,
-          `target_commitish=${RELEASE_BRANCH}`,
           `error=${targetResult.error}`
         ].join('\n')
       );
       return {
         ok: false,
-        message: this.t(
-          'Unable to create the Release (tag_name={0}, target_commitish={1}): {2}',
-          tag,
-          RELEASE_BRANCH,
-          targetResult.error
-        )
+        message: this.t('Unable to resolve the Release target: {0}', targetResult.error)
       };
     }
     const target = targetResult.target;
-    const defaultBranch = target.defaultBranch ?? '(unknown)';
     this.log(
       [
         'mark: release target resolved',
-        `release_branch=${target.branch}`,
-        `default_branch=${defaultBranch}`,
-        `target_commitish=${target.sha}`
+        `default_branch=${target.branch}`,
+        `target_commitish=${target.sha}`,
+        `commit_source=${target.commitSource}`
       ].join('\n')
     );
-    if (target.defaultBranch !== null && target.defaultBranch !== target.branch) {
+    if (target.releaseCommitFallback) {
       this.log(
-        `mark: release branch differs from remote default branch: release_branch=${target.branch} default_branch=${target.defaultBranch}`
+        `mark: configured release commit was not used (${target.releaseCommitFallback}); falling back to default_branch=${target.branch}`
       );
     }
     this.log(
@@ -1162,8 +1130,8 @@ export class IdeahubController {
         `POST https://api.github.com/repos/${remote.owner}/${remote.repo}/releases`,
         `tag_name=${tag}`,
         `target_commitish=${target.sha}`,
-        `release_branch=${target.branch}`,
-        `default_branch=${defaultBranch}`
+        `default_branch=${target.branch}`,
+        `commit_source=${target.commitSource}`
       ].join('\n')
     );
 

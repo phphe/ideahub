@@ -1,13 +1,13 @@
-export type ReleaseBranchSource = 'env' | 'file' | 'default';
+export type ReleaseValueSource = 'env' | 'file' | 'default';
 
-export interface ReleaseBranchResolution {
-  branch: string;
-  source: ReleaseBranchSource;
+export interface ReleaseCommitResolution {
+  commit: string;
+  source: ReleaseValueSource;
   warnings: string[];
 }
 
 export interface ProofFileValueResolution {
-  source: ReleaseBranchSource;
+  source: ReleaseValueSource;
   warnings: string[];
 }
 
@@ -36,23 +36,24 @@ export interface DeveloperConfigFailure {
 
 export type DeveloperConfigResult = DeveloperConfigSuccess | DeveloperConfigFailure;
 
-export const DEFAULT_RELEASE_BRANCH: string;
+export const DEFAULT_RELEASE_COMMIT: string;
 export const DEFAULT_PROOF_FILE_VERSION: string;
 export const DEFAULT_PROOF_FILE_HEADER: string;
 export const DEFAULT_OAUTH_CLIENT_ID: string;
 export const DEVELOPER_CONFIG_FILE: string;
-export const RELEASE_BRANCH_ENV_KEY: string;
+export const RELEASE_COMMIT_ENV_KEY: string;
 export const PROOF_FILE_VERSION_ENV_KEY: string;
 export const PROOF_FILE_HEADER_ENV_KEY: string;
 export const OAUTH_CLIENT_ID_ENV_KEY: string;
+export const RELEASE_COMMIT_PATTERN: RegExp;
 
-export function validateBranchName(branch: string): string | null;
+export function validateReleaseCommit(commit: string): string | null;
 export function parseEnvValue(envText: string, key: string): string | null;
 export function loadDeveloperConfig(filePath?: string): Promise<DeveloperConfigResult>;
-export function resolveReleaseBranch(input?: {
+export function resolveReleaseCommit(input?: {
   envText?: string | null;
   config?: DeveloperConfigResult | null;
-}): ReleaseBranchResolution;
+}): ReleaseCommitResolution;
 export function resolveProofFileVersion(input?: {
   envText?: string | null;
   config?: DeveloperConfigResult | null;

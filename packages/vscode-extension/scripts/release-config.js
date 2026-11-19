@@ -1,72 +1,21 @@
 const { pathToFileURL } = require('node:url');
 const { resolve } = require('node:path');
 
-const DEFAULT_RELEASE_BRANCH = 'main';
+const DEFAULT_RELEASE_COMMIT = '';
 const DEFAULT_PROOF_FILE_VERSION = '0';
 const DEFAULT_PROOF_FILE_HEADER = '';
 const DEFAULT_OAUTH_CLIENT_ID = '';
 const DEVELOPER_CONFIG_FILE = 'config.mjs';
-const RELEASE_BRANCH_ENV_KEY = 'IDEAHUB_RELEASE_BRANCH';
+const RELEASE_COMMIT_ENV_KEY = 'IDEAHUB_RELEASE_COMMIT';
 const PROOF_FILE_VERSION_ENV_KEY = 'IDEAHUB_PROOF_FILE_VERSION';
 const PROOF_FILE_HEADER_ENV_KEY = 'IDEAHUB_PROOF_FILE_HEADER';
 const OAUTH_CLIENT_ID_ENV_KEY = 'IDEAHUB_OAUTH_CLIENT_ID';
-const MAX_REF_LENGTH = 120;
-const INVALID_REF_CHARS = new Set([' ', '~', '^', ':', '?', '*', '[', '\\']);
+const RELEASE_COMMIT_PATTERN = /^[0-9a-f]{7,64}$/i;
 
-function findRefProblem(name) {
-  if (name.length === 0) {
-    return 'empty';
-  }
-  if (name.length > MAX_REF_LENGTH) {
-    return 'too-long';
-  }
-  const hasInvalidChar = [...name].some((char) => {
-    const code = char.charCodeAt(0);
-    return code <= 0x1f || code === 0x7f || /\s/.test(char) || INVALID_REF_CHARS.has(char);
-  });
-  if (hasInvalidChar) {
-    return 'invalid-char';
-  }
-  if (name.startsWith('.') || name.startsWith('/')) {
-    return 'leading';
-  }
-  if (name.endsWith('.') || name.endsWith('/')) {
-    return 'trailing';
-  }
-  if (name.startsWith('-') || name === 'HEAD') {
-    return 'leading-dash';
-  }
-  if (name.includes('..')) {
-    return 'dot-dot';
-  }
-  if (name.includes('@{')) {
-    return 'at-brace';
-  }
-  if (name.includes('//')) {
-    return 'double-slash';
-  }
-  if (name.split('/').some((segment) => segment.endsWith('.lock'))) {
-    return 'lock';
-  }
-  return null;
-}
-
-const PROBLEM_MESSAGES = {
-  empty: 'release 分支名为空',
-  'too-long': `release 分支名超过 ${MAX_REF_LENGTH} 个字符`,
-  'invalid-char': 'release 分支名含 Git 不允许的字符（空格、~ ^ : ? * [ \\ 或控制字符）',
-  leading: 'release 分支名不能以 "." 或 "/" 开头',
-  trailing: 'release 分支名不能以 "." 或 "/" 结尾',
-  'leading-dash': 'release 分支名不能以 "-" 开头或命名为 "HEAD"',
-  'dot-dot': 'release 分支名不能包含连续的 ".."',
-  'at-brace': 'release 分支名不能包含 "@{"',
-  'double-slash': 'release 分支名不能包含连续的斜杠',
-  lock: 'release 分支名分段不能以 ".lock" 结尾'
-};
-
-function validateBranchName(branch) {
-  const problem = findRefProblem(branch);
-  return problem ? PROBLEM_MESSAGES[problem] : null;
+function validateReleaseCommit(commit) {
+  return RELEASE_COMMIT_PATTERN.test(commit)
+    ? null
+    : 'release commit 必须是 7–64 位十六进制字符串';
 }
 
 function parseEnvValue(envText, key) {
@@ -155,56 +104,51 @@ function describeConfigFailure(config) {
  * Pure build-time resolver. Callers pass `.env` content and the loaded config
  * result explicitly; nothing is read from an end user's workspace at runtime.
  */
-function resolveReleaseBranch({ envText = null, config = null } = {}) {
+function resolveReleaseCommit({ envText = null, config = null } = {}) {
   const warnings = [];
 
   if (typeof envText === 'string') {
-    const envBranch = parseEnvValue(envText, RELEASE_BRANCH_ENV_KEY);
-    if (envBranch !== null) {
-      const branch = envBranch.trim();
-      if (branch.length === 0) {
-        warnings.push(`.env 中的 ${RELEASE_BRANCH_ENV_KEY} 为空，已忽略该来源。`);
-      } else {
-        const error = validateBranchName(branch);
+    const envValue = parseEnvValue(envText, RELEASE_COMMIT_ENV_KEY);
+    if (envValue !== null) {
+      const commit = envValue.trim();
+      if (commit.length > 0) {
+        const error = validateReleaseCommit(commit);
         if (!error) {
-          return { branch, source: 'env', warnings };
+          return { commit, source: 'env', warnings };
         }
-        warnings.push(`.env 中的 ${RELEASE_BRANCH_ENV_KEY} 无效：${error}`);
+        warnings.push(`.env 中的 ${RELEASE_COMMIT_ENV_KEY} 无效：${error}，已忽略该来源。`);
       }
     }
   }
 
   if (!config || config.ok !== true) {
-    warnings.push(
-      `${describeConfigFailure(config)}，使用默认 releaseBranch=${DEFAULT_RELEASE_BRANCH}。`
-    );
-    return { branch: DEFAULT_RELEASE_BRANCH, source: 'default', warnings };
+    warnings.push(`${describeConfigFailure(config)}，使用空 releaseCommit。`);
+    return { commit: DEFAULT_RELEASE_COMMIT, source: 'default', warnings };
   }
 
-  const value = config.value.releaseBranch;
+  const value = config.value.releaseCommit;
   if (value === undefined || value === null) {
-    warnings.push(
-      `${DEVELOPER_CONFIG_FILE} 缺少 releaseBranch，使用默认 releaseBranch=${DEFAULT_RELEASE_BRANCH}。`
-    );
-    return { branch: DEFAULT_RELEASE_BRANCH, source: 'default', warnings };
+    warnings.push(`${DEVELOPER_CONFIG_FILE} 缺少 releaseCommit，使用空 releaseCommit。`);
+    return { commit: DEFAULT_RELEASE_COMMIT, source: 'default', warnings };
   }
   if (typeof value !== 'string') {
-    warnings.push(
-      `${DEVELOPER_CONFIG_FILE} 的 releaseBranch 必须是字符串，使用默认 releaseBranch=${DEFAULT_RELEASE_BRANCH}。`
-    );
-    return { branch: DEFAULT_RELEASE_BRANCH, source: 'default', warnings };
+    warnings.push(`${DEVELOPER_CONFIG_FILE} 的 releaseCommit 必须是字符串，使用空 releaseCommit。`);
+    return { commit: DEFAULT_RELEASE_COMMIT, source: 'default', warnings };
   }
 
-  const branch = value.trim();
-  const error = validateBranchName(branch);
+  const commit = value.trim();
+  if (commit.length === 0) {
+    return { commit: DEFAULT_RELEASE_COMMIT, source: 'file', warnings };
+  }
+  const error = validateReleaseCommit(commit);
   if (error) {
     warnings.push(
-      `${DEVELOPER_CONFIG_FILE} 的 releaseBranch 无效：${error}，使用默认 releaseBranch=${DEFAULT_RELEASE_BRANCH}。`
+      `${DEVELOPER_CONFIG_FILE} 的 releaseCommit 无效：${error}，使用空 releaseCommit。`
     );
-    return { branch: DEFAULT_RELEASE_BRANCH, source: 'default', warnings };
+    return { commit: DEFAULT_RELEASE_COMMIT, source: 'default', warnings };
   }
 
-  return { branch, source: 'file', warnings };
+  return { commit, source: 'file', warnings };
 }
 
 /**
@@ -352,19 +296,20 @@ function findStandaloneSeparatorLine(header) {
 }
 
 module.exports = {
-  DEFAULT_RELEASE_BRANCH,
+  DEFAULT_RELEASE_COMMIT,
   DEFAULT_PROOF_FILE_VERSION,
   DEFAULT_PROOF_FILE_HEADER,
   DEFAULT_OAUTH_CLIENT_ID,
   DEVELOPER_CONFIG_FILE,
-  RELEASE_BRANCH_ENV_KEY,
+  RELEASE_COMMIT_ENV_KEY,
   PROOF_FILE_VERSION_ENV_KEY,
   PROOF_FILE_HEADER_ENV_KEY,
   OAUTH_CLIENT_ID_ENV_KEY,
-  validateBranchName,
+  RELEASE_COMMIT_PATTERN,
+  validateReleaseCommit,
   parseEnvValue,
   loadDeveloperConfig,
-  resolveReleaseBranch,
+  resolveReleaseCommit,
   resolveProofFileVersion,
   resolveProofFileHeader,
   resolveOAuthClientId,

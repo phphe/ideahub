@@ -5,7 +5,7 @@ import releaseConfig from './scripts/release-config.js';
 
 const {
   loadDeveloperConfig,
-  resolveReleaseBranch,
+  resolveReleaseCommit,
   resolveProofFileVersion,
   resolveProofFileHeader,
   resolveOAuthClientId,
@@ -33,7 +33,7 @@ function readOptional(file) {
 const envText = readOptional('.env');
 const config = await loadDeveloperConfig();
 
-const resolution = resolveReleaseBranch({ envText, config });
+const resolution = resolveReleaseCommit({ envText, config });
 for (const warning of resolution.warnings) {
   console.warn(`[ideahub] release config warning: ${warning}`);
 }
@@ -68,7 +68,7 @@ if (separatorLine !== null) {
 }
 
 console.log(
-  `[ideahub] releaseBranch=${resolution.branch} (source=${resolution.source}, injected at build time)`
+  `[ideahub] releaseCommit=${JSON.stringify(resolution.commit)} (source=${resolution.source}, injected at build time)`
 );
 console.log(
   `[ideahub] proofFileVersion=${JSON.stringify(versionResolution.version)} (source=${
@@ -101,7 +101,7 @@ const options = {
   sourcemap: true,
   logLevel: 'info',
   define: {
-    'process.env.IDEAHUB_RELEASE_BRANCH': JSON.stringify(resolution.branch),
+    'process.env.IDEAHUB_RELEASE_COMMIT': JSON.stringify(resolution.commit),
     'process.env.IDEAHUB_PROOF_FILE_VERSION': JSON.stringify(versionResolution.version),
     'process.env.IDEAHUB_PROOF_FILE_HEADER': JSON.stringify(headerResolution.header),
     'process.env.IDEAHUB_OAUTH_CLIENT_ID': JSON.stringify(oauthResolution.clientId)
