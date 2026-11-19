@@ -23,7 +23,6 @@ import { GitHubApiError, GitHubClient } from '@ideahub/core';
 import { RELEASE_COMMIT } from '@ideahub/core';
 import {
   buildReleaseTag,
-  lookupRemoteBranch,
   resolveReleaseTarget,
   validateTagName
 } from '@ideahub/core';
@@ -1087,8 +1086,8 @@ export class IdeahubController {
           {
             getRepository: (owner, repo) => client.getRepository(owner, repo),
             getCommit: (owner, repo, commit) => client.getCommit(owner, repo, commit),
-            lookupBranch: (branch) =>
-              lookupRemoteBranch(state.root, remote.url, branch, this.t)
+            getEarliestCommit: (owner, repo, branch) =>
+              client.getEarliestCommit(owner, repo, branch)
           },
           remote.owner,
           remote.repo,
