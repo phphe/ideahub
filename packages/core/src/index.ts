@@ -17,7 +17,6 @@ export * from './proof-check';
 export * from './proof-file';
 export * from './proof-time';
 export * from './publish';
-export * from './release-branch';
 export * from './release-config';
 export * from './release-target';
 export * from './remote-setup';

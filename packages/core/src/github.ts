@@ -173,6 +173,35 @@ export class GitHubClient {
     }
   }
 
+  /**
+   * Section 5.5: checks that a configured commit exists on the remote. Returns
+   * `null` for 404/409/422 so the caller can fall back to the default branch.
+   */
+  async getCommit(
+    owner: string,
+    repo: string,
+    commit: string
+  ): Promise<{ sha: string } | null> {
+    try {
+      const raw = await this.request<{ sha?: string }>(
+        'GET',
+        `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/commits/${encodeURIComponent(
+          commit
+        )}`
+      );
+      const sha = raw?.sha;
+      return typeof sha === 'string' && sha.length > 0 ? { sha } : null;
+    } catch (error) {
+      if (
+        error instanceof GitHubApiError &&
+        (error.status === 404 || error.status === 409 || error.status === 422)
+      ) {
+        return null;
+      }
+      throw error;
+    }
+  }
+
   async getImmutableReleasesStatus(
     owner: string,
     repo: string,

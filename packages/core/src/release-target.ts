@@ -4,6 +4,9 @@ import { translate, type Translator } from './i18n';
 const MAX_REF_LENGTH = 120;
 const INVALID_REF_CHARS = new Set([' ', '~', '^', ':', '?', '*', '[', '\\']);
 
+/** Section 6.7: a configured release commit is a full or abbreviated hex id. */
+export const RELEASE_COMMIT_PATTERN = /^[0-9a-f]{7,64}$/i;
+
 type RefProblem =
   | 'empty'
   | 'too-long'
@@ -90,31 +93,29 @@ function tagMessage(problem: RefProblem, t: Translator): string {
 function branchMessage(problem: RefProblem, t: Translator): string {
   switch (problem) {
     case 'empty':
-      return t(
-        'The release branch name is empty. Check the extension developer configuration or use the default "main".'
-      );
+      return t('The branch name is empty.');
     case 'too-long':
-      return t('The release branch name exceeds {0} characters.', MAX_REF_LENGTH);
+      return t('The branch name exceeds {0} characters.', MAX_REF_LENGTH);
     case 'invalid-char':
       return t(
-        'The release branch name contains characters Git does not allow (space, ~ ^ : ? * [ \\ or control characters).'
+        'The branch name contains characters Git does not allow (space, ~ ^ : ? * [ \\ or control characters).'
       );
     case 'leading':
-      return t('The release branch name cannot start with "." or "/".');
+      return t('The branch name cannot start with "." or "/".');
     case 'trailing':
-      return t('The release branch name cannot end with "." or "/".');
+      return t('The branch name cannot end with "." or "/".');
     case 'leading-dash':
-      return t('The release branch name cannot start with "-" or be named "HEAD".');
+      return t('The branch name cannot start with "-" or be named "HEAD".');
     case 'dot-dot':
-      return t('The release branch name cannot contain consecutive "..".');
+      return t('The branch name cannot contain consecutive "..".');
     case 'at-brace':
-      return t('The release branch name cannot contain "@{".');
+      return t('The branch name cannot contain "@{".');
     case 'double-slash':
-      return t('The release branch name cannot contain consecutive slashes.');
+      return t('The branch name cannot contain consecutive slashes.');
     case 'lock':
-      return t('The release branch name segments cannot end with ".lock".');
+      return t('The branch name segments cannot end with ".lock".');
     default:
-      return t('The release branch name is invalid.');
+      return t('The branch name is invalid.');
   }
 }
 
@@ -186,7 +187,7 @@ export async function lookupRemoteBranch(
     return {
       ok: false,
       missing: false,
-      error: t('Unable to read the remote release branch (git ls-remote failed): {0}', detail)
+      error: t('Unable to read the remote branch (git ls-remote failed): {0}', detail)
     };
   }
   const sha = parseLsRemoteRef(result.stdout, ref);
@@ -194,16 +195,21 @@ export async function lookupRemoteBranch(
     return {
       ok: false,
       missing: true,
-      error: t('The release branch does not exist: {0} ({1}).', branch, ref)
+      error: t('The remote branch does not exist: {0} ({1}).', branch, ref)
     };
   }
   return { ok: true, sha };
 }
 
 export interface ReleaseTarget {
+  /** Remote default branch, read from the repository API. */
   branch: string;
+  /** Commit used as `target_commitish`. */
   sha: string;
-  defaultBranch: string | null;
+  /** Whether the SHA came from the configured commit or the branch head. */
+  commitSource: 'config' | 'branch-head';
+  /** Why a configured commit was not used, when applicable. */
+  releaseCommitFallback?: 'invalid' | 'missing';
 }
 
 export type ReleaseTargetResult =
@@ -212,106 +218,85 @@ export type ReleaseTargetResult =
 
 export interface ReleaseTargetDeps {
   getRepository: (owner: string, repo: string) => Promise<{ defaultBranch: string } | null>;
+  getCommit: (owner: string, repo: string, commit: string) => Promise<{ sha: string } | null>;
   lookupBranch: (branch: string) => Promise<BranchLookup>;
 }
 
 /**
- * Resolves the release branch commit that must exist on the remote. The
- * configured `releaseBranch` is authoritative; the repository's default branch
- * is only read so the caller can log both when they differ.
+ * Section 5.5: the Release target is the configured `releaseCommit` when it
+ * exists on the remote, otherwise the latest commit of the repository's
+ * `default_branch` (never a hard-coded `main`). The same commit may back many
+ * Releases, so this resolver never consults or caches Releases by commit.
  */
 export async function resolveReleaseTarget(
   deps: ReleaseTargetDeps,
   owner: string,
   repo: string,
-  branch: string,
+  releaseCommit: string = '',
   t: Translator = translate
 ): Promise<ReleaseTargetResult> {
-  const branchError = validateBranchName(branch, t);
-  if (branchError) {
-    return { ok: false, error: branchError };
+  const commit = releaseCommit.trim();
+  const commitValid = commit.length === 0 || RELEASE_COMMIT_PATTERN.test(commit);
+
+  let repository: { defaultBranch: string } | null;
+  try {
+    repository = await deps.getRepository(owner, repo);
+  } catch (error) {
+    return {
+      ok: false,
+      error: t(
+        'Unable to read the remote repository default branch: {0}',
+        error instanceof Error ? error.message : String(error)
+      )
+    };
+  }
+  const branch = repository?.defaultBranch.trim() ?? '';
+  if (branch.length === 0) {
+    return { ok: false, error: t('Unable to read the remote repository default branch.') };
   }
 
-  let defaultBranch: string | null = null;
-  try {
-    const repository = await deps.getRepository(owner, repo);
-    defaultBranch = repository?.defaultBranch.trim() || null;
-  } catch {
-    // The API lookup is only used for logging; ls-remote is authoritative.
+  if (commit.length > 0 && commitValid) {
+    let found: { sha: string } | null;
+    try {
+      found = await deps.getCommit(owner, repo, commit);
+    } catch (error) {
+      return {
+        ok: false,
+        error: t(
+          'Unable to check the configured release commit {0}: {1}',
+          commit,
+          error instanceof Error ? error.message : String(error)
+        )
+      };
+    }
+    if (found && found.sha.length > 0) {
+      return { ok: true, target: { branch, sha: found.sha, commitSource: 'config' } };
+    }
   }
 
   const lookup = await deps.lookupBranch(branch);
   if (!lookup.ok) {
+    if (lookup.missing) {
+      return {
+        ok: false,
+        error: t(
+          'The default branch {0} has no commits. Push at least one commit to the remote repository first.',
+          branch
+        )
+      };
+    }
     return { ok: false, error: lookup.error };
   }
 
+  const fallback: ReleaseTarget['releaseCommitFallback'] =
+    commit.length === 0 ? undefined : commitValid ? 'missing' : 'invalid';
   return {
     ok: true,
-    target: { branch, sha: lookup.sha, defaultBranch }
+    target: {
+      branch,
+      sha: lookup.sha,
+      commitSource: 'branch-head',
+      ...(fallback ? { releaseCommitFallback: fallback } : {})
+    }
   };
-}
-
-export interface EnsureReleaseTargetDeps extends ReleaseTargetDeps {
-  /** Creates the missing release branch with only the `empty` file. */
-  createBranch(branch: string): Promise<{ ok: true } | { ok: false; error: string }>;
-}
-
-/**
- * Section 5.5 / 8.9: when the release branch is missing, create it (and push
- * only the `empty` file) and then read its latest commit. Any creation or
- * lookup failure aborts before a Release request or a local marker is written.
- */
-export async function ensureReleaseTarget(
-  deps: EnsureReleaseTargetDeps,
-  owner: string,
-  repo: string,
-  branch: string,
-  t: Translator = translate
-): Promise<ReleaseTargetResult> {
-  const branchError = validateBranchName(branch, t);
-  if (branchError) {
-    return { ok: false, error: branchError };
-  }
-
-  let defaultBranch: string | null = null;
-  try {
-    const repository = await deps.getRepository(owner, repo);
-    defaultBranch = repository?.defaultBranch.trim() || null;
-  } catch {
-    // The API lookup is only used for logging; ls-remote is authoritative.
-  }
-
-  let lookup = await deps.lookupBranch(branch);
-  if (lookup.ok) {
-    return { ok: true, target: { branch, sha: lookup.sha, defaultBranch } };
-  }
-  if (!lookup.missing) {
-    return { ok: false, error: lookup.error };
-  }
-
-  const created = await deps.createBranch(branch);
-  if (!created.ok) {
-    return {
-      ok: false,
-      error: t(
-        'The remote release branch {0} does not exist, and automatic creation failed: {1}',
-        branch,
-        created.error
-      )
-    };
-  }
-
-  lookup = await deps.lookupBranch(branch);
-  if (!lookup.ok) {
-    return {
-      ok: false,
-      error: t(
-        'The release branch {0} was created automatically, but reading its latest commit failed: {1}',
-        branch,
-        lookup.error
-      )
-    };
-  }
-
-  return { ok: true, target: { branch, sha: lookup.sha, defaultBranch } };
 }
