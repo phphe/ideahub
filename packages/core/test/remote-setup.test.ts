@@ -12,7 +12,6 @@ function client(options: {
       canPush: true,
       defaultBranch: options.defaultBranch ?? 'main'
     })),
-    getImmutableReleasesStatus: vi.fn(async () => ({ kind: 'enabled' as const })),
     getBranchHead: vi.fn(async (_owner: string, _repo: string, branch: string) =>
       options.branchHeads?.[branch] ?? null
     )
@@ -53,7 +52,6 @@ describe('validateRemoteRepository branch resolution', () => {
       expect(result.error).toContain('does not exist in the remote repository');
       expect(result.error).toContain('Check the branch name');
     }
-    expect(github.getImmutableReleasesStatus).not.toHaveBeenCalled();
   });
 
   it('rejects an illegal branch name before any remote lookup', async () => {

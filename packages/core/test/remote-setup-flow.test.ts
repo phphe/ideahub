@@ -11,7 +11,6 @@ import {
   REMOTE_PATH_NOT_DIRECTORY_ERROR
 } from '../src/clone';
 import { runGit } from '../src/git';
-import type { ImmutabilityCheck } from '../src/immutability';
 import {
   planRemoteClone,
   runRemoteSetupFlow,
@@ -27,13 +26,11 @@ const REMOTE: RemoteConfig = {
   branch: 'main'
 };
 
-const ENABLED: ImmutabilityCheck = { kind: 'enabled', enforcedByOwner: false };
-const VALID: ValidateRemoteResult = { ok: true, remote: REMOTE, immutability: ENABLED };
+const VALID: ValidateRemoteResult = { ok: true, remote: REMOTE };
 
 function createDeps(overrides: Partial<RemoteSetupFlowDeps> = {}): RemoteSetupFlowDeps {
   return {
     validate: vi.fn(async () => VALID),
-    decideImmutability: vi.fn(() => ({ ok: true, message: '已确认 Release 不可变。' })),
     persist: vi.fn(async () => ({ ok: true as const })),
     inspect: vi.fn(async () => ({ kind: 'missing' as const })),
     clone: vi.fn(async () => ({ ok: true as const, branch: 'main' })),
@@ -76,25 +73,6 @@ describe('runRemoteSetupFlow', () => {
     }
     expect(result.stage).toBe('validation');
     expect(result.retryClone).toBe(false);
-    expect(deps.persist).not.toHaveBeenCalled();
-    expect(deps.clone).not.toHaveBeenCalled();
-  });
-
-  it('does not clone when immutability is not confirmed', async () => {
-    const deps = createDeps({
-      decideImmutability: vi.fn(() => ({
-        ok: false,
-        message: '请勾选“我已确认仓库启用了 Enable release immutability”后重试。'
-      }))
-    });
-
-    const result = await runRemoteSetupFlow(deps);
-
-    expect(result.ok).toBe(false);
-    if (result.ok) {
-      throw new Error('expected an immutability failure');
-    }
-    expect(result.stage).toBe('validation');
     expect(deps.persist).not.toHaveBeenCalled();
     expect(deps.clone).not.toHaveBeenCalled();
   });
