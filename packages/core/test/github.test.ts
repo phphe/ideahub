@@ -36,7 +36,7 @@ describe('GitHubClient.createRelease', () => {
 
     let caught: unknown;
     try {
-      await client.createRelease('owner', 'repo', 'ideahub-abc123', 'hash', 'main');
+      await client.createRelease('owner', 'repo', 'ideahub-abc123', 'main');
     } catch (error) {
       caught = error;
     }
@@ -53,7 +53,7 @@ describe('GitHubClient.createRelease', () => {
     expect(caught.message).toContain('target_commitish');
     expect(caught.message).toContain(JSON.stringify(errors));
     expect(caught.message).not.toContain('secret-token');
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it('sends the validated tag and remote commit SHA on the happy path', async () => {
@@ -75,14 +75,14 @@ describe('GitHubClient.createRelease', () => {
       'owner',
       'repo',
       'ideahub-abc123',
-      'hash',
       'abc123def456'
     );
 
     expect(result.created).toBe(true);
     expect(sentBody).toMatchObject({
       tag_name: 'ideahub-abc123',
-      target_commitish: 'abc123def456'
+      target_commitish: 'abc123def456',
+      body: ''
     });
     const sent = sentBody as Record<string, unknown> | null;
     expect(String(sent?.['body'])).not.toContain('sha256=');
@@ -112,8 +112,118 @@ describe('GitHubClient.createRelease', () => {
     );
 
     await expect(
-      client.createRelease('owner', 'repo', 'ideahub-abc123', 'hash', 'main')
+      client.createRelease('owner', 'repo', 'ideahub-abc123', 'main')
     ).rejects.toThrow(/already_exists/);
+  });
+
+  it('treats an existing immutable release as the idempotent result', async () => {
+    const calls: string[] = [];
+    const fetchMock = vi.fn(async (_input: string, init?: RequestInit) => {
+      const method = init?.method ?? 'GET';
+      calls.push(method);
+      if (method === 'POST') {
+        return jsonResponse(422, {
+          message: 'Validation Failed',
+          errors: [{ resource: 'Release', field: 'tag_name', code: 'already_exists' }]
+        });
+      }
+      return jsonResponse(200, {
+        id: 7,
+        tag_name: 'ideahub-abc123',
+        published_at: '2026-11-05T00:00:00Z',
+        immutable: true
+      });
+    });
+    const client = new GitHubClient(
+      async () => 'token',
+      fetchMock as unknown as typeof fetch
+    );
+
+    const result = await client.createRelease('owner', 'repo', 'ideahub-abc123', 'main');
+
+    expect(result).toEqual({
+      created: false,
+      release: {
+        id: 7,
+        tagName: 'ideahub-abc123',
+        publishedAt: '2026-11-05T00:00:00Z',
+        immutable: true
+      }
+    });
+    expect(calls).toEqual(['POST', 'GET']);
+  });
+
+  it('deletes a mutable release and recreates it', async () => {
+    const calls: string[] = [];
+    let posts = 0;
+    const fetchMock = vi.fn(async (_input: string, init?: RequestInit) => {
+      const method = init?.method ?? 'GET';
+      calls.push(method);
+      if (method === 'POST') {
+        posts += 1;
+        if (posts === 1) {
+          return jsonResponse(422, {
+            message: 'Validation Failed',
+            errors: [{ resource: 'Release', field: 'tag_name', code: 'already_exists' }]
+          });
+        }
+        return jsonResponse(201, {
+          id: 8,
+          tag_name: 'ideahub-abc123',
+          published_at: '2026-11-05T00:00:00Z',
+          immutable: true
+        });
+      }
+      if (method === 'DELETE') {
+        return new Response(null, { status: 204 });
+      }
+      return jsonResponse(200, {
+        id: 7,
+        tag_name: 'ideahub-abc123',
+        published_at: '2026-11-04T00:00:00Z',
+        immutable: false
+      });
+    });
+    const client = new GitHubClient(
+      async () => 'token',
+      fetchMock as unknown as typeof fetch
+    );
+
+    const result = await client.createRelease('owner', 'repo', 'ideahub-abc123', 'main');
+
+    expect(result.created).toBe(true);
+    expect(result.release?.id).toBe(8);
+    expect(result.release?.immutable).toBe(true);
+    expect(calls).toEqual(['POST', 'GET', 'DELETE', 'POST']);
+  });
+
+  it('keeps the original error when deleting the mutable release fails', async () => {
+    const fetchMock = vi.fn(async (_input: string, init?: RequestInit) => {
+      const method = init?.method ?? 'GET';
+      if (method === 'POST') {
+        return jsonResponse(422, {
+          message: 'Validation Failed',
+          errors: [{ resource: 'Release', field: 'tag_name', code: 'already_exists' }]
+        });
+      }
+      if (method === 'DELETE') {
+        return jsonResponse(500, { message: 'Server Error' });
+      }
+      return jsonResponse(200, {
+        id: 7,
+        tag_name: 'ideahub-abc123',
+        published_at: '2026-11-04T00:00:00Z',
+        immutable: false
+      });
+    });
+    const client = new GitHubClient(
+      async () => 'token',
+      fetchMock as unknown as typeof fetch
+    );
+
+    await expect(
+      client.createRelease('owner', 'repo', 'ideahub-abc123', 'main')
+    ).rejects.toMatchObject({ status: 500 });
   });
 });
 
