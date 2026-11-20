@@ -1,34 +1,46 @@
 # ideahub
 
-IdeaHub 命令行校验工具，按 `requirement.md` 第十三章实现。
+IdeaHub's command-line verification tool.
 
-## 命令
+English | [简体中文](README.zh-CN.md)
+
+## Install
+
+```sh
+npm install -g ideahub
+```
+
+## Commands
 
 ```bash
-ideahub check <项目网址>
+ideahub check <project-url>
 ideahub login [--token <token>]
 ```
 
-项目网址只接受两种形式：
+A project URL is accepted in exactly two forms:
 
 - `https://github.com/<owner>/<repo>/tree/<branch>/<path...>`
 - `https://github.com/<owner>/<repo>/tree/<branch>/<path...>/README.md`
 
-其它地址（`blob/`、非 github.com、缺少路径段等）直接报错并以 2 退出。
+Any other address (`blob/`, a non-github.com host, a missing path segment, etc.) fails immediately and exits with 2.
 
-## 退出码
+## Exit codes
 
-| 结果 | 输出 | 退出码 |
+| Result | Output | Exit code |
 | --- | --- | --- |
-| PASS | 绿色 `PASS` | 0 |
-| FAIL | 红色 `FAIL` | 1 |
-| 执行错误 | 只报错 | 2 |
+| PASS | green `PASS` | 0 |
+| FAIL | red `FAIL` | 1 |
+| Execution error | error only | 2 |
 
-## 开发
+Anonymous requests are limited to 60 per hour; after `ideahub login` the limit is 5,000 per hour.
+
+## Development
 
 ```bash
 pnpm --filter ideahub build
 pnpm --filter ideahub test
 ```
 
-`config.mjs` 的 `oauthClientId` 为空时，`login` 只支持手动粘贴 token 或 `--token`。
+When `oauthClientId` in `config.mjs` is empty, `login` only supports pasting a token manually or passing `--token`.
+
+For the full workflow and configuration, see the [root README](https://github.com/phphe/ideahub/tree/main/README.md).

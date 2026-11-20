@@ -1,0 +1,37 @@
+# ideahub
+
+IdeaHub 命令行校验工具：根据内容指纹核验他人的创意时间证明。
+
+[English](README.md) | 简体中文
+
+## 安装
+
+```sh
+npm install -g ideahub
+```
+
+## 命令
+
+```sh
+ideahub check <项目网址>
+ideahub login [--token <token>]
+```
+
+项目网址只接受两种形式：
+
+- `https://github.com/<owner>/<repo>/tree/<branch>/<path...>`
+- `https://github.com/<owner>/<repo>/tree/<branch>/<path...>/README.md`
+
+其它地址（`blob/`、非 github.com、缺少路径段等）直接报错并以 2 退出。
+
+## 退出码
+
+| 结果 | 输出 | 退出码 |
+| --- | --- | --- |
+| PASS | 绿色 `PASS` | 0 |
+| FAIL | 红色 `FAIL` | 1 |
+| 执行错误 | 只报错 | 2 |
+
+匿名 60 次/小时，`ideahub login` 后 5000 次/小时。
+
+完整流程与配置见[根 README](https://github.com/phphe/ideahub/tree/main/README.zh-CN.md)。
