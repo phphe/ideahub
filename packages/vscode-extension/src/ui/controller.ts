@@ -1029,9 +1029,6 @@ export class IdeahubController {
       return { ok: false, message: fingerprint.message };
     }
     const contentHash = fingerprint.hash;
-    const proofTime = new Date();
-    const proofTimeText = formatMarkerTime(proofTime);
-    const markerLine = formatMarkerLine('proof', proofTimeText);
     const tag = buildReleaseTag(contentHash).tag;
     const tagError = validateTagName(tag, this.t);
     if (tagError) {
@@ -1122,14 +1119,9 @@ export class IdeahubController {
           location: vscode.ProgressLocation.Notification,
           title: this.t('Creating the proof Release…')
         },
-        async () => {
-          // Section 7.4: idempotency is decided by querying the tag first.
-          const existing = await client.getReleaseByTag(remote.owner, remote.repo, tag);
-          if (existing) {
-            return { created: false, release: existing };
-          }
-          return client.createRelease(remote.owner, remote.repo, tag, proofTimeText, target.sha);
-        }
+        // Section 7.4: tag conflicts are handled inside createRelease
+        // (immutable existing Release = done; mutable one = delete and retry).
+        () => client.createRelease(remote.owner, remote.repo, tag, target.sha)
       );
     } catch (error) {
       this.logReleaseFailure(error, {
@@ -1150,6 +1142,18 @@ export class IdeahubController {
         )
       };
     }
+
+    // Section 7.5: an existing immutable Release keeps its own publish time;
+    // using "now" would break the CLI's one-hour proof window.
+    const releasedAt = release.release?.publishedAt
+      ? new Date(release.release.publishedAt)
+      : null;
+    const proofTime =
+      !release.created && releasedAt && !Number.isNaN(releasedAt.getTime())
+        ? releasedAt
+        : new Date();
+    const proofTimeText = formatMarkerTime(proofTime);
+    const markerLine = formatMarkerLine('proof', proofTimeText);
 
     const updated = appendMarkerLine(text, markerLine);
     const edit = new vscode.WorkspaceEdit();
