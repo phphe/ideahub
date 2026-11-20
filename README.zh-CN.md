@@ -8,46 +8,62 @@
 
 ## IdeaHub 是什么
 
-IdeaHub 是一个开源工具，让用户在不用提前发布创意的情况下, 证明一个创意在某个时间点之前就已经存在。
+AI时代, 如何保护我们的创意? 如何证明我们的原创性? 此工具为此而生, 并在此呼吁各大平台增强对开发者原创性的保护.
 
-根据创意原文生成内容指纹, 把指纹发布到GitHub不可变的 Release. 在创意原文发布后, 任何人都可以进行校验.
+IdeaHub 是一个开源工具，用来证明创意在某个时间点之前就已经存在。
+
+根据创意原文生成内容指纹, 仅把指纹发布到GitHub不可变的 Release, 不用提前发布创意原文. 在项目发布后, 可以发布创意原文, 然后任何人都可以进行校验.
 
 ## 核心机制
 
 1. **内容指纹**：对项目内容做规范化后计算 SHA-256。
 2. **不可变 Release 作为时间锚点**：每个指纹创建一个 tag 为 `ideahub-<sha256>` 的 GitHub不可变Release。
 
-## 安装 VS Code 扩展
-
-在 VS Code 的扩展市场搜索 **IdeaHub** 安装。扩展界面跟随 VS Code 的显示语言，支持英文与简体中文。
 
 ## 使用流程
 
-1. 打开一个空文件夹，在活动栏点击 IdeaHub 图标并初始化。
-2. 在 GitHub 创建一个公开仓库，把地址填入扩展完成克隆（位于 `.ideahub/remote/`），并在仓库设置中开启 Release 不可变性。
-3. 在仓库根目录新建项目文件夹，放入 `ideas.md` 后执行「标记」。
-4. 执行「发布」，两次确认后只把该项目文件夹推送到远程创意仓库。
+- 在 VS Code 的扩展市场搜索 **IdeaHub** 安装。或者[点击此处](https://marketplace.visualstudio.com/items?itemName=ideahub-dev.ideahub-vscode).
+- 通过[此模板](https://github.com/phphe/ideahub-remote-template)在 GitHub 创建一个公开仓库, 你也可以[点击此处](https://github.com/new?template_name=ideahub-remote-template&template_owner=phphe)开始创建，然后在仓库的设置里开启 Release 不可变性(打开Settings页面->勾选"Enable release immutability")。
+- 在vscode中打开一个空文件夹，在活动栏点击 IdeaHub 图标并初始化。远程仓库地址填入上一步的仓库网址, 如"https://github.com/your_name/repo_name".
+- 在IdeaHub面板点击加号图标新增项目, 在打开的ideas.md中编写创意文本. 已有项目可以点击项目名打开ideas.md. 
+- ideas.md里添加内容后, 点击"证明"按钮把该段文本的内容指纹(hash)发布到远程仓库. 建议即时使用证明功能, 可以每天结束工作前使用一次证明功能.
+- 在创意原文可以公开后, 点击"发布"按钮把该项目的创意原文发布到远程仓库, 此时其他人可以看到您的创意原文并使用ideahub验证您的创意的时间证明.
 
-`pre-push` hook 会阻止把本地仓库推送到远程创意仓库；扩展不保存 Token，使用 VS Code 内置的 GitHub 认证。
+## 内容规范
+- 建议撰写创意文本时行文简洁, 可以采用一句话概括, 再以一段话描述细节. 
+- 不建议在文本中包含时间. 
+- 生成证明之后, 该段文本底部会插入标记. 新内容应该在标记之后撰写, 在标记之前修改或添加内容将导致该段文本的证明失效.
+- 修改项目名称即文件夹名称将导致该项目的所有证明失效.
+- 可以包含图片和文件, 但是图片和文件需要放在该项目文件夹内部. 生成的证明涵盖创意文本以及文本中引用的项目内文件, 但不包括未被引用的文件、外部文件和链接.
+
+## 注意
+- 本地储存创意的git仓库和远程储存证明的仓库不应该是同一个仓库, 不能手动推送它到远程证明仓库, 本工具会添加`pre-push` hook到本地git仓库, 会阻止把本地仓库推送到远程证明仓库. 如果要把本地创意仓库提交到远程, 在远程另外创建一个空仓库即可, 但是要设置为私有, 否则会泄露你的创意原文.
+- 创意文本里不应包含emoji"🔏".
+
+
 
 ## 用 CLI 验证他人的证明
 
 ```sh
-npm install -g ideahub
-ideahub check <项目网址>
+npx ideahub check <项目网址>
 ```
 
-项目网址形如 `https://github.com/<owner>/<repo>/tree/<branch>/<path...>`（可带 `/README.md`）。`PASS` 退出码为 0，`FAIL` 为 1，执行错误为 2。
+3种结果: `PASS` 退出码为 0，`FAIL` 为 1，执行错误为 2。
 
-可选登录提升配额：`ideahub login`（匿名 60 次/小时，登录后 5000 次/小时）。
+cli通过github api查询, 可登录github提升api配额：`npx ideahub login`（匿名 60 次/小时，登录后 5000 次/小时）。
 
 ## 配置
 
-- `ideahub.proof.autoCommit`：是否自动提交证明/发布标记，默认 `true`。
-- `ideahub.proof.commitMessage`：证明标记的提交文案，默认 `ideahub: record proof`。
-- `ideahub.publish.commitMessage`：发布标记的提交文案，默认 `ideahub: mark published`。
+- `ideahub.proof.autoCommit`：证明和发布时是否自动提交git commit，默认 `true`。
+- `ideahub.proof.commitMessage`：证明时提交git commit的提交文案，默认 `ideahub: record proof`。
+- `ideahub.publish.commitMessage`：发布时提交git commit的提交文案，默认 `ideahub: mark published`。
 
-仓库配置在 `.ideahub/config.json`，不含 Token。
+本地仓库配置在 `.ideahub/config.json`。
+
+## 示例
+
+- 本地创意仓库: https://github.com/phphe/ideahub-example
+- 远程证明仓库: https://github.com/phphe/ideahub-proof-demo
 
 ## 许可证
 
