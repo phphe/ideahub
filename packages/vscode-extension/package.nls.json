@@ -1,7 +1,7 @@
 {
   "ideahub.displayName": "IdeaHub",
   "ideahub.description": "Your Ideas. Your History. Your Proof.",
-  "ideahub.viewContainerTitle": "IdeaHub",
+  "ideahub.viewContainerTitle": "ideahub",
   "ideahub.viewName": "IdeaHub",
   "ideahub.command.refresh": "IdeaHub: Refresh Status",
   "ideahub.command.openMain": "IdeaHub: Open Main View",

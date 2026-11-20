@@ -3,7 +3,7 @@
   "displayName": "%ideahub.displayName%",
   "description": "%ideahub.description%",
   "version": "0.1.0",
-  "publisher": "ideahub-dev",
+  "publisher": "ideahub",
   "license": "MIT",
   "private": true,
   "keywords": [

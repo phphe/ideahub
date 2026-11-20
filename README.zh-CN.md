@@ -22,7 +22,7 @@ IdeaHub 是一个开源工具，用来证明创意在某个时间点之前就已
 
 ## 使用流程
 
-- 在 VS Code 的扩展市场搜索 **IdeaHub** 安装。或者[点击此处](https://marketplace.visualstudio.com/items?itemName=ideahub-dev.ideahub-vscode).
+- 在 VS Code 的扩展市场搜索 **IdeaHub** 安装。或者[点击此处](https://marketplace.visualstudio.com/items?itemName=ideahub.ideahub-vscode).
 - 通过[此模板](https://github.com/phphe/ideahub-remote-template)在 GitHub 创建一个公开仓库, 你也可以[点击此处](https://github.com/new?template_name=ideahub-remote-template&template_owner=phphe)开始创建，然后在仓库的设置里开启 Release 不可变性(打开Settings页面->勾选"Enable release immutability")。
 - 在vscode中打开一个空文件夹，在活动栏点击 IdeaHub 图标并初始化。远程仓库地址填入上一步的仓库网址, 如"https://github.com/your_name/repo_name".
 - 在IdeaHub面板点击加号图标新增项目, 在打开的ideas.md中编写创意文本. 已有项目可以点击项目名打开ideas.md. 
