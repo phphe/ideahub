@@ -4,12 +4,15 @@ import { build } from 'esbuild';
 
 /**
  * Section 6.7: the CLI owns `config.mjs` and `.env` next to this file. Both are
- * build-time only: the resolved `oauthClientId` is inlined into dist/index.js,
- * so the runtime never reads env vars and never needs these files.
+ * build-time only: the resolved `oauthClientId` and `proofFileVersion` are
+ * inlined into dist/index.js, so the runtime never reads env vars and never
+ * needs these files.
  */
 
 const DEFAULT_OAUTH_CLIENT_ID = '';
 const OAUTH_CLIENT_ID_ENV_KEY = 'IDEAHUB_OAUTH_CLIENT_ID';
+const DEFAULT_PROOF_FILE_VERSION = '1';
+const PROOF_FILE_VERSION_ENV_KEY = 'IDEAHUB_PROOF_FILE_VERSION';
 
 function readOptional(file) {
   try {
@@ -84,13 +87,68 @@ async function resolveOAuthClientId() {
   }
 }
 
-const oauth = await resolveOAuthClientId();
-for (const warning of oauth.warnings) {
+async function resolveProofFileVersion() {
+  const envValue = parseEnvValue(
+    readOptional(fileURLToPath(new URL('./.env', import.meta.url))),
+    PROOF_FILE_VERSION_ENV_KEY
+  );
+  if (envValue !== null && envValue.trim().length > 0) {
+    return { version: envValue.trim(), source: 'env', warnings: [] };
+  }
+
+  const configPath = fileURLToPath(new URL('./config.mjs', import.meta.url));
+  try {
+    const config = await import(new URL('./config.mjs', import.meta.url).href);
+    const value = config.default?.proofFileVersion;
+    if (value === undefined || value === null) {
+      return {
+        version: DEFAULT_PROOF_FILE_VERSION,
+        source: 'default',
+        warnings: ['config.mjs 缺少 proofFileVersion，使用默认值。']
+      };
+    }
+    if (typeof value !== 'string') {
+      return {
+        version: DEFAULT_PROOF_FILE_VERSION,
+        source: 'default',
+        warnings: ['config.mjs 的 proofFileVersion 必须是字符串，使用默认值。']
+      };
+    }
+    if (value.trim().length === 0) {
+      return {
+        version: DEFAULT_PROOF_FILE_VERSION,
+        source: 'default',
+        warnings: ['config.mjs 的 proofFileVersion 为空，使用默认值。']
+      };
+    }
+    return { version: value.trim(), source: 'file', warnings: [] };
+  } catch (error) {
+    return {
+      version: DEFAULT_PROOF_FILE_VERSION,
+      source: 'default',
+      warnings: [
+        `无法加载 ${configPath}：${error instanceof Error ? error.message : String(error)}，使用默认值。`
+      ]
+    };
+  }
+}
+
+const oauth = await resolveOAuthClientId();for (const warning of oauth.warnings) {
   console.warn(`[ideahub] oauth client id warning: ${warning}`);
 }
 console.log(
   `[ideahub] oauthClientId=${JSON.stringify(oauth.clientId)} (source=${
     oauth.source
+  }, injected at build time)`
+);
+
+const proofVersion = await resolveProofFileVersion();
+for (const warning of proofVersion.warnings) {
+  console.warn(`[ideahub] proof file version warning: ${warning}`);
+}
+console.log(
+  `[ideahub] proofFileVersion=${JSON.stringify(proofVersion.version)} (source=${
+    proofVersion.source
   }, injected at build time)`
 );
 
@@ -105,6 +163,7 @@ await build({
   sourcemap: true,
   logLevel: 'info',
   define: {
-    'process.env.IDEAHUB_OAUTH_CLIENT_ID': JSON.stringify(oauth.clientId)
+    'process.env.IDEAHUB_OAUTH_CLIENT_ID': JSON.stringify(oauth.clientId),
+    'process.env.IDEAHUB_PROOF_FILE_VERSION': JSON.stringify(proofVersion.version)
   }
 });
