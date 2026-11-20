@@ -474,13 +474,18 @@ tags: ["游戏", "写作"]
 - Tag 命名：`ideahub-<sha256>`，哈希口径见 7.3，例如 `ideahub-3f...`（64 位小写十六进制）。
 - `target_commitish` 取 5.5 的目标提交（优先 `releaseCommit`，否则远程默认分支最早的 commit）；tag 指向该 commit。
 - 请求前必须校验 tag 与 `target_commitish`：tag 需符合 Git ref 规范；读取默认分支、检查配置 commit 或读取最早 commit 失败时不得发送创建请求。
-- Release 名称/说明**只记录证明时间**，不写 `sha256=`、不写任何内容 Hash、不上传任何证明内容附件。
-- 幂等：创建前按 `ideahub-<hash>` 查询是否已有 Release。同一内容重复证明会命中同一 tag，**不得**视为成功：必须直接提示“相同内容已证明过”并结束，**不追加**新的证明标记、不新建 Release、不覆盖已有 Release（见 8.9、13.3）。
-- Release 创建在远程创意仓库中，依赖已启用的 Release 不可变设置。
+- Release 名称使用 `ideahub-<hash>` Tag；说明（body）为空，**不写**证明时间、`sha256=` 或任何内容 Hash，不上传任何证明内容附件。
+- 幂等与重建：创建请求返回 422 且 `errors` 中 `code` 为 `already_exists` 时，按同名 Tag 查询 Release：
+  - 该 Release 的 `immutable === true`：视为已完成，不报错、不新建、不覆盖。
+  - 该 Release 的 `immutable` 为 `false` 或缺失：静默删除该 Release（`DELETE /repos/{owner}/{repo}/releases/{id}`，不提示用户），然后重新创建。
+  - 查不到 Release、删除失败或其它错误：按原有错误处理，不写入标记。
+  - 因此同一内容重复证明可以完成并补写标记；命中已有不可变 Release 时，标记时间取该 Release 的发布时间（见 7.3、7.5）。
+- Release 创建在远程创意仓库中，依赖已启用的 Release 不可变设置；创建成功后若 `immutable` 不是 `true`，仍提示用户开启仓库级 Release 不可变性。
 
 ### 7.5 时间
 
 - 标记中的时间记录生成标记那一刻的系统本地时间，格式为 `YYYY-MM-DD HH:mm:ss (UTC+08:00)`，包含秒与数字时区偏移。
+- 例外：命中已有不可变 Release 的幂等路径（见 7.4）时，标记时间取该 Release 的 `published_at`，转换为同一本地时区格式，不使用当前时间。
 - 时间从标记行中提取；标题级别与反引号不参与时间格式本身：`ideas.md` 内为 6 个 `#` 的 `Proof:` / `Published:` 标记（见 7.1），证明文件内为 2 个 `#` 且带 `🔏` 的 `Proof:` 标记（见 7.8）。
 - 展示时时间来源优先取标记中的时间；标记时间缺失或无法解析时，回退 Release 的 `published_at`（ISO 8601 UTC）。
 - 两者都缺失或无法解析时显示“未知”，不得渲染 `Invalid Date`。
@@ -765,13 +770,15 @@ version: "0"
    - 未配置、格式非法或远程不存在时，通过 GitHub API 的分页读取默认分支最早的 commit：`GET /repos/{owner}/{repo}/commits?sha=<默认分支>&per_page=100`，从 `Link` 的 `rel="last"` 取总页数后请求最后一页，取该页最后一项；没有 `Link` 头或 `rel="last"` 为第 1 页时取第一页最后一项。
    - 默认分支为空仓库、请求失败或拿不到 commit 时，明确提示失败原因，**不发送**创建 Release 请求，**不写入**任何本地标记。
    - 日志记录 `default_branch`、`target_commitish` 与目标来源（`config` / `branch-earliest`）；同一 commit 可被多个 Release 复用，幂等性只由 tag 判断。
-5. 按 `ideahub-<hash>` 查询远程创意仓库是否已有 Release；同一内容重复证明会命中同一 tag，此时**直接提示“相同内容已证明过”并结束**：不追加标记、不新建 Release、不覆盖已有 Release、不写 `Published:`（见 7.4、13.3）。
-6. Release 不存在时创建：
-   - Tag：`ideahub-<sha256>`
-   - `target_commitish`：上一步取到的 commit SHA（见 5.5）
-   - 名称/说明：只记录证明时间，不写 `sha256=`、不包含任何内容 Hash 或创意正文
-7. **只有确认 Release 在本步新建成功后**，才在本地 `ideas.md` 末尾追加标记行；命中已有 Release 按第 5 步处理，不进入本步。
+5. 直接创建 Release（不再预先查询），Tag 为 `ideahub-<sha256>`，`body` 为空。若返回 422 且 `errors` 中 `code` 为 `already_exists`，按 7.4 的幂等与重建规则处理；查不到 Release、删除失败等其它错误按原有失败处理。
+6. 判定创建结果：
+   - 新建 Release，或命中已有 `immutable === true` 的 Release：视为成功。
+   - 命中已有不可变 Release 时，本地标记时间取该 Release 的 `published_at`，并转换为 7.1 的本地时区格式；**不得使用当前时间**，否则 CLI 的 1 小时时间窗口会判 FAIL。
+   - 已有 Release 的 `immutable` 为 `false` 或缺失：按 7.4 静默删除并重建，以重建结果为准。
+   - 新建的 Release `immutable` 不是 `true`：仍按现有方式提示用户开启仓库级 Release 不可变性。
+7. **确认 Release 可用后**，才在本地 `ideas.md` 末尾追加标记行：
    - 格式（与 7.1 一致）：`` ###### `Proof: YYYY-MM-DD HH:mm:ss (UTC+08:00) [ideahub]` ``
+   - 时间取第 6 步确定的标记时间（新建用当前时间；命中已有不可变 Release 用其 `published_at` 的本地时区格式）。
    - 若文件末尾不是换行，先补一个换行；若上一行不是空行，先补一个空行，保证标题行独立且不破坏 Markdown 渲染；保持文件原有 CRLF/LF 风格。
 8. 标记写入并保存后，按 6.8 尝试**只提交该标记行**到本地仓库：
    - 仅当用户启用 git、`ideahub.proof.autoCommit` 为 `true` 且本地存在 Git 仓库时执行；否则静默跳过，只写日志。
@@ -863,7 +870,7 @@ https://github.com/<远程仓库用户>/<远程仓库名字>/tree/<远程仓库�
 
 - 网络不可用/超时：提示重试，不进入半完成状态。
 - 授权被拒或权限不足：提示具体缺失的权限与解决方式。
-- 同一内容已存在 Release：提示“相同内容已证明过”并结束，不追加标记、不覆盖。
+- 同一内容已存在不可变 Release：视为已完成，补写证明标记（时间取该 Release 的发布时间）；已存在但不可变：静默删除并重建。查不到或删除失败按原有错误提示。
 - 仓库启用分支保护导致推送失败：提示用户手动处理，不绕过保护。
 - `.ideahub/remote/` 存在未提交变更或冲突：发布前必须提示，不强制覆盖。
 - `config.json` 损坏或字段缺失：提示具体问题，允许用户重新填写；不静默重建。
@@ -917,9 +924,9 @@ https://github.com/<远程仓库用户>/<远程仓库名字>/tree/<远程仓库�
 - `ideas.md` 的标记规则固定为 6 个 `#`，写入与解析都不变；旧的 `######` 证明仍被识别，不回填、不转换。
 - 生成的 `README.md` 中证明标记写成 2 个 `#` 并在标记前加 `🔏`（`` ## 🔏 `Proof: ...` ``），并能被 checker 解析；解析**只接受带 `🔏` 的形式**，不带 `🔏` 的标记不被识别、不回退、不兼容。证明文件侧不识别 `######`，`ideas.md` 侧不识别 `## `，两套规则分开且互不兼容。
 - `ideas.md` 的标记输出保持 6 个 `#` 且不加 `🔏`；证明文件中的 `🔏` 只出现在生成侧，不影响 `ideas.md`。
-- Release 说明只记录证明时间，不出现 `sha256=`。
+- Release 说明（body）为空。
 - 目标提交优先使用有效的 `releaseCommit`，否则使用远程默认分支最早的 commit；两者都取不到时不发送创建请求、不写入标记（见 5.5）。
-- 同一内容重复证明命中同一 `ideahub-<sha256>` Tag 时，提示“相同内容已证明过”并结束，不追加标记、不新建或覆盖 Release。
+- 同一内容重复证明命中同一 `ideahub-<sha256>` Tag 时：已有 Release 不可变则视为完成并补写标记（时间取 Release 发布时间）；不可变或缺失则静默删除并重建；查不到或删除失败按原有错误处理。
 - Release 创建失败时不产生任何标记。
 - 标记行不含 Hash；修改已证明内容当前不会被识别为验证失败，因为尚未实现校验入口。
 - 仅在 6.8 允许时触发单行本地提交，不推送、不公开。
