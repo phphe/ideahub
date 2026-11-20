@@ -1,20 +1,14 @@
 # ideahub
 
-IdeaHub's command-line verification tool.
+IdeaHub's command-line verification tool: verifies others' idea timestamp proofs from the content fingerprint.
 
 English | [简体中文](README.zh-CN.md)
 
-## Install
+## Usage
 
 ```sh
-npm install -g ideahub
-```
-
-## Commands
-
-```bash
-ideahub check <project-url>
-ideahub login [--token <token>]
+npx ideahub check <project-url>
+npx ideahub login
 ```
 
 A project URL is accepted in exactly two forms:
@@ -33,14 +27,5 @@ Any other address (`blob/`, a non-github.com host, a missing path segment, etc.)
 | Execution error | error only | 2 |
 
 Anonymous requests are limited to 60 per hour; after `ideahub login` the limit is 5,000 per hour.
-
-## Development
-
-```bash
-pnpm --filter ideahub build
-pnpm --filter ideahub test
-```
-
-When `oauthClientId` in `config.mjs` is empty, `login` only supports pasting a token manually or passing `--token`.
 
 For the full workflow and configuration, see the [root README](https://github.com/phphe/ideahub/tree/main/README.md).

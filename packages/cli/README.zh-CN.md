@@ -4,17 +4,11 @@ IdeaHub 命令行校验工具：根据内容指纹核验他人的创意时间证
 
 [English](README.md) | 简体中文
 
-## 安装
+## 使用
 
 ```sh
-npm install -g ideahub
-```
-
-## 命令
-
-```sh
-ideahub check <项目网址>
-ideahub login [--token <token>]
+npx ideahub check <项目网址>
+npx ideahub login
 ```
 
 项目网址只接受两种形式：
