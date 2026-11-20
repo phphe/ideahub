@@ -1,29 +1,25 @@
-# 创意仓库 / IdeaHub
+# IdeaHub
 
 `Your Ideas. Your History. Your Proof.`
 
-一个 VS Code 扩展：在本地记录创意形成过程，并把每次新增内容的 Hash 发布为 GitHub Release，作为可验证的时间证明。
+A VS Code extension that records how ideas take shape locally and publishes the hash of each new piece of content as a GitHub Release — a verifiable timestamp proof.
 
-## 安装（开发版）
+English | [简体中文](README.zh-CN.md)
 
-```sh
-pnpm install
-pnpm run build
-```
+## Install
 
-然后在 VS Code 中按 `F5` 启动扩展开发宿主，或使用 `pnpm run package` 打出 `.vsix` 后通过「扩展 → 从 VSIX 安装」安装。
+Search for **IdeaHub** in the VS Code Marketplace and install it, or open the [Marketplace page](https://marketplace.visualstudio.com/items?itemName=ideahub.ideahub-vscode).
 
-## 使用概要
+## Basic usage
 
-1. 打开一个空文件夹，在活动栏点击「创意仓库」图标，初始化本地仓库。
-2. 填写你在 GitHub 上**手动创建**的公开创意仓库地址，并完成克隆。
-3. 在根目录创建项目文件夹（文件夹内必须包含 `ideas.md`）。
-4. 对项目执行「标记」：生成 Hash → 创建 `ideahub-<sha256>` Release → 写入标记。
-5. 对项目执行「发布」：两次确认后，只把项目文件夹复制到内层仓库并推送。
+1. Open a folder, click the IdeaHub icon in the Activity Bar and initialize it.
+2. Enter the public idea repository URL that you created manually on GitHub; the extension validates it and clones it.
+3. Create a project, write in `ideas.md`, and click "Prove" to publish its content fingerprint as an immutable Release.
+4. Once the idea can be made public, click "Publish" to push the project content to the remote idea repository.
 
-## 安全边界
+## Notes
 
-- 扩展不会自动提交、推送或公开本地仓库。
-- 本地仓库不得连接远程创意仓库；扩展会安装 `pre-push` hook 阻止误推送。
-- 远程创意仓库的 Release 不可变性需由你在 GitHub 仓库设置中手动启用。
-- 扩展不保存任何 Token 或凭据；GitHub 认证使用 VS Code 内置 GitHub 认证。
+- The extension stores no token; GitHub authentication uses VS Code's built-in GitHub authentication.
+- Release immutability must be enabled manually in the GitHub repository settings.
+
+For the full workflow, content guidelines and settings, see the [root README](https://github.com/phphe/ideahub/tree/main/README.md).
