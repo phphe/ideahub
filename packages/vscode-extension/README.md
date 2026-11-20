@@ -1,25 +1,55 @@
 # IdeaHub
 
-`Your Ideas. Your History. Your Proof.`
-
-A VS Code extension that records how ideas take shape locally and publishes the hash of each new piece of content as a GitHub Release — a verifiable timestamp proof.
+A VS Code extension that records how ideas take shape locally and publishes the fingerprint of each new piece of content as a GitHub immutable Release — a verifiable timestamp proof. The idea does not need to be published in advance.
 
 English | [简体中文](README.zh-CN.md)
 
-## Install
+## What it is
 
-Search for **IdeaHub** in the VS Code Marketplace and install it, or open the [Marketplace page](https://marketplace.visualstudio.com/items?itemName=ideahub.ideahub-vscode).
+In the AI era, how do we protect our ideas and prove our originality? IdeaHub exists for that purpose, and calls on platforms to strengthen the protection of developers' originality.
 
-## Basic usage
+The extension computes a content fingerprint from the original idea text and publishes only the fingerprint to an immutable GitHub Release, without publishing the idea text in advance. Once the project is formally published, you can make the original text public, and anyone can verify when it existed.
 
-1. Open a folder, click the IdeaHub icon in the Activity Bar and initialize it.
-2. Enter the public idea repository URL that you created manually on GitHub; the extension validates it and clones it.
-3. Create a project, write in `ideas.md`, and click "Prove" to publish its content fingerprint as an immutable Release.
-4. Once the idea can be made public, click "Publish" to push the project content to the remote idea repository.
+## Core mechanism
+
+1. **Content fingerprint**: normalizes the project content and computes its SHA-256.
+2. **Immutable Release as a time anchor**: each fingerprint creates a GitHub immutable Release with the tag `ideahub-<sha256>`.
+
+## Prepare the remote idea repository
+
+- Create a public repository on GitHub from [this template](https://github.com/phphe/ideahub-remote-template), or [click here](https://github.com/new?template_name=ideahub-remote-template&template_owner=phphe) to get started.
+- Enable release immutability in the repository settings (open Settings and check "Enable release immutability").
+
+## Workflow
+
+1. Open an empty folder in VS Code, click the IdeaHub icon in the Activity Bar and initialize it.
+2. Enter the repository URL from the previous step as the remote idea repository address, for example `https://github.com/your_name/repo_name`; the extension validates and clones that repository.
+3. Click the plus icon in the IdeaHub panel to add a project, and write your idea in the opened `ideas.md`; for an existing project, click its name to open `ideas.md`.
+4. Click "Prove" to publish the content fingerprint of that segment to the remote repository. Proving right away is recommended; you can also prove once before finishing work each day.
+5. Once the idea can be made public, click "Publish" to push the project content to the remote idea repository. Others can then view the original text and use ideahub to verify its timestamp proof.
+
+## Content guidelines
+
+- Keep the text concise: summarize in one sentence, then describe the details in a paragraph.
+- Avoid including times in the text.
+- After a proof is generated, a marker is inserted at the bottom of that segment. Write new content after the marker; modifying or adding content before it invalidates the proof of that segment.
+- Renaming the project (the folder name) invalidates all proofs of that project.
+- Images and files are allowed, but they must be placed inside the project folder. The proof covers the idea text and the project files referenced in the text; unreferenced files, external files and links are not included.
 
 ## Notes
 
-- The extension stores no token; GitHub authentication uses VS Code's built-in GitHub authentication.
-- Release immutability must be enabled manually in the GitHub repository settings.
+- The local Git repository that stores your ideas and the remote repository that stores proofs must not be the same repository, and you must not push to the remote proof repository manually. The extension adds a `pre-push` hook to block accidental pushes; to back up the local idea repository, create a separate empty remote repository and set it to private, otherwise your idea text will be exposed.
+- The idea text must not contain the emoji "🔏".
 
-For the full workflow, content guidelines and settings, see the [root README](https://github.com/phphe/ideahub/tree/main/README.md).
+## Configuration
+
+- `ideahub.proof.autoCommit`: whether to automatically create a Git commit when proving and publishing; default `true`.
+- `ideahub.proof.commitMessage`: commit message used when proving; default `ideahub: record proof`.
+- `ideahub.publish.commitMessage`: commit message used when publishing; default `ideahub: mark published`.
+
+The local repository configuration lives in `.ideahub/config.json`.
+
+## More
+
+- For verifying others' proofs with the CLI, quota details and example repositories, see the [root README](https://github.com/phphe/ideahub/tree/main/README.md).
+- License: [MIT](../../LICENSE).

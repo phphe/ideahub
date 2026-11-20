@@ -1,7 +1,5 @@
 # IdeaHub
 
-`Your Ideas. Your History. Your Proof.`
-
 一个 VS Code 扩展：在本地记录创意形成过程，并把每次新增内容的指纹发布为 GitHub 不可变 Release，作为可验证的时间证明。创意无需提前公开。
 
 [English](README.md) | 简体中文
@@ -16,10 +14,6 @@ AI 时代，如何保护我们的创意、证明我们的原创性？IdeaHub 为
 
 1. **内容指纹**：对项目内容做规范化后计算 SHA-256。
 2. **不可变 Release 作为时间锚点**：每个指纹创建一个 tag 为 `ideahub-<sha256>` 的 GitHub 不可变 Release。
-
-## 安装
-
-在 VS Code 扩展市场搜索 **IdeaHub** 安装，或访问 [Marketplace 页面](https://marketplace.visualstudio.com/items?itemName=ideahub.ideahub-vscode)。
 
 ## 准备远程创意仓库
 
