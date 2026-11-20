@@ -7,7 +7,7 @@ const MARKER = '## 🔏 `Proof: 2026-11-01 10:00:00 (UTC+08:00) [ideahub]`';
 function proofFile(block: string): string {
   return [
     '---',
-    'version: "0"',
+    'version: "1"',
     '---',
     '',
     '> - Proofs: 1',
@@ -117,6 +117,17 @@ describe('runCheck', () => {
 
     expect(result.status).toBe('PASS');
     expect(result.detail).toContain('o/r@main/proj');
+  });
+
+  it('returns ERROR for an unsupported proof file version', async () => {
+    const result = await check({
+      readme: proofFile('\n🔏[doc](a.md)').replace('version: "1"', 'version: "2"'),
+      releases: []
+    });
+
+    expect(result.status).toBe('ERROR');
+    expect(result.messages.join('\n')).toContain('Unsupported proof file version: 2');
+    expect(result.messages.join('\n')).toContain('this build supports 1');
   });
 
   it('accepts collapsed, shortcut, srcset and poster references', async () => {

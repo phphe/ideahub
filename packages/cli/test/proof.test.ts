@@ -6,7 +6,7 @@ const MARKER = '## 🔏 `Proof: 2026-11-01 10:00:00 (UTC+08:00) [ideahub]`';
 function proofFile(block: string, header = '> - Proofs: 1'): string {
   return [
     '---',
-    'version: "0"',
+    'version: "1"',
     '---',
     '',
     header,
@@ -24,14 +24,14 @@ describe('parseProofFile', () => {
   it('reads the version, header and one block', () => {
     const parsed = parseProofFile(proofFile('🔏[doc](a.md)'));
     expect(parsed.problems).toEqual([]);
-    expect(parsed.version).toBe('0');
+    expect(parsed.version).toBe('1');
     expect(parsed.blocks).toHaveLength(1);
     expect(parsed.blocks[0].timeText).toBe('2026-11-01 10:00:00 (UTC+08:00)');
     expect(parsed.blocks[0].text.trim()).toBe('🔏[doc](a.md)');
   });
 
   it('fails when there is no proof block', () => {
-    const parsed = parseProofFile('---\nversion: "0"\n---\n\n> - Proofs: 0\n\n---\n');
+    const parsed = parseProofFile('---\nversion: "1"\n---\n\n> - Proofs: 0\n\n---\n');
     expect(parsed.problems.map((problem) => problem.severity)).toContain('FAIL');
     expect(parsed.problems.map((problem) => problem.message).join('\n')).toContain('empty proof');
   });
