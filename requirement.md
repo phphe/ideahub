@@ -331,7 +331,7 @@ remote/
 ```js
 export default {
   releaseCommit: '',
-  proofFileVersion: '0',
+  proofFileVersion: '1',
   oauthClientId: '',
   proofFileHeader: `> This file is the IdeaHub proof file for this project.
 > It was generated from the author's ideas.md when the project was published
@@ -345,13 +345,13 @@ export default {
 说明：
 
 - `releaseCommit`：创建证明 Release 时优先使用的 commit id（见 5.5、8.10），**字符串**，默认空字符串（表示不指定，使用远程默认分支最早的 commit）。非空时必须为 7–64 位十六进制；格式非法、为空或远程不存在时回落到默认分支最早的 commit。
-- `proofFileVersion`：生成的证明文件 Front Matter 中 `version` 的值，**字符串**，默认 `"0"`。不读取插件版本号、不在代码里硬编码（见 7.8）。
+- `proofFileVersion`：生成的证明文件 Front Matter 中 `version` 的值，**字符串**，默认 `"1"`。不读取插件版本号、不在代码里硬编码（见 7.8）。扩展与 CLI 必须注入同一个值，CLI 只接受与自身注入值一致的证明文件。
 - `proofFileHeader`：生成的证明文件头部说明文案，**字符串**，默认空字符串。多行文案用**模板字符串**书写，不再用 `\n` 拼接，并按 Markdown 引用块书写（每行以 `> ` 开头，空行写成单独的 `>`）。生成时把其中所有 `<project-url>` 替换为该项目的真实远程地址；缺失、非字符串或空字符串时不写头部说明，并在构建期告警。统计信息列表每行也以 `> ` 开头，与头部说明保持同一个引用块；单独一行 `---` 分隔线保持在引用块之外（不加 `> `）。头部文案中**不得**包含独立的 `---` 行（引用块内的 `> ---` 不算），否则构建期直接失败，原因见 7.8 与 13.2。
 - `oauthClientId`：GitHub OAuth App 的 client id，**字符串**，默认空字符串。预留给 CLI 的 `ideahub login`（device flow）使用，扩展本身不使用该值；空字符串是**合法值**，不告警、不影响其他字段的解析。client id 是公开标识而非凭据；client secret 不得写入本文件，也不得注入构建产物。
 - 两个包**各自持有**自己的开发者配置，互不引用：`packages/vscode-extension/config.mjs` 供扩展构建使用，`packages/cli/config.mjs` 供 CLI 构建使用；两者各自同级放置 `.env`（默认为空文件），读取优先级均为 `.env` > 本包 `config.mjs` > 默认，并在各自构建期注入产物，运行时不再读取环境变量。
-- CLI 的 `config.mjs` 目前只包含 `oauthClientId` 一个字段（空值合法）；扩展的 `config.mjs` 保持 `releaseCommit` / `proofFileVersion` / `proofFileHeader` / `oauthClientId` 不变。
+- CLI 的 `config.mjs` 包含 `proofFileVersion` 与 `oauthClientId`（后者空值合法），构建期同样注入并打印来源；扩展的 `config.mjs` 保持 `releaseCommit` / `proofFileVersion` / `proofFileHeader` / `oauthClientId` 不变。
 - 两个包内的 `.env` 均被 git 忽略、不进入 VSIX；`config.mjs` 与 `.env` 都不进入任何构建产物（扩展 VSIX 与 CLI 的 `dist` 均不含）。
-- 读取优先级：`.env`（`IDEAHUB_RELEASE_COMMIT`、`IDEAHUB_PROOF_FILE_VERSION`、`IDEAHUB_PROOF_FILE_HEADER`、`IDEAHUB_OAUTH_CLIENT_ID`，本地临时覆盖用；已在 `.gitignore` / `.vscodeignore`，不提交、不打包进 vsix）> `config.mjs` 的 `default` 导出 > 内置默认（空 / `"0"` / 空 / 空）。
+- 读取优先级：`.env`（`IDEAHUB_RELEASE_COMMIT`、`IDEAHUB_PROOF_FILE_VERSION`、`IDEAHUB_PROOF_FILE_HEADER`、`IDEAHUB_OAUTH_CLIENT_ID`，本地临时覆盖用；已在 `.gitignore` / `.vscodeignore`，不提交、不打包进 vsix）> `config.mjs` 的 `default` 导出 > 内置默认（空 / `"1"` / 空 / 空）。两个包都按此优先级解析各自关心的字段，并在构建日志中打印最终值与来源（`env` / `file` / `default`）。
 - 该文件在**构建期**由构建脚本用动态 `import()` 加载，取 `default` 导出，再通过 esbuild `define` 把解析结果注入为常量。构建产物中只有最终值，不包含配置文件；运行时**不会**从用户机器读取 `.env` 或任何外部配置文件。
 - 逐字段校验并在构建期告警回落：模块加载抛错、`default` 缺失或不是对象、字段缺失、字段类型不对、字段为空，都视为该字段非法，分别回落到该字段的默认值；构建继续，扩展也不能崩溃。唯一例外是 `oauthClientId`：空字符串是合法值，不告警。
 - `.env`、`.env.*`、`config.mjs` 均不得打包进 vsix。
@@ -533,11 +533,11 @@ tags: ["游戏", "写作"]
 
 - 发布时根据本地 `ideas.md` 生成项目根目录的 `README.md`；**不复制 `ideas.md`**。项目已有 `README.md` 时直接覆盖，不提示。
 - 由扩展追加的固定文案仍**全部使用英文**（统计项标签等），与用户原文语言无关。
-- YAML Front Matter 只含 `version`，字符串，值取自 6.7 的 `proofFileVersion`（默认 `"0"`）；**不读取插件版本号、不在代码里硬编码**：
+- YAML Front Matter 只含 `version`，字符串，值取自 6.7 的 `proofFileVersion`（默认 `"1"`）；**不读取插件版本号、不在代码里硬编码**：
 
 ```yaml
 ---
-version: "0"
+version: "1"
 ---
 ```
 
@@ -942,7 +942,7 @@ https://github.com/<远程仓库用户>/<远程仓库名字>/tree/<远程仓库�
 - 证明与发布在操作完成前按钮 disabled，且控制器按项目忽略重复请求；秒内连点只产生一次标记与一次 Release（发布只发生一次复制/推送）。
 - 发布序列为：前置检查 → 两次确认 → 发布前校验 → 拉取远程 → 写入并可选本地提交 `Published:` 标记 → 生成证明文件 → 复制项目文件夹 → 提交并推送内层仓库 → 展示远程项目链接。
 - 发布前校验对每个证明块重算指纹并分页列出远程 releases 比对 tag；任一块不通过即阻止发布，列出时间戳原文（如 `2026-11-07 09:54:51 (UTC+08:00)`），不区分“证明被改”与“没有 release”，且不写入 `Published:`、不提交、不复制、不推送。
-- 校验通过后生成 `README.md`：Front Matter 只含 `version`，值取自 6.7 的 `proofFileVersion`（缺失或非法时回落到默认 `"0"`）；头部说明取自 `proofFileHeader` 并把所有 `<project-url>` 替换为该项目的真实远程地址（缺失、非字符串或空字符串时省略该段）；其后接英文统计列表（时间跨度、证明数量、引用文件数量去重、外部链接数量去重），统计每行以 `> ` 开头并与头部说明保持同一引用块、中间不插普通空行，再接单独一行不加前缀的 `---` 分隔；证明块去两端空白保留块内空行、按证明时间升序、`Proof:` 标记前移至块首并写成 `## `、不写入 `Published:` 标记行。
+- 校验通过后生成 `README.md`：Front Matter 只含 `version`，值取自 6.7 的 `proofFileVersion`（缺失或非法时回落到默认 `"1"`）；头部说明取自 `proofFileHeader` 并把所有 `<project-url>` 替换为该项目的真实远程地址（缺失、非字符串或空字符串时省略该段）；其后接英文统计列表（时间跨度、证明数量、引用文件数量去重、外部链接数量去重），统计每行以 `> ` 开头并与头部说明保持同一引用块、中间不插普通空行，再接单独一行不加前缀的 `---` 分隔；证明块去两端空白保留块内空行、按证明时间升序、`Proof:` 标记前移至块首并写成 `## `、不写入 `Published:` 标记行。
 - 发布副本**不含 `ideas.md`**；`README.md` 写入项目根目录并覆盖已有同名文件，不提示。
 - 发布后链接可访问，格式为 `https://github.com/<owner>/<repo>/tree/<branch>/<项目名>`。
 - 发布过程仅在本地 `ideas.md` 末尾追加 `Published:` 标记行，不修改已有 `Proof:` 标记；除该单行本地提交外不触碰本地仓库。
@@ -951,8 +951,9 @@ https://github.com/<远程仓库用户>/<远程仓库名字>/tree/<远程仓库�
 
 ### 11.4 开发者配置（构建期）
 
-- `config.mjs` 以 `export default {...}` 提供 `releaseCommit`、`proofFileVersion`、`proofFileHeader`；构建脚本用动态 `import()` 读取 `default` 导出，多行头部文案用模板字符串书写。
-- `releaseCommit`、`proofFileVersion`、`proofFileHeader` 的读取优先级均为 `.env`（`IDEAHUB_RELEASE_COMMIT` / `IDEAHUB_PROOF_FILE_VERSION` / `IDEAHUB_PROOF_FILE_HEADER`）> `config.mjs` > 内置默认（空 / `"0"` / 空）；`.env` 覆盖对三个字段都生效。`releaseCommit` 非空时必须为 7–64 位十六进制，否则构建期告警并回落到空字符串。
+- 扩展的 `config.mjs` 以 `export default {...}` 提供 `releaseCommit`、`proofFileVersion`、`proofFileHeader`；CLI 的 `config.mjs` 提供 `proofFileVersion`、`oauthClientId`。构建脚本用动态 `import()` 读取 `default` 导出，多行头部文案用模板字符串书写。
+- 两包的 `proofFileVersion` 必须一致（当前为 `'1'`），分别构建期注入；CLI 以注入值作为唯一支持的证明文件版本。
+- `releaseCommit`、`proofFileVersion`、`proofFileHeader` 的读取优先级均为 `.env`（`IDEAHUB_RELEASE_COMMIT` / `IDEAHUB_PROOF_FILE_VERSION` / `IDEAHUB_PROOF_FILE_HEADER`）> `config.mjs` > 内置默认（空 / `"1"` / 空）；`.env` 覆盖对三个字段都生效。`oauthClientId` 同路径解析，空值合法。`releaseCommit` 非空时必须为 7–64 位十六进制，否则构建期告警并回落到空字符串。
 - 模块加载抛错、`default` 缺失或不是对象、字段缺失、类型错误、空字符串或空值时，构建期告警并逐字段回落到默认值，构建不中断。
 - 证明文件 `version` 只来自上述配置，不读取插件版本号，也不在代码里硬编码。
 - `.env`、`.env.*`、`config.mjs` 不进入 vsix；构建产物中只有解析后的最终值。
@@ -1055,7 +1056,7 @@ packages/
 ### 13.3 check 判定
 
 - 结构：
-  - Front Matter 必须以两条 `---` 界定且含 `version`；`version` 无法识别时退出码 2（未知格式不判伪造）；缺失或结构损坏判 FAIL。
+  - Front Matter 必须以两条 `---` 界定且含 `version`；`version` 与 CLI 构建期注入的支持版本不一致时退出码 2（未知格式不判伪造）；缺失或结构损坏判 FAIL。
   - 头部的结束位置取“第一个证明标记之前、最后一条独立 `---` 行”；该行与第一个证明标记之间除空行外出现任何内容，判 FAIL（多余内容）。
   - 头部区域本身属于说明性文本，不参与验证，CLI 不得将其内容当作证明。
 - 证明块：
