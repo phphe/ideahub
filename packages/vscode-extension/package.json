@@ -2,7 +2,7 @@
   "name": "ideahub-vscode",
   "displayName": "%ideahub.displayName%",
   "description": "%ideahub.description%",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "publisher": "ideahub",
   "license": "MIT",
   "private": true,
