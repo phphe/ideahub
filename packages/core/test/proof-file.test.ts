@@ -119,7 +119,7 @@ describe('renderProofFile', () => {
   it('omits the header when it is missing, empty or blank', () => {
     for (const options of [undefined, {}, { header: '' }, { header: '   \n ' }]) {
       const proofFile = renderProofFile(blocks, PROJECT_URL, options);
-      expect(proofFile.startsWith('---\nversion: "0"\n---\n\n> - Time span:')).toBe(true);
+      expect(proofFile.startsWith('---\nversion: "1"\n---\n\n> - Time span:')).toBe(true);
       expect(proofFile).not.toContain('This file is the IdeaHub proof file');
       expect(proofFile).not.toContain('Do not trust this file directly');
     }

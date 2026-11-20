@@ -77,7 +77,7 @@ describe('copyProjectIntoInnerRepository', () => {
     await fs.writeFile(path.join(project, 'README.md'), 'user readme', 'utf8');
 
     const inner = await tempDir('ideahub-copy-readme-dst-');
-    const proofFile = `---\nversion: "0"\n---\n\n${marker}\n\n创意原文\n`;
+    const proofFile = `---\nversion: "1"\n---\n\n${marker}\n\n创意原文\n`;
     const result = await copyProjectIntoInnerRepository(inner, 'MyGame', project, proofFile);
     expect(result.ok).toBe(true);
 
