@@ -2,7 +2,7 @@ const { pathToFileURL } = require('node:url');
 const { resolve } = require('node:path');
 
 const DEFAULT_RELEASE_COMMIT = '';
-const DEFAULT_PROOF_FILE_VERSION = '0';
+const DEFAULT_PROOF_FILE_VERSION = '1';
 const DEFAULT_PROOF_FILE_HEADER = '';
 const DEFAULT_OAUTH_CLIENT_ID = '';
 const DEVELOPER_CONFIG_FILE = 'config.mjs';
@@ -153,7 +153,7 @@ function resolveReleaseCommit({ envText = null, config = null } = {}) {
 
 /**
  * Section 6.7: `proofFileVersion` resolves from `.env` > `config.mjs`
- * > `"0"`. Missing, non-string or empty values warn and fall back separately.
+ * > `"1"`. Missing, non-string or empty values warn and fall back separately.
  */
 function resolveProofFileVersion({ envText = null, config = null } = {}) {
   const warnings = [];
