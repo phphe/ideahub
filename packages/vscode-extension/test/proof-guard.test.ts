@@ -3,7 +3,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { runGit } from '@ideahub/core';
-import { appendMarkerLine, computeProofHash } from '@ideahub/core';
+import { appendMarkerLine, computeProofHash, formatMarkerTime } from '@ideahub/core';
 import type { WorkspaceState } from '@ideahub/core';
 import { IdeahubController } from '../src/ui/controller';
 
@@ -197,8 +197,7 @@ describe('markProject guard and release payload', { timeout: 60000 }, () => {
     expect(args[2]).toMatch(
       new RegExp(`^ideahub-${computeProofHash('MyGame', '创意原文')}$`)
     );
-    expect(args[3]).toMatch(/^2026-\d{2}-\d{2} \d{2}:\d{2}:\d{2} \(UTC[+-]\d{2}:\d{2}\)$/);
-    expect(args[3]).not.toContain('sha256=');
+    expect(args[3]).toBe('abc123def456');
 
     const current = await fs.readFile(path.join(root, 'MyGame', 'ideas.md'), 'utf8');
     expect(current.match(/Proof:/g)).toHaveLength(1);
@@ -212,18 +211,24 @@ describe('markProject guard and release payload', { timeout: 60000 }, () => {
     expect(stat).toContain('1 file changed, 2 insertions(+)');
   });
 
-  it('treats an existing release for the same hash as idempotent and does not create a new one', async () => {
+  it('reuses an existing immutable release and stamps the marker with its publish time', async () => {
+    const publishedAt = '2026-11-06T10:33:28Z';
     const { root, controller } = await createProject(`旧内容\n###### \`Proof: 2026-11-01 10:00:00 (UTC+08:00) [ideahub]\`\n新内容\n`);
-    existingReleaseMock.mockReturnValue(
-      Promise.resolve({ publishedAt: '2026-11-06T10:33:28Z', immutable: true })
+    createReleaseMock.mockReturnValue(
+      Promise.resolve({
+        created: false,
+        release: { publishedAt, immutable: true }
+      })
     );
 
     const result = await (controller as ControllerLike).markProject('MyGame');
 
     expect(result.ok).toBe(true);
     expect(result.message).toContain('Proof already existed');
-    expect(createReleaseMock).not.toHaveBeenCalled();
+    expect(createReleaseMock).toHaveBeenCalledTimes(1);
     const current = await fs.readFile(path.join(root, 'MyGame', 'ideas.md'), 'utf8');
     expect(current.match(/Proof:/g)).toHaveLength(2);
+    const expected = formatMarkerTime(new Date(publishedAt));
+    expect(current).toContain(`Proof: ${expected} [ideahub]`);
   });
 });
