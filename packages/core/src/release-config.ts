@@ -7,8 +7,8 @@
  */
 export const RELEASE_COMMIT: string = process.env.IDEAHUB_RELEASE_COMMIT ?? '';
 
-/** Section 7.8: proof file front matter `version`, default `"0"`. */
-export const PROOF_FILE_VERSION: string = process.env.IDEAHUB_PROOF_FILE_VERSION ?? '0';
+/** Section 7.8: proof file front matter `version`, default `"1"`. */
+export const PROOF_FILE_VERSION: string = process.env.IDEAHUB_PROOF_FILE_VERSION ?? '1';
 
 /** Section 7.8: optional proof file header copy; empty means omitted. */
 export const PROOF_FILE_HEADER: string = process.env.IDEAHUB_PROOF_FILE_HEADER ?? '';
