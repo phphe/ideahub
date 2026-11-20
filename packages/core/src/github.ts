@@ -7,6 +7,7 @@ export interface GitHubRepositoryInfo {
 }
 
 export interface GitHubReleaseInfo {
+  id?: number;
   tagName: string;
   publishedAt: string | null;
   immutable?: boolean;
@@ -47,6 +48,7 @@ interface RawRepository {
 }
 
 interface RawRelease {
+  id?: number;
   tag_name?: string;
   published_at?: string | null;
   immutable?: boolean;
@@ -96,10 +98,15 @@ function earliestSha(commits: RawCommit[] | null): { sha: string } | null {
 
 function releaseFromRaw(raw: RawRelease): GitHubReleaseInfo {
   return {
+    id: typeof raw.id === 'number' ? raw.id : undefined,
     tagName: raw.tag_name ?? '',
     publishedAt: raw.published_at ?? null,
     immutable: typeof raw.immutable === 'boolean' ? raw.immutable : undefined
   };
+}
+
+function hasAlreadyExistsCode(payload: GitHubErrorPayload | undefined): boolean {
+  return (payload?.errors ?? []).some((item) => item.code === 'already_exists');
 }
 
 export class GitHubClient {
@@ -296,35 +303,69 @@ export class GitHubClient {
     return raw ? releaseFromRaw(raw) : null;
   }
 
+  private async postRelease(
+    owner: string,
+    repo: string,
+    tag: string,
+    targetCommitish: string
+  ): Promise<{ created: boolean; release: GitHubReleaseInfo | null }> {
+    const raw = await this.request<RawRelease>(
+      'POST',
+      `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/releases`,
+      {
+        tag_name: tag,
+        target_commitish: targetCommitish,
+        name: tag,
+        body: '',
+        draft: false,
+        prerelease: false
+      }
+    );
+    return { created: true, release: raw ? releaseFromRaw(raw) : null };
+  }
+
+  async deleteRelease(owner: string, repo: string, id: number): Promise<void> {
+    await this.request(
+      'DELETE',
+      `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/releases/${id}`
+    );
+  }
+
+  /**
+   * Section 7.4: when the tag already exists, an immutable Release is the
+   * idempotent result. A mutable (or unknown) one is deleted silently and
+   * recreated; any other failure keeps the original error.
+   */
   async createRelease(
     owner: string,
     repo: string,
     tag: string,
-    description: string,
     targetCommitish: string
   ): Promise<{ created: boolean; release: GitHubReleaseInfo | null }> {
     try {
-      const raw = await this.request<RawRelease>(
-        'POST',
-        `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/releases`,
-        {
-          tag_name: tag,
-          target_commitish: targetCommitish,
-          name: tag,
-          body: description,
-          draft: false,
-          prerelease: false
-        }
-      );
-      return { created: true, release: raw ? releaseFromRaw(raw) : null };
+      return await this.postRelease(owner, repo, tag, targetCommitish);
     } catch (error) {
-      if (error instanceof GitHubApiError && error.status === 422) {
-        const existing = await this.getReleaseByTag(owner, repo, tag);
-        if (existing) {
-          return { created: false, release: existing };
-        }
+      if (
+        !(
+          error instanceof GitHubApiError &&
+          error.status === 422 &&
+          hasAlreadyExistsCode(error.payload)
+        )
+      ) {
+        throw error;
       }
-      throw error;
+      const existing = await this.getReleaseByTag(owner, repo, tag);
+      if (!existing) {
+        throw error;
+      }
+      if (existing.immutable === true) {
+        return { created: false, release: existing };
+      }
+      if (typeof existing.id !== 'number') {
+        throw error;
+      }
+      await this.deleteRelease(owner, repo, existing.id);
+      return this.postRelease(owner, repo, tag, targetCommitish);
     }
   }
 
