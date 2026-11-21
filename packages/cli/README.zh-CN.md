@@ -9,8 +9,8 @@ IdeaHub 命令行校验工具：根据内容指纹核验他人的创意时间证
 以下地址均指向远程证明仓库。
 
 ```sh
-npx ideahub check <项目网址>
-npx ideahub login
+npx @ideahub/cli check <项目网址>
+npx @ideahub/cli login
 ```
 
 `check` 的项目网址是远程证明仓库中项目目录的地址，只接受两种形式：
@@ -28,6 +28,6 @@ npx ideahub login
 | FAIL | 红色 `FAIL` | 1 |
 | 执行错误 | 只报错 | 2 |
 
-匿名 60 次/小时，`ideahub login` 后 5000 次/小时。
+匿名 60 次/小时，`npx @ideahub/cli login` 后 5000 次/小时。
 
 完整流程与配置见[根 README](https://github.com/phphe/ideahub/tree/main/README.zh-CN.md)。

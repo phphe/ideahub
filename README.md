@@ -44,12 +44,12 @@ It computes a content fingerprint from the original idea text and publishes only
 ## Verify others' proofs with the CLI
 
 ```sh
-npx ideahub check <project-url>
+npx @ideahub/cli check <project-url>
 ```
 
 Three outcomes: `PASS` exits with 0, `FAIL` with 1, and execution errors with 2.
 
-The CLI queries the GitHub API. You can sign in to GitHub to raise the API quota: `npx ideahub login` (60 requests/hour anonymously, 5,000/hour after signing in).
+The CLI queries the GitHub API. You can sign in to GitHub to raise the API quota: `npx @ideahub/cli login` (60 requests/hour anonymously, 5,000/hour after signing in).
 
 ## Configuration
 

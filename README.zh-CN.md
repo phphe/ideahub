@@ -45,12 +45,12 @@ IdeaHub 是一个开源工具，用来证明创意在某个时间点之前就已
 ## 用 CLI 验证他人的证明
 
 ```sh
-npx ideahub check <项目网址>
+npx @ideahub/cli check <项目网址>
 ```
 
 3种结果: `PASS` 退出码为 0，`FAIL` 为 1，执行错误为 2。
 
-cli通过github api查询, 可登录github提升api配额：`npx ideahub login`（匿名 60 次/小时，登录后 5000 次/小时）。
+cli通过github api查询, 可登录github提升api配额：`npx @ideahub/cli login`（匿名 60 次/小时，登录后 5000 次/小时）。
 
 ## 配置
 

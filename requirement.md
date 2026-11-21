@@ -90,7 +90,7 @@
 | 证明文件 | 发布时根据 `ideas.md` 生成的英文 `README.md`，包含时间跨度、各类数量、按时间升序排列的证明块与校验指引（见 7.8）。 |
 | 保留字符 | `🔏`。只由扩展插入到参与哈希的项目内图片/链接之前；用户原文不得包含它；`ideas.md` 永不写入扩展插入的该字符（见 7.3）。 |
 | release 目标提交 | 创建证明 Release 时作为 `target_commitish` 的 commit：优先使用构建期注入的 `releaseCommit`（存在且有效时），否则使用远程证明仓库默认分支**最早的 commit**；不再维护专门的 release 分支（见 5.5、6.7）。 |
-| CLI | 命令行校验工具（npm 包 `ideahub`），提供 `check` 与 `login` 两个命令，供拿到项目网址的第三方查看者独立校验证明；与 VS Code 扩展无运行时依赖（见第十三章）。 |
+| CLI | 命令行校验工具（npm 包 `@ideahub/cli`），提供 `check` 与 `login` 两个命令，供拿到项目网址的第三方查看者独立校验证明；与 VS Code 扩展无运行时依赖（见第十三章）。 |
 | 证明块 | 证明文件中由一条 `` ## 🔏 `Proof: ...` `` 标记开头、到下一个证明标记或文件末尾为止的内容；`ideas.md` 中对应的是该标记**之前**、上一条证明标记之后的内容（见 7.8、13.2）。 |
 
 **命名限定**：产品中文名仍为「创意仓库」；文中裸词「创意仓库」只指产品本身。指仓库时一律使用「远程证明仓库」或「本地创意仓库」，不使用「远程仓库」「本地仓库」等简称。
@@ -339,7 +339,7 @@ export default {
 > It was generated from the author's ideas.md when the project was published
 > and lists every recorded proof in chronological order.
 >
-> Verify it with \`npx ideahub check <project-url>\` before trusting any proof.
+> Verify it with \`npx @ideahub/cli check <project-url>\` before trusting any proof.
 > If the command does not pass, the content may have been modified.`
 };
 ```
@@ -349,7 +349,7 @@ export default {
 - `releaseCommit`：创建证明 Release 时优先使用的 commit id（见 5.5、8.10），**字符串**，默认空字符串（表示不指定，使用远程默认分支最早的 commit）。非空时必须为 7–64 位十六进制；格式非法、为空或远程不存在时回落到默认分支最早的 commit。
 - `proofFileVersion`：生成的证明文件 Front Matter 中 `version` 的值，**字符串**，默认 `"1"`。不读取插件版本号、不在代码里硬编码（见 7.8）。扩展与 CLI 必须注入同一个值，CLI 只接受与自身注入值一致的证明文件。
 - `proofFileHeader`：生成的证明文件头部说明文案，**字符串**，默认空字符串。多行文案用**模板字符串**书写，不再用 `\n` 拼接，并按 Markdown 引用块书写（每行以 `> ` 开头，空行写成单独的 `>`）。生成时把其中所有 `<project-url>` 替换为该项目的真实远程地址；缺失、非字符串或空字符串时不写头部说明，并在构建期告警。统计信息列表每行也以 `> ` 开头，与头部说明保持同一个引用块；单独一行 `---` 分隔线保持在引用块之外（不加 `> `）。头部文案中**不得**包含独立的 `---` 行（引用块内的 `> ---` 不算），否则构建期直接失败，原因见 7.8 与 13.2。
-- `oauthClientId`：GitHub OAuth App 的 client id，**字符串**，默认空字符串。预留给 CLI 的 `ideahub login`（device flow）使用，扩展本身不使用该值；空字符串是**合法值**，不告警、不影响其他字段的解析。client id 是公开标识而非凭据；client secret 不得写入本文件，也不得注入构建产物。
+- `oauthClientId`：GitHub OAuth App 的 client id，**字符串**，默认空字符串。预留给 CLI 的 `npx @ideahub/cli login`（device flow）使用，扩展本身不使用该值；空字符串是**合法值**，不告警、不影响其他字段的解析。client id 是公开标识而非凭据；client secret 不得写入本文件，也不得注入构建产物。
 - 两个包**各自持有**自己的开发者配置，互不引用：`packages/vscode-extension/config.mjs` 供扩展构建使用，`packages/cli/config.mjs` 供 CLI 构建使用；两者各自同级放置 `.env`（默认为空文件），读取优先级均为 `.env` > 本包 `config.mjs` > 默认，并在各自构建期注入产物，运行时不再读取环境变量。
 - CLI 的 `config.mjs` 包含 `proofFileVersion` 与 `oauthClientId`（后者空值合法），构建期同样注入并打印来源；扩展的 `config.mjs` 保持 `releaseCommit` / `proofFileVersion` / `proofFileHeader` / `oauthClientId` 不变。
 - 两个包内的 `.env` 均被 git 忽略、不进入 VSIX；`config.mjs` 与 `.env` 都不进入任何构建产物（扩展 VSIX 与 CLI 的 `dist` 均不含）。
@@ -964,9 +964,9 @@ https://github.com/<远程证明仓库用户>/<远程证明仓库名字>/tree/<�
 
 ### 11.5 CLI
 
-- `ideahub check <project-url>` 对合规证明输出 `PASS` 并以 0 退出；对确定不合规的证明输出 `FAIL` 并以 1 退出；执行错误（限流、网络、仓库不可访问等）不输出 `PASS`/`FAIL`，以 2 退出（见 13.1、13.6）。
+- `npx @ideahub/cli check <project-url>` 对合规证明输出 `PASS` 并以 0 退出；对确定不合规的证明输出 `FAIL` 并以 1 退出；执行错误（限流、网络、仓库不可访问等）不输出 `PASS`/`FAIL`，以 2 退出（见 13.1、13.6）。
 - CLI 使用 `@ideahub/core` 的英文默认文案，不读取扩展的 `package.nls.*.json` 或 `l10n/` 语言包（见第十四章）。
-- `ideahub login` 成功后，`check` 的配额从匿名的 60 次/小时提升到 5000 次/小时。
+- `npx @ideahub/cli login` 成功后，`check` 的配额从匿名的 60 次/小时提升到 5000 次/小时。
 - CLI 与扩展对同一份证明文件的判定一致：结构、块指纹、不可变校验、时间窗口、`🔏` 规则均由 `@ideahub/core` 的同一套实现承担（见 13.4）。
 - 每个证明块只消耗一次列表请求的量级：整份文件固定为「README 1 次 + git tree 1 次 + releases 列表 1 次起」，不随块数线性增长（见 13.3）。
 - 证明文件头部含独立 `---` 时，CLI 不得把 header 剩余部分误判为“多余内容”：该情形由构建期检查排除，运行期若遇到按 ERROR 处理。
@@ -984,11 +984,11 @@ https://github.com/<远程证明仓库用户>/<远程证明仓库名字>/tree/<�
 packages/
 ├── core/                 # @ideahub/core：纯逻辑库，不发布
 ├── vscode-extension/     # ideahub-vscode：VS Code 扩展（发布为 VSIX）
-└── cli/                  # ideahub：CLI 工具（发布到 npm，需求见第十三章）
+└── cli/                  # @ideahub/cli：CLI 工具（发布到 npm，需求见第十三章）
 ```
 
-- `packages/core`、`packages/vscode-extension` 均 `private: true`，不发布到 npm；VS Code 扩展的包名必须保持合法的扩展名（小写字母与连字符），因此使用 `ideahub-vscode`，避免与 CLI 的 npm 包名 `ideahub` 冲突。
-- `packages/cli` 用 esbuild 打包为 `dist/index.js`，以 npm 包名 `ideahub` 发布（`license: MIT`，`bin` 暴露 `ideahub` 命令）；`@ideahub/core` 在构建时被打包进 `dist`，只作为 `devDependencies` 存在，不要求消费者安装。自带 `config.mjs` 与 `.env`，构建期注入 `oauthClientId`。
+- `packages/core`、`packages/vscode-extension` 均 `private: true`，不发布到 npm；VS Code 扩展的包名必须保持合法的扩展名（小写字母与连字符），因此使用 `ideahub-vscode`，避免与 CLI 的 npm 包名 `@ideahub/cli` 冲突。
+- `packages/cli` 用 esbuild 打包为 `dist/index.js`，以 npm 包名 `@ideahub/cli` 发布（`license: MIT`，`bin` 暴露 `ideahub` 命令）；`@ideahub/core` 在构建时被打包进 `dist`，只作为 `devDependencies` 存在，不要求消费者安装。自带 `config.mjs` 与 `.env`，构建期注入 `oauthClientId`。
 
 ### 12.2 packages/core
 
@@ -1023,13 +1023,13 @@ packages/
 
 ---
 
-## 十三、CLI 校验工具（`ideahub`）
+## 十三、CLI 校验工具（`@ideahub/cli`）
 
 ### 13.1 命令与退出码
 
 - 命令：
-  - `ideahub check <project-url>`：校验一份已发布的证明文件；
-  - `ideahub login`：登录 GitHub，用于提升 API 配额。
+  - `npx @ideahub/cli check <project-url>`：校验一份已发布的证明文件；
+  - `npx @ideahub/cli login`：登录 GitHub，用于提升 API 配额。
 - 所有面向用户的输出（用法、进度、结果说明、错误信息）一律使用**英文**，不中英混排；仅 `PASS` / `FAIL` 关键字与退出码保持不变。
 - 输出与退出码：
 
@@ -1053,7 +1053,7 @@ packages/
 - Release：`GET /repos/{owner}/{repo}/releases?per_page=100` 分页列出全部 release，建立 `tag → release` 集合；**不**逐 tag 单独查询。只接受 `tag_name` 形如 `ideahub-<64 位小写十六进制>` 的项。
 - 项目文件的来源分支是**发布分支（通常即 `default_branch`）的最新提交**；release tag 指向的是 5.5 的目标提交（可能是默认分支最早的 commit 或配置的 `releaseCommit`），**不能**假定其中包含项目文件。
 - 因此 CLI 的 PASS 语义是“**当前已发布内容**仍与记录一致”；同一项目后续发布若删除或修改了被旧块引用的文件，旧块会判 FAIL。CLI 输出必须写明实际比对的分支与 commit SHA，不得声称验证了“证明时刻”的内容。
-- 匿名配额为 60 次/小时；收到 429、403 且 `X-RateLimit-Remaining: 0` 或 `Retry-After` 时不判 FAIL，而是报错并提示执行 `ideahub login`（登录后为 5000 次/小时）。
+- 匿名配额为 60 次/小时；收到 429、403 且 `X-RateLimit-Remaining: 0` 或 `Retry-After` 时不判 FAIL，而是报错并提示执行 `npx @ideahub/cli login`（登录后为 5000 次/小时）。
 
 ### 13.3 check 判定
 
@@ -1090,7 +1090,7 @@ packages/
 ### 13.6 登录与凭据
 
 - Token 来源优先级：`IDEAHUB_TOKEN` → `GITHUB_TOKEN` → `GH_TOKEN` → `gh auth token`（已安装 GitHub CLI 时）→ 本地保存的登录凭据 → 匿名。
-- `ideahub login` 使用 GitHub OAuth device flow，client id 来自构建期注入的 `oauthClientId`（见 6.7）；client id 为空时该方式不可用，只支持手动粘贴 token。client secret 与 token 均不得进入源码或构建产物。
+- `npx @ideahub/cli login` 使用 GitHub OAuth device flow，client id 来自构建期注入的 `oauthClientId`（见 6.7）；client id 为空时该方式不可用，只支持手动粘贴 token。client secret 与 token 均不得进入源码或构建产物。
 - 凭据保存在用户配置目录，文件权限 `0600`；任何输出、日志、错误信息都**不得**回显 token。
 - 登录只影响配额，不改变任何判定规则；匿名与登录状态下对同一份证明的结论必须一致（配额错误除外）。
 

@@ -9,8 +9,8 @@ English | [简体中文](README.zh-CN.md)
 All addresses below point to the remote proof repository.
 
 ```sh
-npx ideahub check <project-url>
-npx ideahub login
+npx @ideahub/cli check <project-url>
+npx @ideahub/cli login
 ```
 
 The project URL passed to `check` is the address of a project directory inside the remote proof repository. Exactly two forms are accepted:
@@ -28,6 +28,6 @@ Any other address (`blob/`, a non-github.com host, a missing path segment, etc.)
 | FAIL | red `FAIL` | 1 |
 | Execution error | error only | 2 |
 
-Anonymous requests are limited to 60 per hour; after `ideahub login` the limit is 5,000 per hour.
+Anonymous requests are limited to 60 per hour; after `npx @ideahub/cli login` the limit is 5,000 per hour.
 
 For the full workflow and configuration, see the [root README](https://github.com/phphe/ideahub/tree/main/README.md).

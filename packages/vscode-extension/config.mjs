@@ -6,7 +6,7 @@ proofFileHeader 中文版原文
 >
 > **本文件不具备自我验证功能。** 发布后，文件内容仍可能被修改。在采信本文件中的记录之前，请使用 IdeaHub CLI 对其进行核验：
 >
-> `npx ideahub check <project-url>`
+> `npx @ideahub/cli check <project-url>`
 >
 > 核验通过后，你可以确认本文件中的以下内容与对应的时间记录一致：
 >
@@ -22,7 +22,7 @@ const proofFileHeader = `
 >
 > **This file is not self-verifying.** Its contents may be modified after publication. Before relying on its records, use the IdeaHub CLI to check this file:
 >
-> \`npx ideahub check <project-url>\`
+> \`npx @ideahub/cli check <project-url>\`
 >
 > If the check passes, you can confirm that the following content matches the corresponding time records:
 >
@@ -37,7 +37,7 @@ export default {
   // branch head"; a non-empty value must be a 7-64 character hex commit id.
   releaseCommit: '5f24c3aa6be27eb3175d588f9342968d1508f57d',
   proofFileVersion: '1',
-  // GitHub OAuth App client id, reserved for the future CLI `ideahub login`
+  // GitHub OAuth App client id, reserved for the future CLI `npx @ideahub/cli login`
   // (device flow). The extension itself never uses it. An empty string is a
   // valid value and must not warn; the client secret never belongs here.
   oauthClientId: '',
