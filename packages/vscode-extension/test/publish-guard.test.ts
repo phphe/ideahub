@@ -122,7 +122,7 @@ afterEach(async () => {
   );
 });
 
-describe('publishProject precondition', { timeout: 30000 }, () => {
+describe('publishProject precondition', () => {
   it('blocks unproven content before writing, committing, copying or confirming', async () => {
     const { root, controller } = await createProject(`创意\n${PROOF}\n新增内容\n`);
     const before = await head(root);
