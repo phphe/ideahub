@@ -654,7 +654,7 @@ function renderMain(state: WorkspaceState, t: Translator): string {
           )}</p>
           <p class="muted">${escapeHtml(
             t(
-              'Initialization only creates a Git repository, the .ideahub configuration, the pre-push hook and README. It commits and pushes nothing.'
+              'Initialization only creates a Git repository, the .ideahub configuration, the pre-push hook and README. It commits the newly created files to the local idea repository and never pushes.'
             )
           )}</p>
           <div class="actions">

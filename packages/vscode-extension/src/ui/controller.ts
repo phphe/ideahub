@@ -316,7 +316,7 @@ export class IdeahubController {
         ? this.t('README.md already exists, so the existing README.md will be kept.')
         : this.t('README.md will be created.');
       const common = this.t(
-        'Existing .ideahub/ content will be reused; {0} No existing files will be overwritten, and nothing will be pushed or published automatically; only the newly created .ideahub/config.json will be committed to the local idea repository.\nInitialize the local idea repository in this folder anyway?',
+        'Existing .ideahub/ content will be reused; {0} No existing files will be overwritten, and nothing will be pushed or published automatically; only the newly created .ideahub/config.json, .ideahub/.gitignore and README.md will be committed to the local idea repository.\nInitialize the local idea repository in this folder anyway?',
         readmeLine
       );
       const confirmation = hasGit
