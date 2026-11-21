@@ -1,8 +1,11 @@
 {
-  "name": "ideahub",
+  "name": "@ideahub/cli",
   "version": "1.0.0",
   "description": "Command line tool that verifies IdeaHub proofs of when an idea was created.",
   "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
   "keywords": [
     "ideahub",
     "idea",
