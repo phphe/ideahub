@@ -71,7 +71,7 @@
 - 任何可能覆盖、删除、上传或公开用户数据的操作，都必须先检查并明确提示，且需用户确认。
 - 不自动提交、不自动推送、不自动公开任何本地文件。
 - 例外一：用户在 6.8 开启 `ideahub.proof.autoCommit` 后，证明或发布标记写入成功时只把 `ideas.md` 的标记行提交到**本地创意仓库**（见 8.9、8.10、第九章第 2 条）；绝不 push、绝不 amend、绝不动其他文件。
-- 例外二：git 可用且本地创意仓库存在时，初始化**新建**的 `.ideahub/config.json`、`.ideahub/.gitignore` 与 `README.md`、以及用户通过设置修改远程证明仓库配置后的 `.ideahub/config.json`，自动提交到**本地创意仓库**（见 8.3、8.4、第九章第 2 条）；只提交本次新建或修改的这些文件，绝不 push、绝不 amend、不暂存或提交其他文件。
+- 例外二：git 可用且本地创意仓库存在时，初始化**新建**的 `.ideahub/config.json`、`.ideahub/.gitignore` 与 `README.md`、新建项目时新建的 `ideas.md`、以及用户通过设置修改远程证明仓库配置后的 `.ideahub/config.json`，自动提交到**本地创意仓库**（见 8.3、8.4、第九章第 2 条）；只提交本次新建或修改的这些文件，绝不 push、绝不 amend、不暂存或提交其他文件。
 
 ---
 
@@ -368,10 +368,10 @@ export default {
 | `ideahub.proof.commitMessage` | string | `ideahub: record proof` | 证明标记的自动提交信息模板，支持 `{project}`、`{time}`；未知占位符原样保留；空值回落默认值。 |
 | `ideahub.publish.commitMessage` | string | `ideahub: mark published` | 发布标记的自动提交信息模板，支持 `{project}`、`{time}`；未知占位符原样保留；空值回落默认值。 |
 
-- 默认提交文案固定为英文 `ideahub: <message>` 形式（不用 Conventional Commit 格式，也不嵌入项目名）：证明为 `ideahub: record proof`，发布为 `ideahub: mark published`，初始化为 `ideahub: initialize repository`，修改远程证明仓库配置为 `ideahub: update remote config`。即使以后插件支持多语言，默认文案也保持英文；用户自定义的文本仍然优先。
+- 默认提交文案固定为英文 `ideahub: <message>` 形式（不用 Conventional Commit 格式，也不嵌入项目名）：证明为 `ideahub: record proof`，发布为 `ideahub: mark published`，初始化为 `ideahub: initialize repository`，新建项目为 `ideahub: create project`，修改远程证明仓库配置为 `ideahub: update remote config`。即使以后插件支持多语言，默认文案也保持英文；用户自定义的文本仍然优先。
 - 自动提交只在用户启用 git、开启 `ideahub.proof.autoCommit` 且本地存在 Git 仓库时执行。
 - 自动提交只包含 `ideas.md` 的标记行；不推送、不 amend、不动其他文件（见 8.9、8.10、第九章第 2 条）。
-- 初始化新建的 `.ideahub/config.json`、`.ideahub/.gitignore` 与 `README.md`，以及修改远程配置后的 `.ideahub/config.json`，其自动提交不受 `ideahub.proof.autoCommit` 控制：只要 git 可用、本地存在仓库，就提交这些新建或修改的文件（见 2.4 例外二、8.3、8.4）。
+- 初始化新建的 `.ideahub/config.json`、`.ideahub/.gitignore` 与 `README.md`、新建项目生成的 `ideas.md`，以及修改远程配置后的 `.ideahub/config.json`，其自动提交不受 `ideahub.proof.autoCommit` 控制：只要 git 可用、本地存在仓库，就提交这些新建或修改的文件（见 2.4 例外二、8.3、8.4）。
 - 旧键名 `ideahub.mark.autoCommit` / `ideahub.mark.commitMessage` 不再读取、不做迁移。
 
 ### 6.9 项目标签（YAML Front Matter）
@@ -482,7 +482,7 @@ tags: ["游戏", "写作"]
   - 该 Release 的 `immutable` 为 `false` 或缺失：静默删除该 Release（`DELETE /repos/{owner}/{repo}/releases/{id}`，不提示用户），然后重新创建。
   - 查不到 Release、删除失败或其它错误：按原有错误处理，不写入标记。
   - 因此同一内容重复证明可以完成并补写标记；命中已有不可变 Release 时，标记时间取该 Release 的发布时间（见 7.3、7.5）。
-- Release 创建在远程证明仓库中，依赖已启用的 Release 不可变设置；创建成功后若 `immutable` 不是 `true`，仍提示用户开启仓库级 Release 不可变性。
+- Release 创建在远程证明仓库中，依赖已启用的 Release 不可变设置；创建成功后若 `immutable` 不是 `true`，按失败处理：不写入任何标记，用 VS Code 错误通知提示，消息开头先概括失败原因，再给出 Tag 与开启设置的指引。
 
 ### 7.5 时间
 
@@ -603,6 +603,7 @@ version: "1"
 5. 创建 README，说明仓库用途与安全注意事项（特别是“本地创意仓库只能连接自己的私有仓库”）。内容固定为英文，不随 VS Code 显示语言变化。`README.md` 已存在时**保留现有文件**，绝不覆盖。
 6. 初始化完成后，若 git 可用且本地存在仓库，自动把本次**新建**的 `.ideahub/config.json`、`.ideahub/.gitignore` 与 `README.md` 一起提交到本地创意仓库（信息固定为 `ideahub: initialize repository`，不推送、不 amend、不动其他文件，见 2.4 例外二）。复用的已有文件不提交。
 7. 完成后重新检测并进入对应状态。
+8. 成功通知必须以“初始化成功”开头（英文为 `Initialization succeeded`），随后列出新建、复用与自动提交结果。
 
 约束：
 
@@ -747,13 +748,14 @@ version: "1"
 1. 输入项目名称，按 6.4 校验；非法名称不落盘，并给出具体原因。
 2. 创建 `<项目名>/` 目录及其中的 `ideas.md`。
 3. `ideas.md` 使用 5.4 / 6.x 约定的模板；文档未定义模板时，写入最小合法内容（标题行 `### <项目名>`），并在结果中说明使用了最小模板。**不生成 YAML Front Matter**（见 6.9）。
-4. 完成后刷新项目列表并定位到新项目（打开其 `ideas.md` 按 8.7 静默处理）。
-5. 同名本地项目目录、同名远程项目目录或同名普通文件夹已存在时，停止创建，不覆盖任何内容。
-6. 创建失败必须给出可读原因（权限、名称冲突、写入失败等）。
+4. `ideas.md` 写入成功后，若 git 可用且本地存在仓库，自动只提交该新建文件到本地创意仓库（信息固定为 `ideahub: create project`，不推送、不 amend、不动其他文件）；与初始化自动提交一致，不受 `ideahub.proof.autoCommit` 控制（见 2.4 例外二）。提交失败不影响项目创建，需在结果中说明原因。
+5. 完成后刷新项目列表并定位到新项目（打开其 `ideas.md` 按 8.7 静默处理）。
+6. 同名本地项目目录、同名远程项目目录或同名普通文件夹已存在时，停止创建，不覆盖任何内容。
+7. 创建失败必须给出可读原因（权限、名称冲突、写入失败等）。
 
 约束：
 
-- **不**自动提交、推送或公开新项目。
+- **不**自动推送或公开新项目；除第 4 步对新建 `ideas.md` 的本地提交外，不自动提交其他文件。
 - **不**修改用户输入的名称或大小写（同 6.4）。
 
 ### 8.9 “证明”操作
@@ -777,7 +779,7 @@ version: "1"
    - 新建 Release，或命中已有 `immutable === true` 的 Release：视为成功。
    - 命中已有不可变 Release 时，本地标记时间取该 Release 的 `published_at`，并转换为 7.1 的本地时区格式；**不得使用当前时间**，否则 CLI 的 1 小时时间窗口会判 FAIL。
    - 已有 Release 的 `immutable` 为 `false` 或缺失：按 7.4 静默删除并重建，以重建结果为准。
-   - 新建的 Release `immutable` 不是 `true`：仍按现有方式提示用户开启仓库级 Release 不可变性。
+   - 新建或重建后的 Release `immutable` 不是 `true`：按失败处理，**不写入**任何本地标记；使用 VS Code 错误通知，消息以简洁概括开头（例如“生成证明失败：Release 不是不可变状态”），随后给出 Tag、未启用/未确认的原因与开启仓库级 Release 不可变性的指引。
 7. **确认 Release 可用后**，才在本地 `ideas.md` 末尾追加标记行：
    - 格式（与 7.1 一致）：`` ###### `Proof: YYYY-MM-DD HH:mm:ss (UTC+08:00) [ideahub]` ``
    - 时间取第 6 步确定的标记时间（新建用当前时间；命中已有不可变 Release 用其 `published_at` 的本地时区格式）。
@@ -788,7 +790,7 @@ version: "1"
    - 提交内容就是该标记行本身（**含 `######` 前缀与反引号**）；必要时同时包含前置空行，diff 不会出现其他正文变更。
    - 如果 `ideas.md` 在暂存区已有用户改动，或无法可靠确定插入位置（如 HEAD 内容不可读、文件未被跟踪），**跳过自动提交**并通过 VS Code 通知提示原因，不破坏用户的暂存状态。
    - 提交失败不影响标记已写入：通过 VS Code 通知提示“标记已写入，但自动提交失败：<原因>”，同时写入 IdeaHub 输出通道。
-9. Release 创建失败（权限、网络、Release 不可变限制、Tag 冲突等）时，**不得**写入任何标记，且必须提示失败原因。
+9. Release 创建失败（权限、网络、Release 不可变限制、Tag 冲突、`immutable` 不是 `true` 等）时，**不得**写入任何标记，且必须用 VS Code 错误通知提示失败原因；错误消息开头先给出简洁概括，再附定位细节。
 
 约束与提示：
 
