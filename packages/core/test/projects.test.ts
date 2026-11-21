@@ -3,6 +3,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { createProject, IDEAS_FILE, ideasTemplate, listProjects } from '../src/projects';
+import { runGit } from '../src/git';
 
 async function tempRoot(): Promise<string> {
   return fs.mkdtemp(path.join(os.tmpdir(), 'ideahub-project-'));
@@ -22,6 +23,32 @@ describe('createProject', () => {
     const text = await fs.readFile(path.join(root, 'My Game', IDEAS_FILE), 'utf8');
     expect(text).toBe('### My Game\n');
     expect(await listProjects(root)).toEqual(['My Game']);
+
+    await fs.rm(root, { recursive: true, force: true });
+  });
+
+  it('commits the new ideas.md when the root is a Git repository', async () => {
+    const root = await tempRoot();
+    await runGit(root, ['init']);
+    await runGit(root, ['config', 'user.name', 'Test']);
+    await runGit(root, ['config', 'user.email', 'test@example.com']);
+
+    const result = await createProject(root, 'MyGame');
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      throw new Error(result.error);
+    }
+    expect(result.commit.status).toBe('committed');
+    expect((await runGit(root, ['log', '-1', '--format=%s'])).stdout.trim()).toBe(
+      'ideahub: create project'
+    );
+    const committed = (await runGit(root, ['show', '--name-only', '--format=', 'HEAD'])).stdout
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean);
+    expect(committed).toEqual(['MyGame/ideas.md']);
+    expect((await runGit(root, ['status', '--porcelain'])).stdout.trim()).toBe('');
 
     await fs.rm(root, { recursive: true, force: true });
   });

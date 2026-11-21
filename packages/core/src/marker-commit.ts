@@ -8,6 +8,7 @@ import { isGitRepository, runGit, type GitResult } from './git';
 export const DEFAULT_PROOF_COMMIT_MESSAGE = 'ideahub: record proof';
 export const DEFAULT_PUBLISH_COMMIT_MESSAGE = 'ideahub: mark published';
 export const INIT_COMMIT_MESSAGE = 'ideahub: initialize repository';
+export const PROJECT_CREATE_COMMIT_MESSAGE = 'ideahub: create project';
 export const CONFIG_REMOTE_COMMIT_MESSAGE = 'ideahub: update remote config';
 
 export interface CommitMessageValues {

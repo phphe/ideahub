@@ -1,11 +1,22 @@
 import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
 import { translate, type Translator } from './i18n';
+import {
+  commitFiles,
+  PROJECT_CREATE_COMMIT_MESSAGE,
+  type MarkerCommitResult
+} from './marker-commit';
 
 export const IDEAS_FILE = 'ideas.md';
 
 export type CreateProjectResult =
-  | { ok: true; projectPath: string; ideasPath: string; content: string }
+  | {
+      ok: true;
+      projectPath: string;
+      ideasPath: string;
+      content: string;
+      commit: MarkerCommitResult;
+    }
   | { ok: false; error: string };
 
 function describeError(error: unknown): string {
@@ -138,5 +149,14 @@ export async function createProject(
     };
   }
 
-  return { ok: true, projectPath, ideasPath, content };
+  // Sections 2.4 / 8.8: commit only the newly created ideas.md, like init and
+  // independent of `ideahub.proof.autoCommit`.
+  const commit = await commitFiles({
+    root,
+    filePaths: [ideasPath],
+    message: PROJECT_CREATE_COMMIT_MESSAGE,
+    t
+  });
+
+  return { ok: true, projectPath, ideasPath, content, commit };
 }
