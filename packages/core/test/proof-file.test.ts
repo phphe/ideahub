@@ -66,13 +66,13 @@ describe('renderProofFile', () => {
   it('writes the configured version, quoted header, quoted stats and --- outside the block', () => {
     const proofFile = renderProofFile(blocks, PROJECT_URL, {
       version: '1',
-      header: '> Read the original at <project-url>.\n>\n> Verify with `npx ideahub check <project-url>`.'
+      header: '> Read the original at <project-url>.\n>\n> Verify with `npx @ideahub/cli check <project-url>`.'
     });
 
     expect(proofFile.startsWith('---\nversion: "1"\n---\n')).toBe(true);
     expect(proofFile).not.toContain('<project-url>');
     expect(proofFile).toContain(`> Read the original at ${PROJECT_URL}.`);
-    expect(proofFile).toContain(`> Verify with \`npx ideahub check ${PROJECT_URL}\`.`);
+    expect(proofFile).toContain(`> Verify with \`npx @ideahub/cli check ${PROJECT_URL}\`.`);
     expect(proofFile).toContain(
       '> - Time span: `2026-11-01 10:00:00 (UTC+08:00) → 2026-11-07 09:54:51 (UTC+08:00)`'
     );
@@ -87,7 +87,7 @@ describe('renderProofFile', () => {
     expect(quotedStats).toHaveLength(4);
     expect(
       proofFile.indexOf(
-        `> Verify with \`npx ideahub check ${PROJECT_URL}\`.\n> - Time span:`
+        `> Verify with \`npx @ideahub/cli check ${PROJECT_URL}\`.\n> - Time span:`
       )
     ).toBeGreaterThanOrEqual(0);
     expect(proofFile).not.toContain('`.\n\n> - Time span:');

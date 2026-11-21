@@ -13,8 +13,8 @@ export const red = (text: string): string => paint(31, text);
 
 const USAGE = [
   'Usage:',
-  '  ideahub check <project-url>   verify the proof file (PASS=0 / FAIL=1 / execution error=2)',
-  '  ideahub login [--token <token>]',
+  '  npx @ideahub/cli check <project-url>   verify the proof file (PASS=0 / FAIL=1 / execution error=2)',
+  '  npx @ideahub/cli login [--token <token>]',
   '',
   'Accepted project URLs:',
   '  https://github.com/<owner>/<repo>/tree/<branch>/<path...>',
@@ -72,7 +72,7 @@ async function runCheckCommand(args: string[]): Promise<number> {
 
   if (token === null) {
     console.error(
-      'Using anonymous access (60 requests per hour). Run `ideahub login` to raise the limit to 5000.'
+      'Using anonymous access (60 requests per hour). Run `npx @ideahub/cli login` to raise the limit to 5000.'
     );
   } else {
     console.error(`Using a token from ${source}.`);

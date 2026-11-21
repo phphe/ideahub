@@ -84,14 +84,14 @@ export class CliGitHub {
       return null;
     }
     if (response.status === 401) {
-      throw new ApiError('GitHub authentication failed; run `ideahub login` again.', 401);
+      throw new ApiError('GitHub authentication failed; run `npx @ideahub/cli login` again.', 401);
     }
     if (response.status === 403 || response.status === 429) {
       const remaining = response.headers.get('x-ratelimit-remaining');
       const retryAfter = response.headers.get('retry-after') ?? undefined;
       if (response.status === 429 || remaining === '0' || retryAfter) {
         throw new RateLimitError(
-          'The GitHub API rate limit is exhausted. Run `ideahub login` and retry (5000 requests per hour when signed in).',
+          'The GitHub API rate limit is exhausted. Run `npx @ideahub/cli login` and retry (5000 requests per hour when signed in).',
           retryAfter
         );
       }

@@ -4,7 +4,7 @@ import { CliGitHub } from './api';
 import { saveToken } from './credentials';
 
 /**
- * Section 13.6: `ideahub login`.
+ * Section 13.6: `npx @ideahub/cli login`.
  * Device flow when a client id was injected at build time, otherwise a manual
  * token paste (or `--token`). The token is never printed.
  */
@@ -47,7 +47,7 @@ export async function runLogin(
     return {
       code: 2,
       messages: [
-        'No OAuth client id is configured and stdin is not an interactive terminal. Use `ideahub login --token <token>`.'
+        'No OAuth client id is configured and stdin is not an interactive terminal. Use `npx @ideahub/cli login --token <token>`.'
       ]
     };
   }
@@ -174,7 +174,7 @@ async function deviceFlowLogin(
     break;
   }
 
-  return { code: 2, messages: ['Authorization timed out; run `ideahub login` again.'] };
+  return { code: 2, messages: ['Authorization timed out; run `npx @ideahub/cli login` again.'] };
 }
 
 /** Section 13.6: never leave the user staring at a silent terminal. */
@@ -183,7 +183,7 @@ function describeNetworkError(error: unknown): string {
     error instanceof Error &&
     (error.name === 'TimeoutError' || error.name === 'AbortError')
   ) {
-    return 'The request to GitHub timed out after 15 seconds. If github.com is unreachable from this network, use `ideahub login --token <token>` instead.';
+    return 'The request to GitHub timed out after 15 seconds. If github.com is unreachable from this network, use `npx @ideahub/cli login --token <token>` instead.';
   }
   return error instanceof Error ? error.message : String(error);
 }

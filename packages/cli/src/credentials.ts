@@ -8,7 +8,7 @@ import { promisify } from 'node:util';
  * Section 13.6: token sources, in order.
  *   1. IDEAHUB_TOKEN / GITHUB_TOKEN / GH_TOKEN
  *   2. `gh auth token`
- *   3. credentials saved by `ideahub login` (mode 0600)
+ *   3. credentials saved by `npx @ideahub/cli login` (mode 0600)
  *   4. anonymous
  */
 

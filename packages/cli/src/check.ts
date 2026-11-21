@@ -42,7 +42,7 @@ export async function runCheck(options: CheckOptions): Promise<CheckResult> {
       return {
         status: 'ERROR',
         messages: [
-          `Repository not found or private: ${owner}/${repo}. If it is private, run \`ideahub login\` first.`
+          `Repository not found or private: ${owner}/${repo}. If it is private, run \`npx @ideahub/cli login\` first.`
         ]
       };
     }
