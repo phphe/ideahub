@@ -28,7 +28,6 @@ import {
 } from '@ideahub/core';
 import { validateRemoteRepository } from '@ideahub/core';
 import { parseRemoteUrl } from '@ideahub/core';
-import { describeReleaseImmutability } from '@ideahub/core';
 import type { RemoteSettingsDisplay, RemoteSettingsInfo } from './html';
 import { cloneRemoteRepository, inspectRemoteTarget, removeLocalClone } from '@ideahub/core';
 import {
@@ -350,9 +349,10 @@ export class IdeahubController {
     if (result.ok) {
       return {
         ok: true,
-        message: [this.t('The local idea repository has been initialized.'), ...result.notes].join(
-          '\n'
-        )
+        message: [
+          this.t('Initialization succeeded: the local idea repository has been initialized.'),
+          ...result.notes
+        ].join('\n')
       };
     }
     const steps = result.completedSteps.length
@@ -770,14 +770,17 @@ export class IdeahubController {
       );
     }
 
+    const commitNote = this.describeCreatedFileCommit(result.commit);
+
     return {
       ok: true,
       message: this.t(
-        'Created project "{0}" ({1}/ideas.md).\nUsing the minimal template (the documentation does not define an ideas.md template): {2}{3}',
+        'Created project "{0}" ({1}/ideas.md).\nUsing the minimal template (the documentation does not define an ideas.md template): {2}{3}{4}',
         name,
         name,
         result.content.trim(),
-        openNote
+        openNote,
+        commitNote
       )
     };
   }
@@ -1143,6 +1146,24 @@ export class IdeahubController {
       };
     }
 
+    // Sections 7.4 / 8.9: a Release that is not confirmed immutable must fail
+    // before any marker is written, and the error notification must lead with
+    // the summary.
+    if (release.release?.immutable !== true) {
+      const cause =
+        release.release?.immutable === false
+          ? this.t('The remote proof repository has immutable Releases disabled.')
+          : this.t('GitHub did not report the Release immutability field.');
+      return {
+        ok: false,
+        message: this.t(
+          'Proof failed: the Release is not immutable.\nTag: {0}\n{1}\nEnable "Enable release immutability" in the remote proof repository settings, then retry. No marker was written to ideas.md.',
+          tag,
+          cause
+        )
+      };
+    }
+
     // Section 7.5: an existing immutable Release keeps its own publish time;
     // using "now" would break the CLI's one-hour proof window.
     const releasedAt = release.release?.publishedAt
@@ -1186,7 +1207,7 @@ export class IdeahubController {
     const time = release.release?.publishedAt
       ? this.t(', published at {0}', release.release.publishedAt)
       : '';
-    const immutability = describeReleaseImmutability(release.release?.immutable, this.t);
+    const immutability = this.t('This proof is confirmed immutable.');
     // Section 7.7: external links never abort, but the proof does not cover
     // their content; report the unique count.
     const externalNote =
@@ -1238,6 +1259,22 @@ export class IdeahubController {
 
     const label = kind === 'proof' ? this.t('marker') : this.t('publish marker');
     return this.describeCommitResult(result, label, message);
+  }
+
+  private describeCreatedFileCommit(result: MarkerCommitResult): string {
+    if (result.status === 'committed') {
+      this.log(
+        `create: auto commit succeeded: ${result.commit ?? '(unknown)'} message=ideahub: create project`
+      );
+      const short = result.commit ? result.commit.slice(0, 7) : '(unknown)';
+      return this.t('\nAuto-committed ideas.md (local only, not pushed): {0}', short);
+    }
+    if (result.status === 'skipped') {
+      this.log(`create: auto commit skipped: ${result.reason}`);
+      return '';
+    }
+    this.log(`create: auto commit failed: ${result.reason}`);
+    return this.t('\nideas.md was created, but auto-commit failed: {0}', result.reason);
   }
 
   private describeCommitResult(

@@ -108,6 +108,7 @@ describe('explicit init in a non-empty folder', () => {
     const result = await controllerFor(root).initialize(true);
 
     expect(result.ok).toBe(true);
+    expect(result.message.startsWith('Initialization succeeded:')).toBe(true);
     expect(result.message).toContain(
       'README.md already exists, so the existing README.md was kept (not overwritten).'
     );
