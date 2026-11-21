@@ -71,7 +71,7 @@
 - 任何可能覆盖、删除、上传或公开用户数据的操作，都必须先检查并明确提示，且需用户确认。
 - 不自动提交、不自动推送、不自动公开任何本地文件。
 - 例外一：用户在 6.8 开启 `ideahub.proof.autoCommit` 后，证明或发布标记写入成功时只把 `ideas.md` 的标记行提交到**本地创意仓库**（见 8.9、8.10、第九章第 2 条）；绝不 push、绝不 amend、绝不动其他文件。
-- 例外二：git 可用且本地创意仓库存在时，初始化创建 `.ideahub/config.json`、以及用户通过设置修改远程证明仓库配置后，自动只把该文件提交到**本地创意仓库**（见 8.3、8.4、第九章第 2 条）；绝不 push、绝不 amend、不暂存或提交其他文件。
+- 例外二：git 可用且本地创意仓库存在时，初始化**新建**的 `.ideahub/config.json`、`.ideahub/.gitignore` 与 `README.md`、以及用户通过设置修改远程证明仓库配置后的 `.ideahub/config.json`，自动提交到**本地创意仓库**（见 8.3、8.4、第九章第 2 条）；只提交本次新建或修改的这些文件，绝不 push、绝不 amend、不暂存或提交其他文件。
 
 ---
 
@@ -368,10 +368,10 @@ export default {
 | `ideahub.proof.commitMessage` | string | `ideahub: record proof` | 证明标记的自动提交信息模板，支持 `{project}`、`{time}`；未知占位符原样保留；空值回落默认值。 |
 | `ideahub.publish.commitMessage` | string | `ideahub: mark published` | 发布标记的自动提交信息模板，支持 `{project}`、`{time}`；未知占位符原样保留；空值回落默认值。 |
 
-- 默认提交文案固定为英文 `ideahub: <message>` 形式（不用 Conventional Commit 格式，也不嵌入项目名）：证明为 `ideahub: record proof`，发布为 `ideahub: mark published`，初始化 `.ideahub/config.json` 为 `ideahub: initialize config`，修改远程证明仓库配置为 `ideahub: update remote config`。即使以后插件支持多语言，默认文案也保持英文；用户自定义的文本仍然优先。
+- 默认提交文案固定为英文 `ideahub: <message>` 形式（不用 Conventional Commit 格式，也不嵌入项目名）：证明为 `ideahub: record proof`，发布为 `ideahub: mark published`，初始化为 `ideahub: initialize repository`，修改远程证明仓库配置为 `ideahub: update remote config`。即使以后插件支持多语言，默认文案也保持英文；用户自定义的文本仍然优先。
 - 自动提交只在用户启用 git、开启 `ideahub.proof.autoCommit` 且本地存在 Git 仓库时执行。
 - 自动提交只包含 `ideas.md` 的标记行；不推送、不 amend、不动其他文件（见 8.9、8.10、第九章第 2 条）。
-- `.ideahub/config.json` 的自动提交不受 `ideahub.proof.autoCommit` 控制：只要 git 可用、本地存在仓库，初始化创建该文件或修改远程配置后都会只提交该文件（见 2.4 例外二、8.3、8.4）。
+- 初始化新建的 `.ideahub/config.json`、`.ideahub/.gitignore` 与 `README.md`，以及修改远程配置后的 `.ideahub/config.json`，其自动提交不受 `ideahub.proof.autoCommit` 控制：只要 git 可用、本地存在仓库，就提交这些新建或修改的文件（见 2.4 例外二、8.3、8.4）。
 - 旧键名 `ideahub.mark.autoCommit` / `ideahub.mark.commitMessage` 不再读取、不做迁移。
 
 ### 6.9 项目标签（YAML Front Matter）
@@ -600,26 +600,26 @@ version: "1"
 2. 创建 `.ideahub/` 目录与 `.ideahub/.gitignore`（忽略 `remote/`）。
 3. 创建 `.ideahub/config.json`（此时可暂无远程地址，或引导用户当场填写）。
 4. 安装 `pre-push` hook（含特殊标记块，非 Windows 赋予执行权限）。
-5. 创建 README，说明仓库用途与安全注意事项（特别是“本地创意仓库只能连接自己的私有仓库”）。`README.md` 已存在时**保留现有文件**，绝不覆盖。
-6. 创建 `.ideahub/config.json` 后，若 git 可用且本地存在仓库，自动只提交该文件到本地创意仓库（信息固定为 `ideahub: initialize config`，不推送、不 amend、不动其他文件，见 2.4 例外二）。
+5. 创建 README，说明仓库用途与安全注意事项（特别是“本地创意仓库只能连接自己的私有仓库”）。内容固定为英文，不随 VS Code 显示语言变化。`README.md` 已存在时**保留现有文件**，绝不覆盖。
+6. 初始化完成后，若 git 可用且本地存在仓库，自动把本次**新建**的 `.ideahub/config.json`、`.ideahub/.gitignore` 与 `README.md` 一起提交到本地创意仓库（信息固定为 `ideahub: initialize repository`，不推送、不 amend、不动其他文件，见 2.4 例外二）。复用的已有文件不提交。
 7. 完成后重新检测并进入对应状态。
 
 约束：
 
 - 执行前必须确认当前目录为空，避免覆盖用户数据。
-- 除上述第 6 步的 `.ideahub/config.json` 本地提交外，不自动提交、推送或公开任何内容（同 2.4）。
+- 除上述第 6 步对本次新建的 `.ideahub/config.json`、`.ideahub/.gitignore` 与 `README.md` 的本地提交外，不自动提交、推送或公开任何内容（同 2.4）。
 
 #### 非空文件夹的显式覆盖入口
 
 - 仅当 8.2 判定为“未识别到本地创意仓库”（文件夹非空且不含 `.ideahub/`）时，界面额外提供“仍要初始化”按钮；空文件夹仍只显示“初始化本地创意仓库”，不新增步骤。
-- 点击后必须弹出一次 VS Code 原生模态确认，文案按检测结果分支：已有 `.git/` 时说明将沿用现有仓库、不会重新初始化或覆盖；没有 `.git/` 时才说明将创建 `.git/`。两种文案都要说明 `.ideahub/` 会复用已有内容、`README.md` 已存在时保留现有 `README.md`（不得出现“覆盖 README.md”之类的表述）、不会覆盖任何已有文件、不自动提交/推送/公开；用户取消则什么都不做，界面仅就地复位按钮状态，不整页重渲染，保持滚动位置与输入焦点。
+- 点击后必须弹出一次 VS Code 原生模态确认，文案按检测结果分支：已有 `.git/` 时说明将沿用现有仓库、不会重新初始化或覆盖；没有 `.git/` 时才说明将创建 `.git/`。两种文案都要说明 `.ideahub/` 会复用已有内容、`README.md` 已存在时保留现有 `README.md`（不得出现“覆盖 README.md”之类的表述）、不会覆盖任何已有文件；本次新建的 `.ideahub/config.json`、`.ideahub/.gitignore` 与 `README.md` 会自动提交到本地创意仓库，其余内容不自动提交、不推送、不公开；用户取消则什么都不做，界面仅就地复位按钮状态，不整页重渲染，保持滚动位置与输入焦点。
 - 这是用户显式选择的一次性例外，不是默认行为。
 - 执行时绝不覆盖已存在文件：
   - `README.md` 已存在 → 保留现有 `README.md`，跳过写入，并在完成通知中说明。
   - `.ideahub/` 已存在 → 复用；其中 `.ideahub/config.json`、`.ideahub/.gitignore` 已存在则保持原样，不覆盖。
   - `.git/` 已存在 → 不重复执行 `git init`，按现有 Git 仓库处理，并在完成通知中说明。
-- 复用的 `.ideahub/config.json` 不做自动提交；只有本次初始化**新建**该文件时才按上面第 6 步提交。
-- 除 `.ideahub/config.json` 的本地提交外，该入口同样不自动提交、推送或公开任何内容（同 2.4）。
+- 复用的 `.ideahub/config.json`、`.ideahub/.gitignore` 与 `README.md` 不做自动提交；只有本次初始化**新建**的文件才按上面第 6 步一起提交。
+- 除上述新建文件的本地提交外，该入口同样不自动提交、推送或公开任何内容（同 2.4）。
 
 ### 8.4 远程证明仓库地址配置与自动克隆
 
@@ -859,7 +859,7 @@ https://github.com/<远程证明仓库用户>/<远程证明仓库名字>/tree/<�
 1. 未经用户确认，不得上传或公开任何本地创意内容。
 2. 不得自动提交或推送本地创意仓库。
    - 例外一：用户开启 `ideahub.proof.autoCommit` 时，证明或发布标记写入成功后仅允许把 `ideas.md` 的标记行提交到本地创意仓库（见 6.8、8.9、8.10）；绝不 push、绝不 amend、绝不动其他文件。
-   - 例外二：git 可用且本地存在创意仓库时，初始化**新建** `.ideahub/config.json`、以及用户通过设置修改远程证明仓库配置后，只允许把该文件提交到本地创意仓库（见 2.4、8.3、8.4）；绝不 push、绝不 amend、不暂存或提交其他文件。复用（未修改）的配置文件不提交。
+   - 例外二：git 可用且本地存在创意仓库时，初始化**新建**的 `.ideahub/config.json`、`.ideahub/.gitignore` 与 `README.md`、以及用户通过设置修改远程证明仓库配置后的 `.ideahub/config.json`，只允许提交这些文件到本地创意仓库（见 2.4、8.3、8.4）；绝不 push、绝不 amend、不暂存或提交其他文件。复用（未修改）的文件不提交。
 3. 不得把远程证明仓库配置为本地创意仓库的 remote，也不得把内层仓库作为 submodule。
 4. 不得在配置、Git URL、日志、错误信息中输出 Token 或凭据。
 5. 不得覆盖用户已有的文件、hook 逻辑或 Git 历史；发现冲突必须停止并提示。
@@ -892,7 +892,7 @@ https://github.com/<远程证明仓库用户>/<远程证明仓库名字>/tree/<�
 - 设置视图展示远程地址、`owner/repo`、host、分支、是否公开；修改地址后走既有校验与自动克隆/重新克隆流程，不提供绕过校验的路径。分支不改由界面编辑，仍以 `.ideahub/config.json` 为准。
 - 空文件夹显示“初始化本地创意仓库”按钮。
 - 非空且无 `.ideahub` 时显示“未识别到本地创意仓库”与“仍要初始化”按钮。
-- 点击“仍要初始化”必须弹出一次原生模态确认；取消后不创建任何文件。确认后仅在现有文件夹补齐 `.git/`、`.ideahub/` 与 README：已存在的 README、`.ideahub/config.json`、`.ideahub/.gitignore` 跳过不覆盖，已存在的 `.git/` 复用且不重复 `git init`，完成通知中说明跳过/复用情况。
+- 点击“仍要初始化”必须弹出一次原生模态确认；取消后不创建任何文件。确认后仅在现有文件夹补齐 `.git/`、`.ideahub/` 与 README：已存在的 README、`.ideahub/config.json`、`.ideahub/.gitignore` 跳过不覆盖，已存在的 `.git/` 复用且不重复 `git init`，完成通知中说明跳过/复用情况。本次新建的 `.ideahub/config.json`、`.ideahub/.gitignore` 与 `README.md` 会一起自动提交到本地创意仓库（不推送）。
 - 缺少远程地址、缺少 `remote/`、缺少 hook 时分别显示对应提示，并可点击完成对应修复。
 - 正常状态下列表列出所有含 `ideas.md` 的文件夹，忽略 `ccc/` 这类缺少 `ideas.md` 的目录。
 - 每个项目项无边框；项目名与标签同排并在空间不足时换行，按钮单独一行；「证明」「发布」均为 secondary 样式并带 `title` tooltip；只显示 `N个证明`、`未证明`、`发布N次`、`可发布` 四类标签；不再出现改名风险提示或旧的最近证明/远程状态徽标。
@@ -1021,6 +1021,16 @@ packages/
 - 根目录 `pnpm install`、`pnpm build`、`pnpm typecheck`、`pnpm lint`、`pnpm test`、`pnpm package` 全部通过；打包后的 VSIX 内容清单与迁移前一致（除路径外），且不含 `config.mjs`。
 - `.env` 不保留在仓库根目录：扩展包与 CLI 包各自持有 `.env`（默认为空文件），用于存放本地敏感信息，均被 `.gitignore` 忽略、也不进入各自产物（VSIX / `dist`）。构建读取的就是各包自己目录下的 `.env`（见 6.7）。
 
+### 12.6 版本号约定
+
+- 只有会发布产物的包才必须递增版本号：VS Code 扩展的版本取自 `packages/vscode-extension/package.json` 的 `version`，同时决定 VSIX 文件名与清单版本，遵循语义化版本：
+  - `MAJOR`：不兼容的用户可见行为、配置格式或证明格式变更；
+  - `MINOR`：向后兼容的新功能；
+  - `PATCH`：向后兼容的缺陷修复，包括用户可见文案修正与初始化/自动提交流程修复。
+- 每次发布 VSIX 至少递增 `PATCH`；不得在未递增版本号的情况下重新打包并发布。
+- `@ideahub/core`（`private`，构建期从源码打包）、尚未发布的 `@ideahub/cli` 与根包 `ideahub-monorepo`（`private`）都不影响已发布扩展，不强制随扩展同步递增；各包版本独立，不要求与扩展一致。CLI 首次发布时按其自身变更单独确定版本。
+- 已发布的版本号不得复用；新产物必须使用更高的版本号。
+
 ---
 
 ## 十三、CLI 校验工具（`@ideahub/cli`）
@@ -1133,7 +1143,7 @@ export type Translator = (message: string, ...args: unknown[]) => string;
 
 以下内容即使切换语言也必须保持原样：
 
-- 初始化时写入用户仓库的 `README.md` 内容。
+- 初始化时写入用户仓库的 `README.md` 内容（固定英文，不随 VS Code 显示语言变化）。
 - 自动提交的默认文案（`ideahub: record proof`、`ideahub: mark published` 等）与 `{project}` / `{time}` 模板。
 - 日志与遥测字段。
 - 证明标记语法、`Published:`、`🔏`、Front Matter 键名、Release tag 形态。
