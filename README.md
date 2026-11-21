@@ -22,11 +22,11 @@ It computes a content fingerprint from the original idea text and publishes only
 ## Workflow
 
 - Search for **IdeaHub** in the VS Code Marketplace and install it, or [click here](https://marketplace.visualstudio.com/items?itemName=ideahub.ideahub-vscode).
-- Create a public repository on GitHub from [this template](https://github.com/phphe/ideahub-remote-template), or [click here](https://github.com/new?template_name=ideahub-remote-template&template_owner=phphe) to get started. Then enable release immutability in the repository settings (open Settings and check "Enable release immutability").
-- Open an empty folder in VS Code, click the IdeaHub icon in the Activity Bar and initialize it. Enter the repository URL from the previous step, for example "https://github.com/your_name/repo_name".
-- Click the plus icon in the IdeaHub panel to add a project, and write your idea in the opened ideas.md. For an existing project, click its name to open ideas.md.
-- After adding content to ideas.md, click the "Prove" button to publish the content fingerprint (hash) of that segment to the remote repository. It is recommended to prove right away; you can run a proof once before finishing work each day.
-- Once the original idea can be made public, click the "Publish" button to publish the original idea text of the project to the remote repository. Others can then see your idea text and use ideahub to verify its timestamp proof.
+- Create a public repository on GitHub from [this template](https://github.com/phphe/ideahub-remote-template) and use it as your remote proof repository, or [click here](https://github.com/new?template_name=ideahub-remote-template&template_owner=phphe) to get started. Then enable release immutability in the repository settings (open Settings and check "Enable release immutability").
+- Open an empty folder in VS Code (it becomes your local idea repository), click the IdeaHub icon in the Activity Bar and initialize it. Enter the URL of the remote proof repository from the previous step, for example "https://github.com/your_name/repo_name".
+- Click the plus icon in the IdeaHub panel to add a project (a folder inside the local idea repository), and write your idea in the opened ideas.md. For an existing project, click its name to open ideas.md.
+- After adding content to ideas.md, click the "Prove" button to publish the content fingerprint (hash) of that segment to the remote proof repository. It is recommended to prove right away; you can run a proof once before finishing work each day.
+- Once the original idea can be made public, click the "Publish" button to publish the original idea text of the project to the remote proof repository. Others can then see your idea text and use ideahub to verify its timestamp proof.
 
 ## Content guidelines
 
@@ -38,7 +38,7 @@ It computes a content fingerprint from the original idea text and publishes only
 
 ## Notes
 
-- The local Git repository that stores your ideas and the remote repository that stores proofs must not be the same repository, and you must not push the local repository to the remote proof repository manually. This tool adds a `pre-push` hook to the local Git repository that blocks pushes to the remote proof repository. To back up the local idea repository, create a separate empty remote repository, but set it to private; otherwise your idea text will be exposed.
+- The local idea repository and the remote proof repository must not be the same repository, and you must not push the local idea repository to the remote proof repository manually. The tool adds a `pre-push` hook to the local idea repository that blocks such pushes. To back up the local idea repository, create a separate empty remote repository and set it to private; otherwise your idea text will be exposed.
 - The idea text must not contain the emoji "🔏".
 
 ## Verify others' proofs with the CLI
@@ -57,7 +57,7 @@ The CLI queries the GitHub API. You can sign in to GitHub to raise the API quota
 - `ideahub.proof.commitMessage`: commit message used when proving; default `ideahub: record proof`.
 - `ideahub.publish.commitMessage`: commit message used when publishing; default `ideahub: mark published`.
 
-The local repository configuration lives in `.ideahub/config.json`.
+The local idea repository configuration lives in `.ideahub/config.json`.
 
 ## Examples
 
