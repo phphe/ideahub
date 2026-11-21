@@ -156,7 +156,7 @@ describe('settings view switching', () => {
     // The message handler must render settings before returning to the event loop.
     handler()({ type: 'openSettings' });
     expect(webview.html).toContain('<h1>Settings</h1>');
-    expect(webview.html).toContain('Remote idea repository');
+    expect(webview.html).toContain('Remote proof repository');
     expect(controller.currentRemoteSettingsInfo).toHaveBeenCalledTimes(1);
 
     handler()({ type: 'closeSettings' });

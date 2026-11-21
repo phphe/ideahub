@@ -76,9 +76,9 @@ describe('zh-cn l10n bundle', () => {
       zhL10n(),
       'zh-cn'
     );
-    expect(html).toContain('远程创意仓库');
+    expect(html).toContain('远程证明仓库');
     expect(html).toContain('地址: </span>');
-    expect(html).toContain('修改远程仓库地址');
+    expect(html).toContain('修改远程证明仓库地址');
     expect(html).toContain('<title>创意仓库 - 设置</title>');
   });
 });

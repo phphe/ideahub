@@ -68,7 +68,7 @@ describe('renderMainHtml', () => {
 
     const nonEmpty = renderMainHtml({ kind: 'not-ideahub', root: 'C:/non-empty' });
     expect(nonEmpty).toContain('<h1>IdeaHub</h1>');
-    expect(nonEmpty).toContain('<div class="title">No idea repository detected</div>');
+    expect(nonEmpty).toContain('<div class="title">No local idea repository detected</div>');
     expect(nonEmpty).toContain('data-action="initNonEmpty"');
     expect(nonEmpty).toContain('>Initialize anyway</button>');
     expect(nonEmpty).toContain('existing files are never overwritten');
@@ -197,13 +197,13 @@ describe('renderMainHtml project list', () => {
     expect(html).not.toContain('>新建项目</button>');
     expect(html).not.toContain('id="status"');
     expect(html).toContain(
-      'title="Workspace: C:/repo | Remote idea repository: phphe/test_1027e9ad9a (branch main)"'
+      'title="Workspace: C:/repo | Remote proof repository: phphe/test_1027e9ad9a (branch main)"'
     );
-    expect(html).toContain('Remote idea repository: phphe/test_1027e9ad9a (branch main)');
+    expect(html).toContain('Remote proof repository: phphe/test_1027e9ad9a (branch main)');
 
     // The old info line under the title is gone.
     expect(html).not.toContain('<p class="muted">C:/repo</p>');
-    expect(html).not.toContain('<p class="muted">Remote idea repository');
+    expect(html).not.toContain('<p class="muted">Remote proof repository');
   });
 });
 
@@ -380,9 +380,9 @@ describe('renderSettingsHtml', () => {
     }
   };
 
-  it('shows the current remote repository details', () => {
+  it('shows the current remote proof repository details', () => {
     const html = renderSettingsHtml(info);
-    expect(html).toContain('Remote idea repository');
+    expect(html).toContain('Remote proof repository');
     expect(html).toContain(
       'URL: </span><span id="settings-url">https://github.com/phphe/test_1027e9ad9a'
     );
@@ -408,7 +408,7 @@ describe('renderSettingsHtml', () => {
     expect(html).toContain('data-action="closeSettings"');
     expect(html).not.toContain('data-action="clone"');
     expect(html).not.toContain('data-action="publish"');
-    expect(html).toContain('only committed to the local repository');
+    expect(html).toContain('only committed to the local idea repository');
   });
 
   it('renders unconfigured values and API errors without crashing', () => {
@@ -420,7 +420,7 @@ describe('renderSettingsHtml', () => {
       host: null,
       branch: null,
       visibility: 'Unknown',
-      error: 'No remote idea repository is configured yet.',
+      error: 'No remote proof repository is configured yet.',
       display: {
         url: 'Not configured',
         ownerRepo: 'Not configured',
@@ -430,6 +430,6 @@ describe('renderSettingsHtml', () => {
     });
     expect(html).toContain('URL: </span><span id="settings-url">Not configured');
     expect(html).toContain('owner/repo: </span><span id="settings-owner-repo">Not configured');
-    expect(html).toContain('No remote idea repository is configured yet.');
+    expect(html).toContain('No remote proof repository is configured yet.');
   });
 });
