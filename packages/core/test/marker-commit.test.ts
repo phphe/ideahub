@@ -81,7 +81,7 @@ describe('resolveCommitMessage', () => {
   });
 });
 
-describe('commitMarkerLine', { timeout: 20000 }, () => {
+describe('commitMarkerLine', () => {
   it('commits only the proof marker line even when ideas.md has uncommitted content', async () => {
     const root = await createRepo();
     const ideasPath = path.join(root, 'MyGame', 'ideas.md');

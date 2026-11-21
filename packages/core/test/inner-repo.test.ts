@@ -46,7 +46,7 @@ afterAll(async () => {
   );
 });
 
-describe('inner repository state', { timeout: 20000 }, () => {
+describe('inner repository state', () => {
   it('treats a missing or empty remote/ directory as missing', async () => {
     const { root, remotePath } = await makeRoot();
     expect(await inspectRemoteTarget(root)).toEqual({ kind: 'missing' });

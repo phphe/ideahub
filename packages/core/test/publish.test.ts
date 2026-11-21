@@ -94,7 +94,7 @@ describe('remoteProjectUrl', () => {
   });
 });
 
-describe('restoreInnerRepository', { timeout: 30000 }, () => {
+describe('restoreInnerRepository', () => {
   async function initInnerRepository(): Promise<string> {
     const inner = await tempDir('ideahub-rollback-');
     expect((await runGit(inner, ['init'])).code).toBe(0);

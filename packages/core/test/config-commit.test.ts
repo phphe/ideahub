@@ -45,7 +45,7 @@ afterEach(async () => {
   }
 });
 
-describe('commitSingleFile', { timeout: 30000 }, () => {
+describe('commitSingleFile', () => {
   it('commits a newly created config.json without touching other files', async () => {
     const root = await createRepo();
     await writeConfig(root, { version: 1 });
