@@ -15,7 +15,7 @@ AI 时代，如何保护我们的创意、证明我们的原创性？IdeaHub 为
 1. **内容指纹**：对项目内容做规范化后计算 SHA-256。
 2. **不可变 Release 作为时间锚点**：每个指纹创建一个 tag 为 `ideahub-<sha256>` 的 GitHub 不可变 Release。
 
-## 准备远程创意仓库
+## 准备远程证明仓库
 
 - 通过[此模板](https://github.com/phphe/ideahub-remote-template)在 GitHub 创建一个公开仓库，也可以[点击此处](https://github.com/new?template_name=ideahub-remote-template&template_owner=phphe)开始创建。
 - 在仓库设置中开启 Release 不可变性（打开 Settings 页面，勾选 "Enable release immutability"）。
@@ -23,10 +23,10 @@ AI 时代，如何保护我们的创意、证明我们的原创性？IdeaHub 为
 ## 使用流程
 
 1. 在 VS Code 中打开一个空文件夹，在活动栏点击 IdeaHub 图标并初始化。
-2. 远程创意仓库地址填入上一步的仓库网址，例如 `https://github.com/your_name/repo_name`；扩展会校验并克隆该仓库。
-3. 在 IdeaHub 面板点击加号图标新增项目，在打开的 `ideas.md` 中编写创意文本；已有项目可点击项目名打开 `ideas.md`。
-4. 点击「证明」把该段文本的内容指纹发布到远程仓库。建议即时证明，也可以每天结束工作前执行一次。
-5. 创意可以公开后，点击「发布」把项目内容推送到远程创意仓库，其他人即可查看创意原文并使用 ideahub 验证其时间证明。
+2. 远程证明仓库地址填入上一步的仓库网址，例如 `https://github.com/your_name/repo_name`；扩展会校验并把它克隆为本地创意仓库的内层仓库（`.ideahub/remote/`）。
+3. 在 IdeaHub 面板点击加号图标新增项目（项目是本地创意仓库里的一个文件夹），在打开的 `ideas.md` 中编写创意文本；已有项目可点击项目名打开 `ideas.md`。
+4. 点击「证明」把该段文本的内容指纹发布到远程证明仓库。建议即时证明，也可以每天结束工作前执行一次。
+5. 创意可以公开后，点击「发布」把项目内容推送到远程证明仓库，其他人即可查看创意原文并使用 ideahub 验证其时间证明。
 
 ## 内容规范
 
@@ -38,7 +38,7 @@ AI 时代，如何保护我们的创意、证明我们的原创性？IdeaHub 为
 
 ## 注意
 
-- 本地储存创意的 Git 仓库和远程储存证明的仓库不能是同一个仓库，也不能手动推送到远程证明仓库。扩展会添加 `pre-push` hook 阻止误推送；如需备份本地创意仓库，另建一个远程空仓库并设为私有，否则会泄露创意原文。
+- 本地创意仓库和远程证明仓库不能是同一个仓库，也不能手动把本地创意仓库推送到远程证明仓库。扩展会添加 `pre-push` hook 阻止误推送；如需备份本地创意仓库，另建一个远程空仓库并设为私有，否则会泄露创意原文。
 - 创意文本里不应包含 emoji "🔏"。
 
 ## 配置
@@ -47,7 +47,7 @@ AI 时代，如何保护我们的创意、证明我们的原创性？IdeaHub 为
 - `ideahub.proof.commitMessage`：证明时的提交文案，默认 `ideahub: record proof`。
 - `ideahub.publish.commitMessage`：发布时的提交文案，默认 `ideahub: mark published`。
 
-本地仓库配置在 `.ideahub/config.json`。
+本地创意仓库配置在 `.ideahub/config.json`。
 
 ## 更多
 
