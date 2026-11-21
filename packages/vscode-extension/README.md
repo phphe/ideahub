@@ -17,7 +17,7 @@ The extension computes a content fingerprint from the original idea text and pub
 
 ## Prepare the remote proof repository
 
-- Create a public repository on GitHub from [this template](https://github.com/phphe/ideahub-remote-template), or [click here](https://github.com/new?template_name=ideahub-remote-template&template_owner=phphe) to get started.
+- Create a public repository on GitHub from [this template](https://github.com/phphe/ideahub-template), or [click here](https://github.com/new?template_name=ideahub-template&template_owner=phphe) to get started.
 - Enable release immutability in the repository settings (open Settings and check "Enable release immutability").
 
 ## Workflow

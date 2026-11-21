@@ -17,7 +17,7 @@ AI 时代，如何保护我们的创意、证明我们的原创性？IdeaHub 为
 
 ## 准备远程证明仓库
 
-- 通过[此模板](https://github.com/phphe/ideahub-remote-template)在 GitHub 创建一个公开仓库，也可以[点击此处](https://github.com/new?template_name=ideahub-remote-template&template_owner=phphe)开始创建。
+- 通过[此模板](https://github.com/phphe/ideahub-template)在 GitHub 创建一个公开仓库，也可以[点击此处](https://github.com/new?template_name=ideahub-template&template_owner=phphe)开始创建。
 - 在仓库设置中开启 Release 不可变性（打开 Settings 页面，勾选 "Enable release immutability"）。
 
 ## 使用流程

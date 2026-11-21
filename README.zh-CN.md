@@ -23,7 +23,7 @@ IdeaHub 是一个开源工具，用来证明创意在某个时间点之前就已
 ## 使用流程
 
 - 在 VS Code 的扩展市场搜索 **IdeaHub** 安装。或者[点击此处](https://marketplace.visualstudio.com/items?itemName=ideahub.ideahub-vscode).
-- 通过[此模板](https://github.com/phphe/ideahub-remote-template)在 GitHub 创建一个公开仓库, 作为你的远程证明仓库，你也可以[点击此处](https://github.com/new?template_name=ideahub-remote-template&template_owner=phphe)开始创建，然后在仓库的设置里开启 Release 不可变性(打开Settings页面->勾选"Enable release immutability")。
+- 通过[此模板](https://github.com/phphe/ideahub-template)在 GitHub 创建一个公开仓库, 作为你的远程证明仓库，你也可以[点击此处](https://github.com/new?template_name=ideahub-template&template_owner=phphe)开始创建，然后在仓库的设置里开启 Release 不可变性(打开Settings页面->勾选"Enable release immutability")。
 - 在vscode中打开一个空文件夹（它将成为本地创意仓库），在活动栏点击 IdeaHub 图标并初始化。远程证明仓库地址填入上一步的仓库网址, 如"https://github.com/your_name/repo_name".
 - 在IdeaHub面板点击加号图标新增项目（项目是本地创意仓库里的一个文件夹）, 在打开的ideas.md中编写创意文本. 已有项目可以点击项目名打开ideas.md. 
 - ideas.md里添加内容后, 点击"证明"按钮把该段文本的内容指纹(hash)发布到远程证明仓库. 建议即时使用证明功能, 可以每天结束工作前使用一次证明功能.
@@ -62,8 +62,8 @@ cli通过github api查询, 可登录github提升api配额：`npx ideahub login`�
 
 ## 示例
 
-- 本地创意仓库: https://github.com/phphe/ideahub-example
-- 远程证明仓库: https://github.com/phphe/ideahub-proof-demo
+- 本地创意仓库: https://github.com/phphe/ideahub-local-example
+- 远程证明仓库: https://github.com/phphe/ideahub-remote-example
 
 ## 许可证
 

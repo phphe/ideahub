@@ -22,7 +22,7 @@ It computes a content fingerprint from the original idea text and publishes only
 ## Workflow
 
 - Search for **IdeaHub** in the VS Code Marketplace and install it, or [click here](https://marketplace.visualstudio.com/items?itemName=ideahub.ideahub-vscode).
-- Create a public repository on GitHub from [this template](https://github.com/phphe/ideahub-remote-template) and use it as your remote proof repository, or [click here](https://github.com/new?template_name=ideahub-remote-template&template_owner=phphe) to get started. Then enable release immutability in the repository settings (open Settings and check "Enable release immutability").
+- Create a public repository on GitHub from [this template](https://github.com/phphe/ideahub-template) and use it as your remote proof repository, or [click here](https://github.com/new?template_name=ideahub-template&template_owner=phphe) to get started. Then enable release immutability in the repository settings (open Settings and check "Enable release immutability").
 - Open an empty folder in VS Code (it becomes your local idea repository), click the IdeaHub icon in the Activity Bar and initialize it. Enter the URL of the remote proof repository from the previous step, for example "https://github.com/your_name/repo_name".
 - Click the plus icon in the IdeaHub panel to add a project (a folder inside the local idea repository), and write your idea in the opened ideas.md. For an existing project, click its name to open ideas.md.
 - After adding content to ideas.md, click the "Prove" button to publish the content fingerprint (hash) of that segment to the remote proof repository. It is recommended to prove right away; you can run a proof once before finishing work each day.
@@ -61,8 +61,8 @@ The local idea repository configuration lives in `.ideahub/config.json`.
 
 ## Examples
 
-- Local idea repository: https://github.com/phphe/ideahub-example
-- Remote proof repository: https://github.com/phphe/ideahub-proof-demo
+- Local idea repository: https://github.com/phphe/ideahub-local-example
+- Remote proof repository: https://github.com/phphe/ideahub-remote-example
 
 ## License
 
