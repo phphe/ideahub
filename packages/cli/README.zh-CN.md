@@ -6,12 +6,14 @@ IdeaHub 命令行校验工具：根据内容指纹核验他人的创意时间证
 
 ## 使用
 
+以下地址均指向远程证明仓库。
+
 ```sh
 npx ideahub check <项目网址>
 npx ideahub login
 ```
 
-项目网址只接受两种形式：
+`check` 的项目网址是远程证明仓库中项目目录的地址，只接受两种形式：
 
 - `https://github.com/<owner>/<repo>/tree/<branch>/<path...>`
 - `https://github.com/<owner>/<repo>/tree/<branch>/<path...>/README.md`

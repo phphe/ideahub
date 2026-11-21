@@ -6,12 +6,14 @@ English | [简体中文](README.zh-CN.md)
 
 ## Usage
 
+All addresses below point to the remote proof repository.
+
 ```sh
 npx ideahub check <project-url>
 npx ideahub login
 ```
 
-A project URL is accepted in exactly two forms:
+The project URL passed to `check` is the address of a project directory inside the remote proof repository. Exactly two forms are accepted:
 
 - `https://github.com/<owner>/<repo>/tree/<branch>/<path...>`
 - `https://github.com/<owner>/<repo>/tree/<branch>/<path...>/README.md`
