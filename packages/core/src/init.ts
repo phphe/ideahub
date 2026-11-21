@@ -10,28 +10,32 @@ import {
 import { initGitRepository } from './git';
 import { installPrePushHook } from './hook';
 import { translate, type Translator } from './i18n';
-import { commitSingleFile, CONFIG_INIT_COMMIT_MESSAGE } from './marker-commit';
+import { commitFiles, INIT_COMMIT_MESSAGE } from './marker-commit';
 
-const README_CONTENT = `# 创意仓库
+/**
+ * Section 8.3: the README written into the user's local idea repository is
+ * fixed English and must not follow the VS Code display language (14.5).
+ */
+const README_CONTENT = `# Idea Repository
 
-这个仓库用于记录自己的创意形成过程，并为创意内容保存可验证的时间证明。
+This repository records how your ideas take shape and keeps verifiable timestamps for the idea content.
 
-## 目录结构
+## Structure
 
-- \`.ideahub/config.json\`：创意仓库配置（不含任何 Token）。
-- \`.ideahub/remote/\`：远程创意仓库的克隆，本地仓库不跟踪该目录。
-- 每个项目文件夹必须包含 \`ideas.md\`。
+- \`.ideahub/config.json\`: idea repository configuration (contains no tokens).
+- \`.ideahub/remote/\`: the cloned remote proof repository, not tracked by the local repository.
+- Every project folder must contain an \`ideas.md\`.
 
-## 安全注意事项
+## Security notes
 
-- 本地仓库只能连接你自己的**私有** Git 仓库，**不能**把本地仓库直接推送到远程创意仓库。
-- 扩展会安装 \`pre-push\` hook，阻止误把本地仓库推送到远程创意仓库。
-- 创意内容只能通过“发布”功能公开，发布前需要两次确认。
-- 扩展不会自动推送或公开任何本地文件；仅在写入证明标记、发布标记或修改 \`.ideahub/config.json\` 时自动提交到本地仓库。
+- The local idea repository may only connect to your own **private** Git repository. Never push the local idea repository to the remote proof repository.
+- The extension installs a \`pre-push\` hook that blocks accidental pushes of the local idea repository to the remote proof repository.
+- Idea content is made public only through the "Publish" feature, which requires two confirmations.
+- The extension never pushes or publishes local files automatically; it only creates local commits when writing a proof marker, a publish marker, or changing \`.ideahub/config.json\`.
 
-## 如何创建项目
+## Creating a project
 
-在仓库根目录新建一个文件夹（例如 \`MyGame\`），在其中创建 \`ideas.md\`，然后回到 VS Code 的创意仓库界面操作。
+Create a folder in the repository root (for example \`MyGame\`), add an \`ideas.md\` inside it, then use the IdeaHub view in VS Code.
 `;
 
 export type InitResult =
@@ -111,6 +115,8 @@ export async function initializeLocalRepository(
       completed.push(t('Initialized the Git repository'));
     }
 
+    const commitPaths: string[] = [];
+
     await fs.mkdir(ideahubDir(root), { recursive: true });
 
     if (await exists(configGitignorePath(root))) {
@@ -121,16 +127,16 @@ export async function initializeLocalRepository(
         '# Ignore the cloned public remote proof repository\nremote/\n',
         'utf8'
       );
+      commitPaths.push(configGitignorePath(root));
       completed.push(t('Created .ideahub/.gitignore'));
     }
 
-    let createdConfig = false;
     if (await exists(configPath(root))) {
       completed.push(t('Reused .ideahub/config.json'));
     } else {
       await writeConfig(root, { version: 1 });
+      commitPaths.push(configPath(root));
       completed.push(t('Created .ideahub/config.json'));
-      createdConfig = true;
     }
 
     const hookResult = await installPrePushHook(root, null, t);
@@ -145,27 +151,29 @@ export async function initializeLocalRepository(
       );
       completed.push(t('Kept the existing README.md'));
     } else {
-      await fs.writeFile(path.join(root, 'README.md'), README_CONTENT, 'utf8');
+      const readmePath = path.join(root, 'README.md');
+      await fs.writeFile(readmePath, README_CONTENT, 'utf8');
+      commitPaths.push(readmePath);
       completed.push(t('Created README.md'));
     }
 
-    if (createdConfig) {
-      const commit = await commitSingleFile({
+    if (commitPaths.length > 0) {
+      const commit = await commitFiles({
         root,
-        filePath: configPath(root),
-        message: CONFIG_INIT_COMMIT_MESSAGE,
+        filePaths: commitPaths,
+        message: INIT_COMMIT_MESSAGE,
         t
       });
       if (commit.status === 'committed') {
         notes.push(
           t(
-            'Committed the new .ideahub/config.json to the local idea repository automatically (not pushed).'
+            'Committed the newly created local idea repository files automatically (not pushed).'
           )
         );
       } else if (commit.status === 'failed') {
         notes.push(
           t(
-            '.ideahub/config.json was created, but the automatic commit failed: {0}',
+            'The new local idea repository files were created, but the automatic commit failed: {0}',
             commit.reason
           )
         );

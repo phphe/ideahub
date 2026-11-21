@@ -141,7 +141,15 @@ describe('explicit init in a non-empty folder', () => {
     expect(result.ok).toBe(true);
     expect(result.message).toContain('reused it as the Git repository');
     await expect(fs.access(path.join(root, 'README.md'))).resolves.toBeUndefined();
-    expect((await runGit(root, ['rev-parse', 'HEAD'])).stdout.trim()).toBe(beforeHead);
+    expect((await runGit(root, ['rev-parse', 'HEAD'])).stdout.trim()).not.toBe(beforeHead);
+    expect((await runGit(root, ['log', '-1', '--format=%s'])).stdout.trim()).toBe(
+      'ideahub: initialize repository'
+    );
+    const committed = (await runGit(root, ['show', '--name-only', '--format=', 'HEAD'])).stdout
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean);
+    expect(committed).toEqual(['README.md']);
     expect(await fs.readFile(path.join(root, '.ideahub', 'config.json'), 'utf8')).toBe(
       '{"version":99}'
     );

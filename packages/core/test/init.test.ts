@@ -24,7 +24,9 @@ describe('initializeLocalRepository', () => {
     expect(hook).not.toBeNull();
     expect(hasHookBlock(hook ?? '')).toBe(true);
 
-    await fs.access(path.join(root, 'README.md'));
+    const readme = await fs.readFile(path.join(root, 'README.md'), 'utf8');
+    expect(readme).toContain('# Idea Repository');
+    expect(readme).not.toMatch(/[\u4e00-\u9fff]/);
     await fs.access(prePushPath(root));
 
     const state = await detectWorkspace(root);
@@ -43,7 +45,7 @@ describe('initializeLocalRepository', () => {
     await fs.rm(root, { recursive: true, force: true });
   });
 
-  it('commits only the newly created config.json when git identity is available', async () => {
+  it('commits the newly created files and leaves the workspace clean', async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), 'ideahub-init-commit-'));
     const previous = {
       GIT_AUTHOR_NAME: process.env.GIT_AUTHOR_NAME,
@@ -62,13 +64,19 @@ describe('initializeLocalRepository', () => {
       expect(result.ok).toBe(true);
 
       expect((await runGit(root, ['log', '-1', '--format=%s'])).stdout.trim()).toBe(
-        'ideahub: initialize config'
+        'ideahub: initialize repository'
       );
       const changed = (await runGit(root, ['show', '--name-only', '--format=', 'HEAD'])).stdout
         .split(/\r?\n/)
         .map((line) => line.trim())
         .filter(Boolean);
-      expect(changed).toEqual(['.ideahub/config.json']);
+      expect(changed).toEqual(['.ideahub/.gitignore', '.ideahub/config.json', 'README.md']);
+      expect((await runGit(root, ['status', '--porcelain'])).stdout.trim()).toBe('');
+      const tracked = (await runGit(root, ['ls-files'])).stdout
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter(Boolean);
+      expect(tracked).toEqual(['.ideahub/.gitignore', '.ideahub/config.json', 'README.md']);
     } finally {
       for (const [key, value] of Object.entries(previous)) {
         if (value === undefined) {

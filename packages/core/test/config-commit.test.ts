@@ -4,11 +4,7 @@ import * as path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { configPath, writeConfig } from '../src/config';
 import { runGit } from '../src/git';
-import {
-  commitSingleFile,
-  CONFIG_INIT_COMMIT_MESSAGE,
-  CONFIG_REMOTE_COMMIT_MESSAGE
-} from '../src/marker-commit';
+import { commitSingleFile, CONFIG_REMOTE_COMMIT_MESSAGE } from '../src/marker-commit';
 
 const roots: string[] = [];
 
@@ -53,11 +49,11 @@ describe('commitSingleFile', () => {
     const result = await commitSingleFile({
       root,
       filePath: configPath(root),
-      message: CONFIG_INIT_COMMIT_MESSAGE
+      message: CONFIG_REMOTE_COMMIT_MESSAGE
     });
 
     expect(result.status).toBe('committed');
-    expect(await headSubject(root)).toBe('ideahub: initialize config');
+    expect(await headSubject(root)).toBe('ideahub: update remote config');
     expect(await changedFiles(root)).toEqual(['.ideahub/config.json']);
   });
 
@@ -67,7 +63,7 @@ describe('commitSingleFile', () => {
     await commitSingleFile({
       root,
       filePath: configPath(root),
-      message: CONFIG_INIT_COMMIT_MESSAGE
+      message: CONFIG_REMOTE_COMMIT_MESSAGE
     });
 
     await fs.writeFile(path.join(root, 'notes.md'), 'user staged edit\n');
@@ -103,7 +99,7 @@ describe('commitSingleFile', () => {
     await commitSingleFile({
       root,
       filePath: configPath(root),
-      message: CONFIG_INIT_COMMIT_MESSAGE
+      message: CONFIG_REMOTE_COMMIT_MESSAGE
     });
     const before = (await runGit(root, ['rev-parse', 'HEAD'])).stdout.trim();
 
@@ -126,7 +122,7 @@ describe('commitSingleFile', () => {
     const result = await commitSingleFile({
       root,
       filePath: configPath(root),
-      message: CONFIG_INIT_COMMIT_MESSAGE
+      message: CONFIG_REMOTE_COMMIT_MESSAGE
     });
 
     expect(result.status).toBe('skipped');
