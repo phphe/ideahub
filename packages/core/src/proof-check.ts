@@ -37,7 +37,7 @@ export function describeMissingProofReleases(
   );
   return [
     t(
-      'Publish blocked: the following proofs do not have a matching immutable Release in the remote repository:'
+      'Publish blocked: the following proofs do not have a matching immutable Release in the remote proof repository:'
     ),
     ...lines
   ].join('\n');

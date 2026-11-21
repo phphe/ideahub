@@ -64,7 +64,7 @@ export async function runRemoteSetupFlow(
     return {
       ok: false,
       stage: 'validation',
-      message: t('Remote repository address change cancelled.'),
+      message: t('Remote proof repository URL change cancelled.'),
       retryClone: false
     };
   }

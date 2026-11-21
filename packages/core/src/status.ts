@@ -149,11 +149,11 @@ export async function detectWorkspace(
   if (configError || !remote) {
     issues.push({
       id: 'remote-url',
-      title: t('Missing remote repository URL'),
+      title: t('Missing remote proof repository URL'),
       message:
         configError ??
         t(
-          'Enter the URL of the public idea repository you created manually on GitHub (the extension never creates repositories).'
+          'Enter the URL of the public remote proof repository you created manually on GitHub (the extension never creates repositories).'
         )
     });
   }
@@ -179,11 +179,11 @@ export async function detectWorkspace(
       issues.push({
         id: 'remote-dir',
         title: remoteGitOk
-          ? t('The remote repository clone is incomplete')
-          : t('Missing remote repository clone'),
+          ? t('The remote proof repository clone is incomplete')
+          : t('Missing remote proof repository clone'),
         message: remoteGitOk
           ? t(
-              'The inner repository has no usable HEAD (it may be an empty clone or the clone did not finish). Use "Re-clone" to fetch the remote idea repository again.'
+              'The inner repository has no usable HEAD (it may be an empty clone or the clone did not finish). Use "Re-clone" to fetch the remote proof repository again.'
             )
           : t(
               'Missing .ideahub/remote/ or it is not a valid Git repository. Use the button below to clone.'

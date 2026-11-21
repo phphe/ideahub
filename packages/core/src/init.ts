@@ -118,7 +118,7 @@ export async function initializeLocalRepository(
     } else {
       await fs.writeFile(
         configGitignorePath(root),
-        '# Ignore the cloned public idea repository\nremote/\n',
+        '# Ignore the cloned public remote proof repository\nremote/\n',
         'utf8'
       );
       completed.push(t('Created .ideahub/.gitignore'));
@@ -159,7 +159,7 @@ export async function initializeLocalRepository(
       if (commit.status === 'committed') {
         notes.push(
           t(
-            'Committed the new .ideahub/config.json to the local repository automatically (not pushed).'
+            'Committed the new .ideahub/config.json to the local idea repository automatically (not pushed).'
           )
         );
       } else if (commit.status === 'failed') {

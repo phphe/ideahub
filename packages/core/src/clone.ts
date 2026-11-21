@@ -15,7 +15,7 @@ export const REMOTE_DIR_NON_EMPTY_ERROR =
   'The .ideahub/remote directory already exists and is not empty. To avoid overwriting existing content, the clone was stopped; use "Re-clone" if you need a fresh clone.';
 
 export const INNER_REPO_NO_HEAD_ERROR =
-  'The inner repository is empty, incomplete, or the clone did not finish (no usable HEAD). Use "Re-clone" to fetch the remote idea repository again, then retry.';
+  'The inner repository is empty, incomplete, or the clone did not finish (no usable HEAD). Use "Re-clone" to fetch the remote proof repository again, then retry.';
 
 export interface RepositoryReadyResult {
   ok: boolean;
@@ -94,7 +94,7 @@ export function describeCloneFailure(
 ): string {
   const text = output.trim();
   if (!text) {
-    return t('Failed to clone the remote idea repository: git returned no error message.');
+    return t('Failed to clone the remote proof repository: git returned no error message.');
   }
   if (
     /Authentication failed|could not read Username|could not read Password|terminal prompts disabled|Permission denied|403|access denied/i.test(
@@ -102,13 +102,13 @@ export function describeCloneFailure(
     )
   ) {
     return t(
-      'Failed to clone the remote idea repository: authentication failed, so the remote repository cannot be accessed with the current credentials. Make sure you are signed in to GitHub and have write access.\nRaw message: {0}',
+      'Failed to clone the remote proof repository: authentication failed, so the remote proof repository cannot be accessed with the current credentials. Make sure you are signed in to GitHub and have write access.\nRaw message: {0}',
       text
     );
   }
   if (/Repository not found|repository .* does not exist/i.test(text)) {
     return t(
-      'Failed to clone the remote idea repository: the repository does not exist, or the current account cannot access it.\nRaw message: {0}',
+      'Failed to clone the remote proof repository: the repository does not exist, or the current account cannot access it.\nRaw message: {0}',
       text
     );
   }
@@ -118,11 +118,11 @@ export function describeCloneFailure(
     )
   ) {
     return t(
-      'Failed to clone the remote idea repository: network error, the remote repository cannot be reached. Check your network or proxy settings.\nRaw message: {0}',
+      'Failed to clone the remote proof repository: network error, the remote proof repository cannot be reached. Check your network or proxy settings.\nRaw message: {0}',
       text
     );
   }
-  return t('Failed to clone the remote idea repository: {0}', text);
+  return t('Failed to clone the remote proof repository: {0}', text);
 }
 
 export function buildCloneArgs(url: string, branch: string, target: string): string[] {
@@ -142,7 +142,7 @@ export async function cloneRemoteRepository(
     return {
       ok: false,
       error: t(
-        'The remote branch is empty and cannot be cloned. Save the remote repository configuration first (leave it empty to use the remote default branch).'
+        'The remote branch is empty and cannot be cloned. Save the remote proof repository configuration first (leave it empty to use the remote default branch).'
       )
     };
   }

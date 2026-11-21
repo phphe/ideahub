@@ -33,7 +33,7 @@ export function parseRemoteUrl(
 ): ParseRemoteUrlResult {
   const raw = input.trim();
   if (raw.length === 0) {
-    return { ok: false, error: t('Enter the remote idea repository URL.') };
+    return { ok: false, error: t('Enter the remote proof repository URL.') };
   }
 
   let owner: string | undefined;

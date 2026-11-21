@@ -106,7 +106,7 @@ export async function commitMarkerLine(
 
   if ((await runGit(repoRoot, ['rev-parse', '--verify', 'HEAD'])).code !== 0) {
     return skipped(
-      t('The local repository has no commit yet, so the baseline is unknown.'),
+      t('The local idea repository has no commit yet, so the baseline is unknown.'),
       false
     );
   }

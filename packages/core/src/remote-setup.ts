@@ -32,7 +32,7 @@ export async function validateRemoteRepository(
     return {
       ok: false,
       error: t(
-        'Unable to access the remote repository: {0}',
+        'Unable to access the remote proof repository: {0}',
         error instanceof Error ? error.message : String(error)
       )
     };
@@ -45,7 +45,7 @@ export async function validateRemoteRepository(
     };
   }
   if (repo.isPrivate) {
-    return { ok: false, error: t('The remote idea repository must be public.') };
+    return { ok: false, error: t('The remote proof repository must be public.') };
   }
   if (!repo.canPush) {
     return {
@@ -80,7 +80,7 @@ export async function validateRemoteRepository(
       return {
         ok: false,
         error: t(
-          'The branch "{0}" does not exist in the remote repository. Check the branch name, or create and push the branch on GitHub first.',
+          'The branch "{0}" does not exist in the remote proof repository. Check the branch name, or create and push the branch on GitHub first.',
           requested
         )
       };
@@ -92,7 +92,7 @@ export async function validateRemoteRepository(
       return {
         ok: false,
         error: t(
-          'Unable to read the remote repository default branch. Enter a branch name manually and retry.'
+          'Unable to read the remote proof repository default branch. Enter a branch name manually and retry.'
         )
       };
     }

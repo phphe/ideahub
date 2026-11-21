@@ -110,7 +110,7 @@ export async function syncInnerRepository(
     return {
       ok: false,
       error: t(
-        'Failed to fetch the remote idea repository: {0}',
+        'Failed to fetch the remote proof repository: {0}',
         fetch.stderr.trim() || fetch.stdout.trim()
       )
     };

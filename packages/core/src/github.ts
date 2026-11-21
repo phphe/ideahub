@@ -447,7 +447,7 @@ function describe422Hint(
   const codes = new Set(errors.map((entry) => entry.code).filter(Boolean));
   if (fields.has('target_commitish')) {
     return t(
-      '\nHint: the branch or commit referenced by target_commitish does not exist in the remote repository. Make sure the remote repository has at least one commit and the branch has been pushed.'
+      '\nHint: the branch or commit referenced by target_commitish does not exist in the remote proof repository. Make sure the remote proof repository has at least one commit and the branch has been pushed.'
     );
   }
   if (fields.has('tag_name') || codes.has('already_exists')) {

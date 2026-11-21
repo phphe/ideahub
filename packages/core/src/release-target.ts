@@ -199,14 +199,14 @@ export async function resolveReleaseTarget(
     return {
       ok: false,
       error: t(
-        'Unable to read the remote repository default branch: {0}',
+        'Unable to read the remote proof repository default branch: {0}',
         error instanceof Error ? error.message : String(error)
       )
     };
   }
   const branch = repository?.defaultBranch.trim() ?? '';
   if (branch.length === 0) {
-    return { ok: false, error: t('Unable to read the remote repository default branch.') };
+    return { ok: false, error: t('Unable to read the remote proof repository default branch.') };
   }
 
   if (commit.length > 0 && commitValid) {
@@ -245,7 +245,7 @@ export async function resolveReleaseTarget(
     return {
       ok: false,
       error: t(
-        'The default branch {0} has no commits. Push at least one commit to the remote repository first.',
+        'The default branch {0} has no commits. Push at least one commit to the remote proof repository first.',
         branch
       )
     };
