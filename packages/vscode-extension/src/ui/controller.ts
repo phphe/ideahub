@@ -97,11 +97,11 @@ async function exists(target: string): Promise<boolean> {
 function remoteSetupStepMessage(step: RemoteSetupStep, t: Translator): string {
   switch (step) {
     case 'validate':
-      return t('Step 1/2: validating the remote idea repository…');
+      return t('Step 1/2: validating the remote proof repository…');
     case 'persist':
       return t('Step 1/2: validation passed, saving configuration and hook…');
     case 'clone':
-      return t('Step 2/2: cloning the remote idea repository…');
+      return t('Step 2/2: cloning the remote proof repository…');
   }
 }
 
@@ -128,7 +128,7 @@ function formatRemoteSetupResult(
     const cloneStep =
       result.clone === 'cloned'
         ? t(
-            'Step 2/2: the remote idea repository was cloned (branch {0}).',
+            'Step 2/2: the remote proof repository was cloned (branch {0}).',
             result.branch
           )
         : t(
@@ -137,7 +137,7 @@ function formatRemoteSetupResult(
     return {
       ok: true,
       message: t(
-        'Step 1/2: remote URL validation passed; configuration and hook saved.\n{0}\nRemote idea repository: {1} (branch {2})',
+        'Step 1/2: remote URL validation passed; configuration and hook saved.\n{0}\nRemote proof repository: {1} (branch {2})',
         cloneStep,
         target,
         result.branch
@@ -152,7 +152,7 @@ function formatRemoteSetupResult(
   } as const;
   const retry = result.retryClone
     ? t(
-        '\nThe clone entry is still available; click "Clone remote repository" to retry. To start over, use "Re-clone".'
+        '\nThe clone entry is still available; click "Clone remote proof repository" to retry. To start over, use "Re-clone".'
       )
     : '';
   return {
@@ -316,7 +316,7 @@ export class IdeahubController {
         ? this.t('README.md already exists, so the existing README.md will be kept.')
         : this.t('README.md will be created.');
       const common = this.t(
-        'Existing .ideahub/ content will be reused; {0} No existing files will be overwritten, and nothing will be pushed or published automatically; only the newly created .ideahub/config.json will be committed to the local repository.\nInitialize the idea repository in this folder anyway?',
+        'Existing .ideahub/ content will be reused; {0} No existing files will be overwritten, and nothing will be pushed or published automatically; only the newly created .ideahub/config.json will be committed to the local idea repository.\nInitialize the local idea repository in this folder anyway?',
         readmeLine
       );
       const confirmation = hasGit
@@ -411,7 +411,7 @@ export class IdeahubController {
     if (!token) {
       return {
         ok: false,
-        message: this.t('You must sign in to GitHub to validate the remote idea repository.')
+        message: this.t('You must sign in to GitHub to validate the remote proof repository.')
       };
     }
 
@@ -427,7 +427,7 @@ export class IdeahubController {
     const result = await vscode.window.withProgress(
       {
         location: vscode.ProgressLocation.Notification,
-        title: this.t('Configuring the remote idea repository (1/2 validate → 2/2 clone)'),
+        title: this.t('Configuring the remote proof repository (1/2 validate → 2/2 clone)'),
         cancellable: false
       },
       (progress) =>
@@ -445,7 +445,7 @@ export class IdeahubController {
             const confirm = this.t('Change');
             const choice = await vscode.window.showWarningMessage(
               this.t(
-                'Changing the remote idea repository URL affects the verifiability of existing proofs; existing proofs remain in the previous remote repository. Change it anyway?'
+                'Changing the remote proof repository URL affects the verifiability of existing proofs; existing proofs remain in the previous remote proof repository. Change it anyway?'
               ),
               { modal: true },
               confirm
@@ -473,7 +473,7 @@ export class IdeahubController {
             });
             if (commit.status === 'committed') {
               configCommitNote = this.t(
-                'Automatically committed .ideahub/config.json to the local repository (not pushed).'
+                'Automatically committed .ideahub/config.json to the local idea repository (not pushed).'
               );
             } else if (commit.status === 'failed') {
               configCommitNote = this.t(
@@ -503,7 +503,7 @@ export class IdeahubController {
     if (!root || state.kind !== 'local' || !state.remote) {
       return {
         ok: false,
-        message: this.t('Enter and save the remote repository URL first.')
+        message: this.t('Enter and save the remote proof repository URL first.')
       };
     }
 
@@ -511,7 +511,7 @@ export class IdeahubController {
       const confirm = this.t('Delete and re-clone');
       const choice = await vscode.window.showWarningMessage(
         this.t(
-          'This will delete .ideahub/remote/ and clone the remote idea repository again. Uncommitted changes in that directory will be lost. Continue?'
+          'This will delete .ideahub/remote/ and clone the remote proof repository again. Uncommitted changes in that directory will be lost. Continue?'
         ),
         { modal: true },
         confirm
@@ -535,7 +535,7 @@ export class IdeahubController {
     const result = await vscode.window.withProgress(
       {
         location: vscode.ProgressLocation.Notification,
-        title: this.t('Cloning the remote idea repository…')
+        title: this.t('Cloning the remote proof repository…')
       },
       () => cloneRemoteRepository(root, state.remote!, this.t)
     );
@@ -548,7 +548,7 @@ export class IdeahubController {
     return {
       ok: true,
       message: this.t(
-        'The remote idea repository was cloned (branch {0}).',
+        'The remote proof repository was cloned (branch {0}).',
         result.branch
       )
     };
@@ -594,7 +594,7 @@ export class IdeahubController {
             host: null,
             branch: null,
             visibility: this.t('Unknown'),
-            error: this.t('No remote idea repository is configured yet.')
+            error: this.t('No remote proof repository is configured yet.')
           },
           this.t
         )
@@ -653,7 +653,7 @@ export class IdeahubController {
             host: null,
             branch: null,
             visibility: this.t('Unknown'),
-            error: this.t('No remote idea repository is configured yet.')
+            error: this.t('No remote proof repository is configured yet.')
           },
           this.t
         )
@@ -693,7 +693,7 @@ export class IdeahubController {
             {
               ...base,
               error: this.t(
-                'Unable to read remote repository information (the repository does not exist or there is no access).'
+                'Unable to read remote proof repository information (the repository does not exist or there is no access).'
               )
             },
             this.t
@@ -718,7 +718,7 @@ export class IdeahubController {
         withDisplay(
           {
             ...base,
-            error: this.t('Unable to read remote repository information: {0}', reason)
+            error: this.t('Unable to read remote proof repository information: {0}', reason)
           },
           this.t
         )
@@ -807,7 +807,7 @@ export class IdeahubController {
   }
 
   /**
-   * Section 8.7: copies the project URL in the remote repository. The branch
+   * Section 8.7: copies the project URL in the remote proof repository. The branch
    * comes from config; the project name is URL-encoded. A 404 before publishing
    * is expected and intentionally not warned about.
    */
@@ -816,7 +816,7 @@ export class IdeahubController {
     if (state.kind !== 'local' || !state.remote) {
       return {
         ok: false,
-        message: this.t('Complete the remote repository configuration first.')
+        message: this.t('Complete the remote proof repository configuration first.')
       };
     }
     const url = remoteProjectUrl(
@@ -976,7 +976,7 @@ export class IdeahubController {
     if (state.kind !== 'local' || !state.remote) {
       return {
         ok: false,
-        message: this.t('Complete the local and remote repository configuration first.')
+        message: this.t('Complete the local and remote proof repository configuration first.')
       };
     }
     if (state.issues.length > 0) {
@@ -1288,7 +1288,7 @@ export class IdeahubController {
     if (state.kind !== 'local' || !state.remote) {
       return {
         ok: false,
-        message: this.t('Complete the local and remote repository configuration first.')
+        message: this.t('Complete the local and remote proof repository configuration first.')
       };
     }
     if (state.issues.length > 0) {
@@ -1361,7 +1361,7 @@ export class IdeahubController {
       fileList,
       targetExists
         ? this.t(
-            '\n\nA directory with the same name already exists in the remote idea repository; this publish will overwrite it.'
+            '\n\nA directory with the same name already exists in the remote proof repository; this publish will overwrite it.'
           )
         : ''
     );
@@ -1370,7 +1370,7 @@ export class IdeahubController {
     const cancel = this.t('Cancel');
     const first = await vscode.window.showWarningMessage(
       this.t(
-        'Your idea "{0}" will be published to your remote idea repository and made public. Continue?',
+        'Your idea "{0}" will be published to your remote proof repository and made public. Continue?',
         project
       ),
       { modal: true, detail },
@@ -1398,7 +1398,7 @@ export class IdeahubController {
       return {
         ok: false,
         message: this.t(
-          'You must sign in to GitHub to publish to the remote idea repository.'
+          'You must sign in to GitHub to publish to the remote proof repository.'
         )
       };
     }
@@ -1460,7 +1460,7 @@ export class IdeahubController {
           };
         }
 
-        progress.report({ message: this.t('Synchronizing the remote idea repository…') });
+        progress.report({ message: this.t('Synchronizing the remote proof repository…') });
         const sync = await syncInnerRepository(innerPath, remote.branch, this.t);
         if (!sync.ok) {
           this.log(

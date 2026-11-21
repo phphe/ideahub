@@ -610,7 +610,7 @@ function renderIssueActions(
       return `<input type="text" id="remote-url" placeholder="https://github.com/owner/repo" />
         <p class="muted">${escapeHtml(
           t(
-            'The remote idea repository must be created manually by you and must be public. The remote default branch is used automatically and shown in settings. After validation the repository is cloned into .ideahub/remote/; the configuration is only committed to the local repository and nothing is pushed or published.'
+            'The remote proof repository must be created manually by you and must be public. The remote default branch is used automatically and shown in settings. After validation the repository is cloned into .ideahub/remote/; the configuration is only committed to the local idea repository and nothing is pushed or published.'
           )
         )}</p>
         <div class="actions"><button data-action="setRemote">${escapeHtml(
@@ -618,7 +618,7 @@ function renderIssueActions(
         )}</button></div>`;
     case 'remote-dir':
       return `<div class="actions">
-        <button data-action="clone">${escapeHtml(t('Clone remote repository'))}</button>
+        <button data-action="clone">${escapeHtml(t('Clone remote proof repository'))}</button>
         ${remoteDirExists ? `<button class="secondary" data-action="reclone">${escapeHtml(
           t('Re-clone (delete the existing remote/)')
         )}</button>` : ''}
@@ -658,7 +658,7 @@ function renderMain(state: WorkspaceState, t: Translator): string {
             )
           )}</p>
           <div class="actions">
-            <button data-action="init">${escapeHtml(t('Initialize local repository'))}</button>
+            <button data-action="init">${escapeHtml(t('Initialize local idea repository'))}</button>
             <button class="secondary" data-action="refresh">${escapeHtml(t('Check again'))}</button>
           </div>
         </div>`;
@@ -666,7 +666,7 @@ function renderMain(state: WorkspaceState, t: Translator): string {
       return `
         <h1>${escapeHtml(t('IdeaHub'))}</h1>
         <div class="card warn">
-          <div class="title">${escapeHtml(t('No idea repository detected'))}</div>
+          <div class="title">${escapeHtml(t('No local idea repository detected'))}</div>
           <p>${escapeHtml(
             t(
               'The current folder is not empty and has no .ideahub directory, so it is not initialized automatically to avoid overwriting existing content.'
@@ -857,14 +857,14 @@ function refreshTooltip(
   if (state.remote) {
     parts.push(
       t(
-        'Remote idea repository: {0}/{1} (branch {2})',
+        'Remote proof repository: {0}/{1} (branch {2})',
         state.remote.owner,
         state.remote.repo,
         state.remote.branch
       )
     );
   } else {
-    parts.push(t('Remote idea repository: not configured'));
+    parts.push(t('Remote proof repository: not configured'));
   }
   if (state.remoteStatus && !state.remoteStatus.available && state.remoteStatus.error) {
     parts.push(
@@ -1042,7 +1042,7 @@ export function renderSettingsHtml(
       </div>
     </div>
     <div class="card">
-      <div class="title">${escapeHtml(t('Remote idea repository'))}</div>
+      <div class="title">${escapeHtml(t('Remote proof repository'))}</div>
       ${settingRow(t('URL'), info.display.url, 'settings-url')}
       ${settingRow('owner/repo', info.display.ownerRepo, 'settings-owner-repo')}
       ${settingRow('host', info.display.host, 'settings-host')}
@@ -1051,7 +1051,7 @@ export function renderSettingsHtml(
       ${error}
     </div>
     <div class="card">
-      <div class="title">${escapeHtml(t('Change remote repository URL'))}</div>
+      <div class="title">${escapeHtml(t('Change remote proof repository URL'))}</div>
       <input id="remote-url" type="text" value="${escapeHtml(
         info.url
       )}" placeholder="https://github.com/owner/repo" />
@@ -1060,7 +1060,7 @@ export function renderSettingsHtml(
       </div>
       <p class="muted">${escapeHtml(
         t(
-          'Changes go through the existing validate → save configuration → automatic clone/re-clone flow; the configuration is only committed to the local repository and nothing is pushed or published.'
+          'Changes go through the existing validate → save configuration → automatic clone/re-clone flow; the configuration is only committed to the local idea repository and nothing is pushed or published.'
         )
       )}</p>
     </div>
