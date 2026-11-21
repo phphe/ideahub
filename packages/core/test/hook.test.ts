@@ -94,7 +94,7 @@ describe.skipIf(!bashPath)('pre-push hook script', () => {
     return scriptPath;
   }
 
-  it('blocks pushes to the remote idea repository in https and ssh forms', async () => {
+  it('blocks pushes to the remote proof repository in https and ssh forms', async () => {
     const script = await writeHook('owner', 'repo');
     expect(runHook(script, 'https://github.com/owner/repo.git')).toBe(1);
     expect(runHook(script, 'git@github.com:owner/repo.git')).toBe(1);

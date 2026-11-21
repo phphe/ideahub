@@ -49,7 +49,7 @@ describe('validateRemoteRepository branch resolution', () => {
 
     expect(result.ok).toBe(false);
     if (!result.ok) {
-      expect(result.error).toContain('does not exist in the remote repository');
+      expect(result.error).toContain('does not exist in the remote proof repository');
       expect(result.error).toContain('Check the branch name');
     }
   });
@@ -73,7 +73,7 @@ describe('validateRemoteRepository branch resolution', () => {
 
     expect(result.ok).toBe(false);
     if (!result.ok) {
-      expect(result.error).toContain('Unable to read the remote repository default branch');
+      expect(result.error).toContain('Unable to read the remote proof repository default branch');
     }
   });
 });

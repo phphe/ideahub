@@ -161,7 +161,7 @@ describe('runRemoteSetupFlow', () => {
       throw new Error('expected a cancelled flow');
     }
     expect(result.stage).toBe('validation');
-    expect(result.message).toBe('Remote repository address change cancelled.');
+    expect(result.message).toBe('Remote proof repository URL change cancelled.');
     expect(deps.persist).not.toHaveBeenCalled();
     expect(deps.clone).not.toHaveBeenCalled();
   });
