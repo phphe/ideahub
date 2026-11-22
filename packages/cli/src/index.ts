@@ -1,4 +1,4 @@
-import { runCheck } from './check';
+import { checkResultToJson, runCheck } from './check';
 import { resolveToken } from './credentials';
 import { runLogin } from './login';
 
@@ -13,8 +13,11 @@ export const red = (text: string): string => paint(31, text);
 
 const USAGE = [
   'Usage:',
-  '  npx @ideahub/cli check <project-url>   verify the proof file (PASS=0 / FAIL=1 / execution error=2)',
+  '  npx @ideahub/cli check [--json] <project-url>   verify the proof file (PASS=0 / FAIL=1 / execution error=2)',
   '  npx @ideahub/cli login [--token <token>]',
+  '',
+  'Options:',
+  '  --json   print exactly one JSON object to stdout and nothing else',
   '',
   'Accepted project URLs:',
   '  https://github.com/<owner>/<repo>/tree/<branch>/<path...>',
@@ -53,6 +56,11 @@ async function runCheckCommand(args: string[]): Promise<number> {
 
   const { token, source } = await resolveToken();
   const result = await runCheck({ input, token });
+
+  if (args.includes('--json')) {
+    process.stdout.write(`${JSON.stringify(checkResultToJson(result, input))}\n`);
+    return result.status === 'PASS' ? 0 : result.status === 'FAIL' ? 1 : 2;
+  }
 
   if (result.status === 'PASS') {
     if (result.detail) {
