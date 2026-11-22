@@ -5,6 +5,7 @@
   "version": "1.1.0",
   "publisher": "ideahub",
   "license": "MIT",
+  "icon": "icon.png",
   "private": true,
   "keywords": [
     "ideahub",
