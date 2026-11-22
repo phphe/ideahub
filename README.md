@@ -30,16 +30,23 @@ It computes a content fingerprint from the original idea text and publishes only
 
 ## Content guidelines
 
-- Keep the idea text concise; a one-sentence summary followed by a paragraph of details works well.
+- Keep the idea text concise; a one-sentence summary followed by a paragraph of details works well. For example:
+  ```md
+  **This is summary**
+
+  This is detail. This is detail. This is detail.
+  ```
 - Avoid including times in the text.
 - After a proof is generated, a marker is inserted at the bottom of that segment. Write new content after the marker; modifying or adding content before it invalidates the proof of that segment.
 - Renaming the project (the folder name) invalidates all proofs of that project.
 - Images and files are allowed, but they must be placed inside the project folder. The proof covers the idea text and the project files referenced in the text; unreferenced files, external files and links are not included.
+- Replacing an image or file already used in a proof with new content at the same path invalidates the corresponding proof. Give changed files a new filename.
 
 ## Notes
 
 - The local idea repository and the remote proof repository must not be the same repository, and you must not push the local idea repository to the remote proof repository manually. The tool adds a `pre-push` hook to the local idea repository that blocks such pushes. To back up the local idea repository, create a separate empty remote repository and set it to private; otherwise your idea text will be exposed.
 - The idea text must not contain the emoji "🔏".
+- Git LFS is not supported in the current version.
 
 ## Verify others' proofs with the CLI
 
@@ -50,6 +57,8 @@ npx @ideahub/cli check <project-url>
 Three outcomes: `PASS` exits with 0, `FAIL` with 1, and execution errors with 2.
 
 The CLI queries the GitHub API. You can sign in to GitHub to raise the API quota: `npx @ideahub/cli login` (60 requests/hour anonymously, 5,000/hour after signing in).
+
+For more, see [@ideahub/cli](./packages/cli/README.md).
 
 ## Configuration
 
