@@ -257,6 +257,7 @@
   "This proof is confirmed immutable.": "本次证明已确认不可变。",
   "Proof failed: the Release is not immutable.\nTag: {0}\n{1}\nEnable \"Enable release immutability\" in the remote proof repository settings, then retry. No marker was written to ideas.md.": "生成证明失败：Release 不是不可变状态。\nTag：{0}\n{1}\n请在远程证明仓库设置中启用“Enable release immutability”后重试；ideas.md 未写入任何标记。",
   "The remote proof repository has immutable Releases disabled.": "远程证明仓库未启用不可变 Release。",
+  "This project uses Git LFS ({0}); its files cannot be covered by a proof. Remove the filter=lfs rule and retry.": "该项目的文件使用 Git LFS（{0}），无法纳入证明。请移除 filter=lfs 规则后重试。",
   "GitHub did not report the Release immutability field.": "GitHub 未返回 Release 的不可变字段。",
   "This release is mutable; the repository may not have this setting enabled.": "本次 Release 可变，仓库可能未启用该设置。",
   "This will delete .ideahub/remote/ and clone the remote proof repository again. Uncommitted changes in that directory will be lost. Continue?": "将删除 .ideahub/remote/ 并从远程证明仓库重新克隆。该目录内未提交的变更会丢失，确认继续吗？",

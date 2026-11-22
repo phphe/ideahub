@@ -18,6 +18,7 @@ export type FingerprintErrorCode =
   | 'outside-repo'
   | 'missing-file'
   | 'directory'
+  | 'git-lfs'
   | 'git-missing'
   | 'git-failed';
 
@@ -91,6 +92,16 @@ export function buildFingerprint(input: FingerprintInput): Promise<FingerprintRe
 
 async function fingerprint(input: FingerprintInput): Promise<FingerprintResult> {
   const t = input.t ?? translate;
+  const lfsRule = await detectProjectLfs(input.projectDir);
+  if (lfsRule) {
+    return fail(
+      'git-lfs',
+      t(
+        'This project uses Git LFS ({0}); its files cannot be covered by a proof. Remove the filter=lfs rule and retry.',
+        lfsRule
+      )
+    );
+  }
   if (input.text.includes(RESERVED_CHAR)) {
     return fail(
       'reserved-char',
@@ -153,6 +164,20 @@ async function fingerprint(input: FingerprintInput): Promise<FingerprintResult> 
 
 function fail(code: FingerprintErrorCode, message: string): FingerprintFailure {
   return { ok: false, code, message };
+}
+
+/** Section 7.7: prove and publish both refuse projects that track files with Git LFS. */
+async function detectProjectLfs(projectDir: string): Promise<string | null> {
+  try {
+    const raw = await fs.readFile(path.join(projectDir, '.gitattributes'), 'utf8');
+    const line = raw
+      .split(/\r?\n/)
+      .map((entry) => entry.trim())
+      .find((entry) => entry.length > 0 && !entry.startsWith('#') && /filter\s*=\s*lfs/i.test(entry));
+    return line ?? null;
+  } catch {
+    return null;
+  }
 }
 
 function insertReservedChar(

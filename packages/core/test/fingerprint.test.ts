@@ -206,6 +206,44 @@ describe('buildFingerprint references', () => {
     expect(after.hash).not.toBe(before.hash);
   });
 
+  it('refuses projects that track files with Git LFS', async () => {
+    const { root, projectDir } = await createRepository({
+      'MyGame/a.png': 'image',
+      'MyGame/.gitattributes': '*.png filter=lfs diff=lfs merge=lfs -text\n'
+    });
+
+    const result = await buildFingerprint({
+      project: 'MyGame',
+      text: '![a](a.png)',
+      projectDir,
+      repoRoot: root
+    });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) {
+      throw new Error('expected the fingerprint to be rejected');
+    }
+    expect(result.code).toBe('git-lfs');
+    expect(result.message).toContain('Git LFS');
+    expect(result.message).toContain('filter=lfs');
+  });
+
+  it('ignores commented filter=lfs rules', async () => {
+    const { root, projectDir } = await createRepository({
+      'MyGame/a.png': 'image',
+      'MyGame/.gitattributes': '# *.png filter=lfs diff=lfs merge=lfs -text\n'
+    });
+
+    const result = await buildFingerprint({
+      project: 'MyGame',
+      text: '![a](a.png)',
+      projectDir,
+      repoRoot: root
+    });
+
+    expect(result.ok).toBe(true);
+  });
+
   it('rejects text containing the reserved character', async () => {
     const { root, projectDir } = await createRepository();
     const result = await buildFingerprint({
