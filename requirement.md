@@ -967,6 +967,7 @@ https://github.com/<远程证明仓库用户>/<远程证明仓库名字>/tree/<�
 ### 11.5 CLI
 
 - `npx @ideahub/cli check <project-url>` 对合规证明输出 `PASS` 并以 0 退出；对确定不合规的证明输出 `FAIL` 并以 1 退出；执行错误（限流、网络、仓库不可访问等）不输出 `PASS`/`FAIL`，以 2 退出（见 13.1、13.6）。
+- `npx @ideahub/cli check --json <project-url>` 时 stdout 只输出一个可被 `JSON.parse` 解析的对象，`status` 区分 PASS/FAIL/ERROR，且包含仓库、分支、项目路径、commit、证明块数量与失败/错误明细；退出码仍为 0/1/2（见 13.1）。
 - CLI 使用 `@ideahub/core` 的英文默认文案，不读取扩展的 `package.nls.*.json` 或 `l10n/` 语言包（见第十四章）。
 - `npx @ideahub/cli login` 成功后，`check` 的配额从匿名的 60 次/小时提升到 5000 次/小时。
 - CLI 与扩展对同一份证明文件的判定一致：结构、块指纹、不可变校验、时间窗口、`🔏` 规则均由 `@ideahub/core` 的同一套实现承担（见 13.4）。
@@ -1052,6 +1053,12 @@ packages/
 | 执行错误 | 只报错，**不输出** `PASS` / `FAIL` | `2` |
 
 - `PASS` / `FAIL` 只描述“证明文件本身”的结论；网络、鉴权、配额、能力缺失等一律走 `2`，不得伪装成 `FAIL`。
+- `--json` 只作为 `check` 的参数：`npx @ideahub/cli check [--json] <project-url>`；`--help` 的用法文本必须列出该参数。
+  - 启用 `--json` 时，stdout **只输出一个 JSON 对象**（单行，无 ANSI 颜色、无人类可读的说明行或前后缀），stderr 不输出说明文本。
+  - 退出码语义完全不变：PASS=`0`、FAIL=`1`、执行错误=`2`，调用方可以同时用退出码与 JSON 的 `status` 判断。
+  - 不带 `--json` 时，现有输出内容、stdout/stderr 分工与退出码保持不变。
+  - JSON 固定包含：`status`（`PASS`/`FAIL`/`ERROR`）、`input`、`repository`（`owner`/`repo`/`url` 或 `null`）、`branch`、`projectPath`、`projectUrl`、`commit`、`proofBlocks`、`failures`（FAIL 的原因列表，其它状态为空数组）、`error`（ERROR 时为 `{category, messages}`，其它状态为 `null`）。未解析到的字段用 `null`。
+  - `error.category` 至少覆盖：`url`、`repository`、`branch`、`proof-file`、`proof-version`、`commit`、`tree`、`project-directory`、`marker`、`release-immutability`、`release-time`、`rate-limit`、`api`、`unexpected`。
 - CLI 与 VS Code 扩展无运行时依赖；扩展不调用 CLI，CLI 也不读取扩展的认证或配置（见 13.6）。
 
 ### 13.2 输入与取数
