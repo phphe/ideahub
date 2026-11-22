@@ -18,7 +18,7 @@ The project URL passed to `check` is the address of a project directory inside t
 - `https://github.com/<owner>/<repo>/tree/<branch>/<path...>`
 - `https://github.com/<owner>/<repo>/tree/<branch>/<path...>/README.md`
 
-Any other address (`blob/`, a non-github.com host, a missing path segment, etc.) fails immediately and exits with 2.
+Any other address (`blob/`, a non-github.com host, a missing path segment, etc.) fails immediately and exits with 2. In the VS Code extension panel, right-click a project name to copy its project URL.
 
 ## Exit codes
 
