@@ -140,6 +140,26 @@ afterEach(async () => {
   );
 });
 
+describe('markProject project README check', () => {
+  it('blocks proof generation when the project already contains README.md', async () => {
+    const { root, controller } = await createProject();
+    await fs.writeFile(path.join(root, 'MyGame', 'README.md'), 'user readme', 'utf8');
+    await mockDocument(BASE);
+    const before = (await runGit(root, ['rev-parse', 'HEAD'])).stdout.trim();
+
+    const result = await controller.markProject('MyGame');
+
+    expect(result.ok).toBe(false);
+    expect(result.message.startsWith('Proof blocked:')).toBe(true);
+    expect(result.message).toContain('README.md');
+    expect(vi.mocked(GitHubClient.prototype.createRelease)).not.toHaveBeenCalled();
+    expect(applyEditMock).not.toHaveBeenCalled();
+    expect(saveMock).not.toHaveBeenCalled();
+    expect(await fs.readFile(path.join(root, 'MyGame', 'ideas.md'), 'utf8')).toBe(BASE);
+    expect((await runGit(root, ['rev-parse', 'HEAD'])).stdout.trim()).toBe(before);
+  });
+});
+
 describe('markProject immutable Release check', () => {
   it('fails with an error and leaves ideas.md untouched when immutability is disabled', async () => {
     const { root, controller } = await createProject();

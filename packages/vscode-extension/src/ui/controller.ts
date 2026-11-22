@@ -71,6 +71,7 @@ import {
   copyProjectIntoInnerRepository,
   readInnerRepositoryHead,
   remoteProjectUrl,
+  checkProjectReadme,
   restoreInnerRepository,
   scanProjectDirectory,
   syncInnerRepository
@@ -1015,6 +1016,17 @@ export class IdeahubController {
       };
     }
 
+    // Section 8.8: publishing generates README.md, so a user README.md would
+    // be overwritten. Prove and publish both refuse it before any write.
+    const readmeCheck = await checkProjectReadme(
+      path.join(state.root, project),
+      'proof',
+      this.t
+    );
+    if (!readmeCheck.ok) {
+      return { ok: false, message: readmeCheck.error };
+    }
+
     this.log(
       `mark: release config: release_commit=${RELEASE_COMMIT || '(default branch head)'} source=build`
     );
@@ -1372,6 +1384,11 @@ export class IdeahubController {
     }
 
     const projectDir = path.join(state.root, project);
+    const readmeCheck = await checkProjectReadme(projectDir, 'publish', this.t);
+    if (!readmeCheck.ok) {
+      return { ok: false, message: readmeCheck.error };
+    }
+
     const scan = await scanProjectDirectory(projectDir, this.t);
     if (scan.blocked.length > 0) {
       return {
@@ -1612,6 +1629,15 @@ export class IdeahubController {
           this.t
         );
         if (!push.ok) {
+          if (push.stage === 'push') {
+            this.log(`publish: push failed: ${push.error}`);
+            return {
+              ok: false,
+              message: `${push.error}${this.t(
+                '\nThe local remote was kept so you can push it manually.'
+              )}${localMarkerNote}`
+            };
+          }
           const rollback = await restoreInnerRepository(
             innerPath,
             beforeHead.head,

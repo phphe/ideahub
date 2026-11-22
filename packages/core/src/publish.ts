@@ -79,6 +79,49 @@ export async function scanProjectDirectory(
   return { files, blocked };
 }
 
+/**
+ * Sections 8.8 / 8.10: a user-authored README.md in the project would be
+ * overwritten by the generated proof file when publishing, so prove and
+ * publish must both refuse it up front.
+ */
+export async function checkProjectReadme(
+  projectDir: string,
+  action: 'proof' | 'publish',
+  t: Translator = translate
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  try {
+    await fs.lstat(path.join(projectDir, 'README.md'));
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      return { ok: true };
+    }
+    return {
+      ok: false,
+      error:
+        action === 'proof'
+          ? t(
+              'Proof blocked: the project folder already contains README.md, but it could not be inspected ({0}). Rename or remove it first.',
+              describeError(error)
+            )
+          : t(
+              'Publish blocked: the project folder already contains README.md, but it could not be inspected ({0}). Rename or remove it first.',
+              describeError(error)
+            )
+    };
+  }
+  return {
+    ok: false,
+    error:
+      action === 'proof'
+        ? t(
+            'Proof blocked: the project folder already contains README.md. Rename or remove it first; publishing would overwrite it with the generated proof file.'
+          )
+        : t(
+            'Publish blocked: the project folder already contains README.md. Rename or remove it first; the generated proof file would overwrite it.'
+          )
+  };
+}
+
 export async function syncInnerRepository(
   remotePath: string,
   branch: string,
@@ -161,6 +204,10 @@ export async function copyProjectIntoInnerRepository(
   proofFile: string,
   t: Translator = translate
 ): Promise<{ ok: true; target: string } | { ok: false; error: string }> {
+  const readme = await checkProjectReadme(sourceDir, 'publish', t);
+  if (!readme.ok) {
+    return readme;
+  }
   const target = path.join(remotePath, projectName);
   try {
     let targetExists = false;
@@ -253,6 +300,32 @@ export async function restoreInnerRepository(
     };
   }
   return { ok: true };
+}
+
+/**
+ * Section 8.10: after a successful sync, a rejected push usually means another
+ * person pushed. Keep the local commit and tell the user how to push it.
+ */
+export function formatPushFailure(
+  remotePath: string,
+  branch: string,
+  detail: string,
+  t: Translator = translate
+): string {
+  const conflict = /non-fast-forward|fetch first|\[rejected\]|updates were rejected/i.test(
+    detail
+  );
+  const summary = conflict
+    ? t(
+        'Publish failed: the remote proof repository changed after syncing, so the push was rejected. Another person may have pushed to it.'
+      )
+    : t('Publish failed: the inner repository could not be pushed.');
+  const manual = t(
+    'Push the inner repository manually:\n- Directory: {0}\n- Commands:\n  git -C "{0}" fetch origin\n  git -C "{0}" merge --ff-only origin/{1}\n  git -C "{0}" push origin HEAD:{1}\nIf the merge reports conflicts, resolve them in the directory and commit before pushing.',
+    remotePath,
+    branch
+  );
+  return t('{0}\nDetails: {1}\n{2}', summary, detail, manual);
 }
 
 export async function commitAndPushInnerRepository(
@@ -351,7 +424,7 @@ export async function commitAndPushInnerRepository(
     ]);
     return {
       ok: false,
-      error: t('Failed to push the inner repository: {0}', detail),
+      error: formatPushFailure(remotePath, params.branch, detail, t),
       stage: 'push'
     };
   }

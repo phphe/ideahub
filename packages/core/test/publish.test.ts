@@ -3,8 +3,10 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
+  checkProjectReadme,
   commitAndPushInnerRepository,
   copyProjectIntoInnerRepository,
+  formatPushFailure,
   remoteProjectUrl,
   restoreInnerRepository,
   scanProjectDirectory
@@ -66,7 +68,7 @@ describe('copyProjectIntoInnerRepository', () => {
     expect(await fs.readFile(path.join(target, 'assets', 'a.txt'), 'utf8')).toBe('a');
   });
 
-  it('overwrites an existing README.md silently', async () => {
+  it('refuses a source project that contains README.md', async () => {
     const project = await tempDir('ideahub-copy-readme-');
     const marker = '###### `Published: 2026-11-06 18:33:28 (UTC+08:00) [ideahub]`';
     await fs.writeFile(
@@ -79,10 +81,69 @@ describe('copyProjectIntoInnerRepository', () => {
     const inner = await tempDir('ideahub-copy-readme-dst-');
     const proofFile = `---\nversion: "1"\n---\n\n${marker}\n\n创意原文\n`;
     const result = await copyProjectIntoInnerRepository(inner, 'MyGame', project, proofFile);
-    expect(result.ok).toBe(true);
 
-    expect(await fs.readFile(path.join(inner, 'MyGame', 'README.md'), 'utf8')).toBe(proofFile);
-    await expect(fs.access(path.join(inner, 'MyGame', 'ideas.md'))).rejects.toThrow();
+    expect(result.ok).toBe(false);
+    if (result.ok) {
+      throw new Error('expected the copy to be refused');
+    }
+    expect(result.error.startsWith('Publish blocked:')).toBe(true);
+    expect(result.error).toContain('README.md');
+    await expect(fs.access(path.join(inner, 'MyGame'))).rejects.toThrow();
+  });
+});
+
+describe('checkProjectReadme', () => {
+  it('refuses an existing README.md for both proof and publish', async () => {
+    const project = await tempDir('ideahub-readme-check-');
+    await fs.writeFile(path.join(project, 'README.md'), 'user readme', 'utf8');
+
+    const proof = await checkProjectReadme(project, 'proof');
+    const publish = await checkProjectReadme(project, 'publish');
+
+    expect(proof.ok).toBe(false);
+    expect(publish.ok).toBe(false);
+    if (!proof.ok) {
+      expect(proof.error.startsWith('Proof blocked:')).toBe(true);
+    }
+    if (!publish.ok) {
+      expect(publish.error.startsWith('Publish blocked:')).toBe(true);
+    }
+  });
+
+  it('allows a project without README.md', async () => {
+    const project = await tempDir('ideahub-readme-missing-');
+    await fs.writeFile(path.join(project, 'ideas.md'), 'idea', 'utf8');
+    expect(await checkProjectReadme(project, 'proof')).toEqual({ ok: true });
+  });
+});
+
+describe('formatPushFailure', () => {
+  it('explains a rejected push and prints manual commands with the directory', () => {
+    const message = formatPushFailure(
+      'C:/repo/.ideahub/remote',
+      'main',
+      "! [rejected] HEAD -> main (non-fast-forward)\nerror: failed to push some refs"
+    );
+
+    expect(
+      message.startsWith(
+        'Publish failed: the remote proof repository changed after syncing, so the push was rejected.'
+      )
+    ).toBe(true);
+    expect(message).toContain('Another person may have pushed to it.');
+    expect(message).toContain('Directory: C:/repo/.ideahub/remote');
+    expect(message).toContain('git -C "C:/repo/.ideahub/remote" fetch origin');
+    expect(message).toContain('git -C "C:/repo/.ideahub/remote" merge --ff-only origin/main');
+    expect(message).toContain('git -C "C:/repo/.ideahub/remote" push origin HEAD:main');
+  });
+
+  it('keeps the generic summary for other push failures but still prints commands', () => {
+    const message = formatPushFailure('/repo/.ideahub/remote', 'main', 'remote: Permission denied');
+
+    expect(message.startsWith('Publish failed: the inner repository could not be pushed.')).toBe(
+      true
+    );
+    expect(message).toContain('Push the inner repository manually:');
   });
 });
 

@@ -143,6 +143,26 @@ describe('publishProject precondition', () => {
     await expect(fs.access(path.join(root, '.ideahub', 'remote', 'MyGame'))).rejects.toThrow();
   });
 
+  it('blocks a project README.md before any confirmation or write', async () => {
+    const { root, controller } = await createProject(`创意\n${PROOF}\n`);
+    const ideasPath = path.join(root, 'MyGame', 'ideas.md');
+    const beforeIdeas = await fs.readFile(ideasPath, 'utf8');
+    const before = await head(root);
+    await fs.writeFile(path.join(root, 'MyGame', 'README.md'), 'user readme', 'utf8');
+
+    const result = await (
+      controller as { publishProject: (project: string) => Promise<{ ok: boolean; message: string }> }
+    ).publishProject('MyGame');
+
+    expect(result.ok).toBe(false);
+    expect(result.message.startsWith('Publish blocked:')).toBe(true);
+    expect(result.message).toContain('README.md');
+    expect(warningMock).not.toHaveBeenCalled();
+    expect(await fs.readFile(ideasPath, 'utf8')).toBe(beforeIdeas);
+    expect(await head(root)).toBe(before);
+    await expect(fs.access(path.join(root, '.ideahub', 'remote', 'MyGame'))).rejects.toThrow();
+  });
+
   it('ignores the second publish request while the first is awaiting confirmation', async () => {
     const { controller } = await createProject(`创意\n${PROOF}\n`);
     let resolveWarning!: (value: unknown) => void;
