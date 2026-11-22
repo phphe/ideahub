@@ -18,7 +18,7 @@ npx @ideahub/cli login
 - `https://github.com/<owner>/<repo>/tree/<branch>/<path...>`
 - `https://github.com/<owner>/<repo>/tree/<branch>/<path...>/README.md`
 
-其它地址（`blob/`、非 github.com、缺少路径段等）直接报错并以 2 退出。
+其它地址（`blob/`、非 github.com、缺少路径段等）直接报错并以 2 退出。在vscode扩展面板, 在项目名称的右键菜单可以复制项目地址.
 
 ## 退出码
 
