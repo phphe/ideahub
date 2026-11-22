@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { build } from 'esbuild';
 
@@ -167,3 +168,31 @@ await build({
     'process.env.IDEAHUB_PROOF_FILE_VERSION': JSON.stringify(proofVersion.version)
   }
 });
+
+/**
+ * npm creates the Windows `ideahub.cmd` shim by reading the shebang of the
+ * executable declared in package.json#bin, and `npx @ideahub/cli` runs that
+ * shim. Fail the build if either half of that contract drifts, so a published
+ * tarball cannot regress into "'ideahub' is not recognized".
+ */
+const packageDir = fileURLToPath(new URL('.', import.meta.url));
+const distFile = path.resolve(packageDir, 'dist/index.js');
+const shebang = readFileSync(distFile, 'utf8').split(/\r?\n/, 1)[0];
+if (shebang !== '#!/usr/bin/env node') {
+  throw new Error(
+    `dist/index.js must start with "#!/usr/bin/env node" (got ${JSON.stringify(shebang)}).`
+  );
+}
+const cliPackage = JSON.parse(
+  readFileSync(path.resolve(packageDir, 'package.json'), 'utf8')
+);
+const binTarget =
+  typeof cliPackage.bin === 'string' ? cliPackage.bin : cliPackage.bin?.ideahub;
+if (!binTarget || path.resolve(packageDir, binTarget) !== distFile) {
+  throw new Error(
+    `package.json#bin.ideahub must point to dist/index.js (got ${JSON.stringify(
+      binTarget
+    )}).`
+  );
+}
+console.log('[ideahub] verified dist/index.js shebang and package.json#bin target');
