@@ -306,19 +306,26 @@ export async function restoreInnerRepository(
  * Section 8.10: after a successful sync, a rejected push usually means another
  * person pushed. Keep the local commit and tell the user how to push it.
  */
+export function isRejectedDivergence(detail: string): boolean {
+  return /non-fast-forward|fetch first|\[rejected\]|updates were rejected/i.test(detail);
+}
+
 export function formatPushFailure(
   remotePath: string,
   branch: string,
   detail: string,
-  t: Translator = translate
+  t: Translator = translate,
+  options: { retryFailed?: boolean } = {}
 ): string {
-  const conflict = /non-fast-forward|fetch first|\[rejected\]|updates were rejected/i.test(
-    detail
-  );
+  const conflict = isRejectedDivergence(detail);
   const summary = conflict
-    ? t(
-        'Publish failed: the remote proof repository changed after syncing, so the push was rejected. Another person may have pushed to it.'
-      )
+    ? options.retryFailed
+      ? t(
+          'Publish failed: the remote changed after syncing, and the automatic fetch/rebase/push retry failed.'
+        )
+      : t(
+          'Publish failed: the remote proof repository changed after syncing, so the push was rejected. Another person may have pushed to it.'
+        )
     : t('Publish failed: the inner repository could not be pushed.');
   const manual = t(
     'Push the inner repository manually:\n- Directory: {0}\n- Commands:\n  git -C "{0}" fetch origin\n  git -C "{0}" merge --ff-only origin/{1}\n  git -C "{0}" push origin HEAD:{1}\nIf the merge reports conflicts, resolve them in the directory and commit before pushing.',
@@ -326,6 +333,93 @@ export function formatPushFailure(
     branch
   );
   return t('{0}\nDetails: {1}\n{2}', summary, detail, manual);
+}
+
+type PushAttempt = { ok: true } | { ok: false; detail: string };
+
+async function pushInnerRepository(
+  remotePath: string,
+  cloneUrl: string,
+  branch: string,
+  token: string
+): Promise<PushAttempt> {
+  const credentials = Buffer.from(`x-access-token:${token}`, 'utf8').toString('base64');
+  const push = await runGit(
+    remotePath,
+    [
+      '-c',
+      `http.extraheader=AUTHORIZATION: basic ${credentials}`,
+      'push',
+      cloneUrl,
+      `HEAD:${branch}`
+    ],
+    { timeoutMs: 300_000 }
+  );
+  if (push.code === 0) {
+    return { ok: true };
+  }
+  return {
+    ok: false,
+    detail: redactSecrets(push.stderr.trim() || push.stdout.trim(), [credentials, token])
+  };
+}
+
+/**
+ * Section 8.10: retry once when the push was rejected because history diverged.
+ * A successful retry rebases onto the latest origin branch; a failed one is
+ * fully rolled back to the pre-retry HEAD, keeping our local commit.
+ */
+export async function pushWithDivergenceRetry(
+  remotePath: string,
+  branch: string,
+  push: () => Promise<PushAttempt>,
+  t: Translator = translate
+): Promise<{ ok: true; retried: boolean } | { ok: false; detail: string; retried: boolean }> {
+  const first = await push();
+  if (first.ok) {
+    return { ok: true, retried: false };
+  }
+  if (!isRejectedDivergence(first.detail)) {
+    return { ok: false, detail: first.detail, retried: false };
+  }
+
+  const before = await runGit(remotePath, ['rev-parse', 'HEAD']);
+  const preRetryHead = before.code === 0 ? before.stdout.trim() : '';
+
+  let detail = '';
+  const fetch = await runGit(remotePath, ['fetch', 'origin'], { timeoutMs: 300_000 });
+  if (fetch.code !== 0) {
+    detail = t(
+      'git fetch origin failed: {0}',
+      fetch.stderr.trim() || fetch.stdout.trim()
+    );
+  } else {
+    const rebase = await runGit(remotePath, ['rebase', `origin/${branch}`]);
+    if (rebase.code !== 0) {
+      detail = t(
+        'git rebase origin/{0} failed: {1}',
+        branch,
+        rebase.stderr.trim() || rebase.stdout.trim()
+      );
+    } else {
+      const second = await push();
+      if (second.ok) {
+        return { ok: true, retried: true };
+      }
+      detail = second.detail;
+    }
+  }
+
+  await runGit(remotePath, ['rebase', '--abort']);
+  const current = await runGit(remotePath, ['rev-parse', 'HEAD']);
+  if (
+    preRetryHead.length > 0 &&
+    current.code === 0 &&
+    current.stdout.trim() !== preRetryHead
+  ) {
+    await runGit(remotePath, ['reset', '--hard', preRetryHead]);
+  }
+  return { ok: false, detail, retried: true };
 }
 
 export async function commitAndPushInnerRepository(
@@ -338,7 +432,7 @@ export async function commitAndPushInnerRepository(
   },
   t: Translator = translate
 ): Promise<
-  | { ok: true; pushed: boolean }
+  | { ok: true; pushed: boolean; retried?: boolean }
   | { ok: false; error: string; stage: 'add' | 'commit' | 'push' }
 > {
   const parsed = parseRemoteUrl(params.url, t);
@@ -405,31 +499,25 @@ export async function commitAndPushInnerRepository(
     }
   }
 
-  const credentials = Buffer.from(`x-access-token:${params.token}`, 'utf8').toString('base64');
-  const push = await runGit(
+  const push = await pushWithDivergenceRetry(
     remotePath,
-    [
-      '-c',
-      `http.extraheader=AUTHORIZATION: basic ${credentials}`,
-      'push',
-      parsed.value.cloneUrl,
-      `HEAD:${params.branch}`
-    ],
-    { timeoutMs: 300_000 }
+    params.branch,
+    () => pushInnerRepository(remotePath, parsed.value.cloneUrl, params.branch, params.token),
+    t
   );
-  if (push.code !== 0) {
-    const detail = redactSecrets(push.stderr.trim() || push.stdout.trim(), [
-      credentials,
-      params.token
-    ]);
+  if (!push.ok) {
     return {
       ok: false,
-      error: formatPushFailure(remotePath, params.branch, detail, t),
+      error: formatPushFailure(remotePath, params.branch, push.detail, t, {
+        retryFailed: push.retried
+      }),
       stage: 'push'
     };
   }
 
-  return { ok: true, pushed: true };
+  return push.retried
+    ? { ok: true, pushed: true, retried: true }
+    : { ok: true, pushed: true };
 }
 
 export function remoteProjectUrl(

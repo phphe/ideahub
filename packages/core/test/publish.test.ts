@@ -7,6 +7,7 @@ import {
   commitAndPushInnerRepository,
   copyProjectIntoInnerRepository,
   formatPushFailure,
+  pushWithDivergenceRetry,
   remoteProjectUrl,
   restoreInnerRepository,
   scanProjectDirectory
@@ -144,6 +145,130 @@ describe('formatPushFailure', () => {
       true
     );
     expect(message).toContain('Push the inner repository manually:');
+  });
+});
+
+describe('pushWithDivergenceRetry', () => {
+  const REJECTED = '! [rejected] HEAD -> main (non-fast-forward)';
+
+  async function createDivergedRepositories(): Promise<{
+    inner: string;
+    other: string;
+  }> {
+    const bare = await tempDir('ideahub-retry-bare-');
+    await runGit(bare, ['init', '--bare']);
+
+    const seed = await tempDir('ideahub-retry-seed-');
+    await runGit(seed, ['init']);
+    await runGit(seed, ['config', 'user.name', 'Test']);
+    await runGit(seed, ['config', 'user.email', 'test@example.com']);
+    await fs.writeFile(path.join(seed, 'ideas.md'), 'base\n', 'utf8');
+    await runGit(seed, ['add', '.']);
+    await runGit(seed, ['commit', '-m', 'base']);
+    await runGit(seed, ['remote', 'add', 'origin', bare]);
+    await runGit(seed, ['push', 'origin', 'HEAD:main']);
+    await runGit(bare, ['symbolic-ref', 'HEAD', 'refs/heads/main']);
+
+    const inner = await tempDir('ideahub-retry-inner-');
+    await runGit(inner, ['clone', bare, '.']);
+    await runGit(inner, ['config', 'user.name', 'Test']);
+    await runGit(inner, ['config', 'user.email', 'test@example.com']);
+
+    const other = await tempDir('ideahub-retry-other-');
+    await runGit(other, ['clone', bare, '.']);
+    await runGit(other, ['config', 'user.name', 'Other']);
+    await runGit(other, ['config', 'user.email', 'other@example.com']);
+
+    return { inner, other };
+  }
+
+  async function commitFile(root: string, file: string, content: string): Promise<void> {
+    await fs.writeFile(path.join(root, file), content, 'utf8');
+    await runGit(root, ['add', '.']);
+    expect((await runGit(root, ['commit', '-m', `update ${file}`])).code).toBe(0);
+  }
+
+  it('retries once after a divergence and succeeds without manual instructions', async () => {
+    const { inner, other } = await createDivergedRepositories();
+    await commitFile(other, 'other.txt', 'other\n');
+    await runGit(other, ['push', 'origin', 'HEAD:main']);
+    await commitFile(inner, 'local.txt', 'local\n');
+
+    let calls = 0;
+    const result = await pushWithDivergenceRetry(inner, 'main', async () => {
+      calls += 1;
+      return calls === 1 ? { ok: false, detail: REJECTED } : { ok: true };
+    });
+
+    expect(result).toEqual({ ok: true, retried: true });
+    expect(calls).toBe(2);
+    expect((await runGit(inner, ['merge-base', '--is-ancestor', 'origin/main', 'HEAD'])).code).toBe(0);
+    expect(await fs.readFile(path.join(inner, 'local.txt'), 'utf8')).toBe('local\n');
+    expect(await fs.readFile(path.join(inner, 'other.txt'), 'utf8')).toBe('other\n');
+  });
+
+  it('aborts a conflicted rebase, restores the pre-retry HEAD and keeps our commit', async () => {
+    const { inner, other } = await createDivergedRepositories();
+    await commitFile(other, 'ideas.md', 'remote\n');
+    await runGit(other, ['push', 'origin', 'HEAD:main']);
+    await commitFile(inner, 'ideas.md', 'local\n');
+
+    const before = (await runGit(inner, ['rev-parse', 'HEAD'])).stdout.trim();
+    let calls = 0;
+    const result = await pushWithDivergenceRetry(inner, 'main', async () => {
+      calls += 1;
+      return { ok: false, detail: REJECTED };
+    });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) {
+      throw new Error('expected the retry to fail');
+    }
+    expect(result.retried).toBe(true);
+    expect(result.detail).toContain('git rebase origin/main failed');
+    expect(calls).toBe(1);
+    expect((await runGit(inner, ['rev-parse', 'HEAD'])).stdout.trim()).toBe(before);
+    expect(await fs.readFile(path.join(inner, 'ideas.md'), 'utf8')).toBe('local\n');
+    expect((await runGit(inner, ['status', '--porcelain'])).stdout.trim()).toBe('');
+  });
+
+  it('does not retry a non-divergence push failure', async () => {
+    const { inner } = await createDivergedRepositories();
+    await commitFile(inner, 'local.txt', 'local\n');
+    const before = (await runGit(inner, ['rev-parse', 'HEAD'])).stdout.trim();
+
+    let calls = 0;
+    const result = await pushWithDivergenceRetry(inner, 'main', async () => {
+      calls += 1;
+      return { ok: false, detail: 'remote: Permission denied' };
+    });
+
+    expect(result).toEqual({ ok: false, detail: 'remote: Permission denied', retried: false });
+    expect(calls).toBe(1);
+    expect((await runGit(inner, ['rev-parse', 'HEAD'])).stdout.trim()).toBe(before);
+  });
+
+  it('restores the pre-retry HEAD when the second push is also rejected', async () => {
+    const { inner, other } = await createDivergedRepositories();
+    await commitFile(other, 'other.txt', 'other\n');
+    await runGit(other, ['push', 'origin', 'HEAD:main']);
+    await commitFile(inner, 'local.txt', 'local\n');
+
+    const before = (await runGit(inner, ['rev-parse', 'HEAD'])).stdout.trim();
+    let calls = 0;
+    const result = await pushWithDivergenceRetry(inner, 'main', async () => {
+      calls += 1;
+      return { ok: false, detail: REJECTED };
+    });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) {
+      throw new Error('expected the retry to fail');
+    }
+    expect(result.retried).toBe(true);
+    expect(calls).toBe(2);
+    expect((await runGit(inner, ['rev-parse', 'HEAD'])).stdout.trim()).toBe(before);
+    expect(await fs.readFile(path.join(inner, 'local.txt'), 'utf8')).toBe('local\n');
   });
 });
 

@@ -1655,16 +1655,22 @@ export class IdeahubController {
           return { ok: false, message: `${push.error}${rollbackNote}${localMarkerNote}` };
         }
 
+        const retryNote = push.retried
+          ? this.t(
+              '\nThe remote had new commits; IdeaHub fetched, rebased and pushed automatically.'
+            )
+          : '';
         return {
           ok: true,
           message: this.t(
-            '{0}.\nRemote project URL: {1}{2}{3}',
+            '{0}.\nRemote project URL: {1}{2}{3}{4}',
             push.pushed
               ? this.t('Publish succeeded')
               : this.t('The project is already up to date; nothing was pushed'),
             projectUrl,
             localMarkerNote,
-            externalNote
+            externalNote,
+            retryNote
           )
         };
       }
