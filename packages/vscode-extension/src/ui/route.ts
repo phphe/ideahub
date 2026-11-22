@@ -15,6 +15,7 @@ export interface RouteHandlers {
   installHook(): Promise<OpResult>;
   createProject(): Promise<OpResult>;
   setRemote(url: string): Promise<OpResult>;
+  openTemplate(): Promise<void>;
   cloneRemote(reclone: boolean): Promise<OpResult>;
   openProject(project: string): Promise<OpResult>;
   editTags(project: string): Promise<OpResult>;
@@ -56,6 +57,8 @@ export function routeMessage(message: WebviewMessage, handlers: RouteHandlers): 
         name: 'setRemote',
         run: () => handlers.setRemote(message.url ?? '')
       };
+    case 'openTemplate':
+      return { kind: 'command', name: 'openTemplate', run: () => handlers.openTemplate() };
     case 'clone':
       return { kind: 'operation', name: 'clone', run: () => handlers.cloneRemote(false) };
     case 'reclone':

@@ -416,6 +416,10 @@ function renderScript(nonce: string): string {
         });
         return;
       }
+      if (action === 'openTemplate') {
+        vscode.postMessage({ type: 'openTemplate' });
+        return;
+      }
       if (action === 'open') {
         vscode.postMessage({ type: 'open', project: target.dataset.project });
         return;
@@ -594,6 +598,14 @@ const STYLES = `
   code { font-family: var(--vscode-editor-font-family); font-size: 12px; }
   .link { color: var(--vscode-textLink-foreground); cursor: pointer; }
   .link:hover { text-decoration: underline; }
+  button.link {
+    background: none;
+    border: none;
+    padding: 0;
+    font: inherit;
+    text-align: left;
+  }
+  .template-link { margin: 4px 0 10px; }
 `;
 
 function renderIssueActions(
@@ -608,6 +620,9 @@ function renderIssueActions(
       )}</button></div>`;
     case 'remote-url':
       return `<input type="text" id="remote-url" placeholder="https://github.com/owner/repo" />
+        <p class="template-link"><button class="link" data-action="openTemplate">${escapeHtml(
+          t('Create a remote proof repository from the template')
+        )}</button></p>
         <p class="muted">${escapeHtml(
           t(
             'The remote proof repository must be created manually by you and must be public. The remote default branch is used automatically and shown in settings. After validation the repository is cloned into .ideahub/remote/; the configuration is only committed to the local idea repository and nothing is pushed or published.'
@@ -1055,6 +1070,13 @@ export function renderSettingsHtml(
       <input id="remote-url" type="text" value="${escapeHtml(
         info.url
       )}" placeholder="https://github.com/owner/repo" />
+      ${
+        info.url
+          ? ''
+          : `<p class="template-link"><button class="link" data-action="openTemplate">${escapeHtml(
+              t('Create a remote proof repository from the template')
+            )}</button></p>`
+      }
       <div class="actions">
         <button data-action="setRemote">${escapeHtml(t('Validate, save and clone'))}</button>
       </div>

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { WorkspaceState, ProjectSummary } from '@ideahub/core';
+import { zhL10n } from './helpers/l10n';
 import {
   PROJECT_FILTER_THRESHOLD,
   renderMainHtml,
@@ -72,6 +73,62 @@ describe('renderMainHtml', () => {
     expect(nonEmpty).toContain('data-action="initNonEmpty"');
     expect(nonEmpty).toContain('>Initialize anyway</button>');
     expect(nonEmpty).toContain('existing files are never overwritten');
+  });
+});
+
+describe('remote proof repository template shortcut', () => {
+  const needsRemote: WorkspaceState = {
+    kind: 'local',
+    root: 'C:/repo',
+    remote: null,
+    configError: null,
+    remoteDirExists: false,
+    issues: [
+      {
+        id: 'remote-url',
+        title: 'Remote proof repository not configured',
+        message: 'Enter the URL.'
+      }
+    ],
+    projects: []
+  };
+
+  it('renders the template link next to the URL input when it is missing', () => {
+    const html = renderMainHtml(needsRemote);
+    expect(html).toContain('data-action="openTemplate"');
+    expect(html).toContain('Create a remote proof repository from the template');
+
+    const chinese = renderMainHtml(needsRemote, undefined, zhL10n(), 'zh-cn');
+    expect(chinese).toContain(
+      '<button class="link" data-action="openTemplate">用模板创建远程证明仓库</button>'
+    );
+  });
+
+  it('does not render the template link once a remote repository is configured', () => {
+    const html = renderMainHtml({ ...needsRemote, issues: [] });
+    expect(html).not.toContain('data-action="openTemplate"');
+  });
+
+  it('offers the link in settings only while the URL is empty', () => {
+    const base: RemoteSettingsInfo = {
+      url: '',
+      owner: '',
+      repo: '',
+      host: '',
+      branch: '',
+      visibility: '',
+      error: null,
+      display: {
+        url: 'Not configured',
+        ownerRepo: 'Not configured',
+        host: 'Unknown',
+        branch: 'Unknown'
+      }
+    };
+    expect(renderSettingsHtml(base)).toContain('data-action="openTemplate"');
+
+    const configured = { ...base, url: 'https://github.com/phphe/demo' };
+    expect(renderSettingsHtml(configured)).not.toContain('data-action="openTemplate"');
   });
 });
 

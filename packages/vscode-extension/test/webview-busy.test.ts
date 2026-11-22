@@ -115,6 +115,18 @@ function runWebview(
   };
 }
 
+describe('template shortcut', () => {
+  it('posts openTemplate without locking the link', () => {
+    const button = makeButton('openTemplate');
+    const webview = runWebview([button]);
+
+    webview.click(button);
+
+    expect(webview.messages).toEqual([{ type: 'openTemplate' }]);
+    expect(button.disabled).toBe(false);
+  });
+});
+
 describe('webview busy reset', () => {
   it('re-enables buttons and restores the idle icon without re-rendering', () => {
     const init = makeButton('initNonEmpty');

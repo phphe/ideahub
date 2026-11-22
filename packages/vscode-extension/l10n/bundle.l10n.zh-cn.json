@@ -198,6 +198,7 @@
   "Step 1/2 (save configuration)": "步骤 1/2（保存配置）",
   "Step 1/2 (validation)": "步骤 1/2（校验）",
   "Step 1/2: remote URL validation passed; configuration and hook saved.\n{0}\nRemote proof repository: {1} (branch {2})": "步骤 1/2：远程证明仓库地址校验通过，配置与 hook 已保存。\n{0}\n远程证明仓库：{1}（分支 {2}）",
+  "Create a remote proof repository from the template": "用模板创建远程证明仓库",
   "Step 1/2: validating the remote proof repository…": "步骤 1/2：正在校验远程证明仓库…",
   "Step 1/2: validation passed, saving configuration and hook…": "步骤 1/2：校验通过，正在保存配置与 hook…",
   "Step 2/2 (clone)": "步骤 2/2（克隆）",

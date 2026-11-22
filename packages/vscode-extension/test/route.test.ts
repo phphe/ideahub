@@ -13,6 +13,7 @@ function createHandlers(): RouteHandlers {
     installHook: vi.fn(ok),
     createProject: vi.fn(ok),
     setRemote: vi.fn(ok),
+    openTemplate: vi.fn(async (): Promise<void> => {}),
     cloneRemote: vi.fn(ok),
     openProject: vi.fn(ok),
     editTags: vi.fn(ok),
@@ -70,6 +71,18 @@ describe('routeMessage', () => {
     }
     await route.run();
     expect(handlers.setRemote).toHaveBeenCalledWith('https://github.com/owner/repo');
+  });
+
+  it('routes openTemplate as a command without an operation result', async () => {
+    const handlers = createHandlers();
+    const route = routeMessage({ type: 'openTemplate' }, handlers);
+
+    expect(route.kind).toBe('command');
+    if (route.kind !== 'command') {
+      throw new Error('expected openTemplate to be routed as a command');
+    }
+    await route.run();
+    expect(handlers.openTemplate).toHaveBeenCalledTimes(1);
   });
 
   it('routes createProject and treats opening a file as a silent success', async () => {

@@ -14,6 +14,8 @@ import {
 import { isSilentSuccess, routeMessage, type RouteHandlers, type WebviewMessage } from './route';
 
 const WATCH_DEBOUNCE_MS = 500;
+const TEMPLATE_CREATE_URL =
+  'https://github.com/new?template_name=ideahub-template&template_owner=phphe';
 const IGNORED_WATCH_SEGMENTS = new Set(['.git', '.ideahub', 'node_modules']);
 
 function describeError(error: unknown): string {
@@ -350,6 +352,9 @@ export class MainViewProvider implements vscode.WebviewViewProvider, vscode.Disp
       installHook: () => this.controller.installHook(),
       createProject: () => this.controller.createProject(),
       setRemote: (url) => this.controller.setRemote(url),
+      openTemplate: async () => {
+        await vscode.env.openExternal(vscode.Uri.parse(TEMPLATE_CREATE_URL));
+      },
       cloneRemote: (reclone) => this.controller.cloneRemote(reclone),
       openProject: (project) => this.controller.openProject(project),
       editTags: (project) => this.controller.editProjectTags(project),
