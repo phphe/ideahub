@@ -184,6 +184,28 @@ describe('buildFingerprint references', () => {
     expect(result.files['a.png']).toBe(blob);
   });
 
+  it('changes the hash when a referenced file is replaced at the same path', async () => {
+    const { root, projectDir } = await createRepository({ 'MyGame/a.png': 'first' });
+    const input = {
+      project: 'MyGame',
+      text: '![a](a.png)',
+      projectDir,
+      repoRoot: root
+    };
+
+    const before = await buildFingerprint(input);
+    await fs.writeFile(path.join(projectDir, 'a.png'), 'second', 'utf8');
+    const after = await buildFingerprint(input);
+
+    expect(before.ok).toBe(true);
+    expect(after.ok).toBe(true);
+    if (!before.ok || !after.ok) {
+      throw new Error('expected both fingerprints to succeed');
+    }
+    expect(after.files['a.png']).not.toBe(before.files['a.png']);
+    expect(after.hash).not.toBe(before.hash);
+  });
+
   it('rejects text containing the reserved character', async () => {
     const { root, projectDir } = await createRepository();
     const result = await buildFingerprint({
