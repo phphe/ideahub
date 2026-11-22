@@ -119,9 +119,13 @@ function withDisplay(
   return { ...info, display };
 }
 
-function formatRemoteSetupResult(
+const INITIALIZED_MESSAGE =
+  'Initialization completed: the local idea repository has been initialized.';
+
+export function formatRemoteSetupResult(
   result: RemoteSetupFlowResult,
-  t: Translator
+  t: Translator,
+  options: { initialized?: boolean } = {}
 ): OpResult {
   if (result.ok) {
     const target = `${result.remote.owner}/${result.remote.repo}`;
@@ -134,14 +138,15 @@ function formatRemoteSetupResult(
         : t(
             'Step 2/2: .ideahub/remote/ is already a valid Git repository, so cloning was skipped; if it does not match the new URL, use "Re-clone".'
           );
+    const steps = t(
+      'Step 1/2: remote URL validation passed; configuration and hook saved.\n{0}\nRemote proof repository: {1} (branch {2})',
+      cloneStep,
+      target,
+      result.branch
+    );
     return {
       ok: true,
-      message: t(
-        'Step 1/2: remote URL validation passed; configuration and hook saved.\n{0}\nRemote proof repository: {1} (branch {2})',
-        cloneStep,
-        target,
-        result.branch
-      )
+      message: options.initialized ? `${t(INITIALIZED_MESSAGE)}\n${steps}` : steps
     };
   }
 
@@ -351,7 +356,7 @@ export class IdeahubController {
       return {
         ok: true,
         message: [
-          this.t('Initialization succeeded: the local idea repository has been initialized.'),
+          this.t(INITIALIZED_MESSAGE),
           ...result.notes
         ].join('\n')
       };
@@ -491,7 +496,9 @@ export class IdeahubController {
         })
     );
 
-    const formatted = formatRemoteSetupResult(result, this.t);
+    const formatted = formatRemoteSetupResult(result, this.t, {
+      initialized: previous === null
+    });
     if (formatted.ok && configCommitNote) {
       return { ok: true, message: `${formatted.message}\n${configCommitNote}` };
     }

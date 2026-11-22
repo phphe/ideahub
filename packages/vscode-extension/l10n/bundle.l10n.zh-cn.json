@@ -233,7 +233,7 @@
   "The inner repository has no usable HEAD (it may be an empty clone or the clone did not finish). Use \"Re-clone\" to fetch the remote proof repository again.": "内层仓库没有可用的 HEAD（可能为空克隆或克隆未完成）。请使用“重新克隆”重新获取远程证明仓库。",
   "The inner repository has uncommitted changes or conflicts. Handle .ideahub/remote/ manually before publishing.": "内层仓库存在未提交的变更或冲突。请先手动处理 .ideahub/remote/ 后再发布。",
   "The local Git repository has been initialized.": "已初始化本地 Git 仓库。",
-  "Initialization succeeded: the local idea repository has been initialized.": "初始化成功：本地创意仓库已初始化。",
+  "Initialization completed: the local idea repository has been initialized.": "初始化已完成：本地创意仓库已初始化。",
   "The local idea repository has no commit yet, so the baseline is unknown.": "本地创意仓库还没有提交，无法确定基线。",
   "The local workspace is not a Git repository.": "本地不是 Git 仓库。",
   "The marker was written to the editor, but saving the file failed.": "标记已写入编辑器，但文件保存失败。",
